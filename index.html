@@ -219,7 +219,7 @@ body:not(.admin) .adm{display:none!important}
   <div id="dash" style="display:grid;gap:18px">
   <nav class="acctbar" aria-label="Accounts">
     <div class="tabs acct-tabs" id="acctTabs" role="group" aria-label="Choose account"></div>
-    <span class="actions"><button class="btn small rw" type="button" data-act="feeSettings">Fees</button><button class="btn small rw" type="button" data-act="manageAccts">Manage accounts</button></span>
+    <span class="actions"><button class="btn small ex" type="button" data-act="feeSettings">Fees</button><button class="btn small rw" type="button" data-act="manageAccts">Manage accounts</button></span>
   </nav>
 
   <section class="panel desk rw" aria-labelledby="deskTitle">
@@ -852,7 +852,7 @@ function renderKpis(S){
   const top = S.strats[0];
   const most = (() => { const c = {}; S.rows.forEach(r => c[r.e.label] = (c[r.e.label]||0)+1); return Object.entries(c).sort((a,b)=>b[1]-a[1])[0]; })();
   $("#kpis").innerHTML = `
-    <div class="kpi"><span class="label">Net P&amp;L</span><span class="v ${pnlClass(S.total)}">${n ? money(S.total) : "$0.00"}</span><span class="s">${n} closed · ${S.open.length + S.due.length} open</span></div>
+    <div class="kpi"><span class="label">Net P&amp;L</span><span class="v ${pnlClass(S.total)}">${n ? money(S.total) : "$0.00"}</span><span class="s">${n} closed · ${S.open.length + S.due.length} open · after ${money(S.rows.reduce((a,r)=>a+(r.e.pnl!=null?(r.t.fees||0):0),0),false)} fees</span></div>
     <div class="kpi"><span class="label">Win rate</span><span class="v">${S.winRate == null ? "—" : (S.winRate*100).toFixed(1)+"%"}</span><span class="s">${S.wins.length}W · ${S.losses.length}L${n - S.wins.length - S.losses.length ? " · "+(n - S.wins.length - S.losses.length)+" flat" : ""}</span></div>
     <div class="kpi"><span class="label">Avg per trade</span><span class="v ${pnlClass(S.avg)}">${money(S.avg)}</span><span class="s">win <span class="gain">${money(S.avgWin)}</span> · loss <span class="loss">${money(S.avgLoss)}</span></span></div>
     <div class="kpi"><span class="label">Max drawdown</span><span class="v ${S.dd > 0 ? "loss" : ""}">${S.dd > 0 ? money(-S.dd) : "$0.00"}</span><span class="s">${S.dd > 0 ? `peak ${money0(S.curve[S.ddPeakI].v)} → ${money0(S.curve[S.ddTroughI].v)}` : "from peak cumulative P&amp;L"}</span></div>
@@ -945,7 +945,7 @@ function renderBlotter(S){
       : `<div class="empty"><b>No trades yet</b>Paste an order in the box above, like <span class="mono">SELL -5 VERTICAL SPX 100 (Weeklys) 1 OCT 26 7800/7820 CALL @.55 LMT</span>, then press Add to tracker.</div>`;
     return;
   }
-  el.innerHTML = `<table><thead><tr><th>Opened</th><th>Strategy</th><th class="r">Qty</th><th class="r">Entry</th><th>Expires</th><th class="r">Breakeven</th><th class="r">Chance of profit</th><th>Status</th><th class="r">Exit</th><th class="r">P&amp;L</th><th class="adm"><span class="sr">Actions</span></th></tr></thead><tbody>
+  el.innerHTML = `<table><thead><tr><th>Opened</th><th>Strategy</th><th class="r">Qty</th><th class="r">Entry</th><th>Expires</th><th class="r">Breakeven</th><th class="r">Chance of profit</th><th>Status</th><th class="r">Exit</th><th class="r">Fees</th><th class="r">P&amp;L</th><th class="adm"><span class="sr">Actions</span></th></tr></thead><tbody>
   ${rows.map(({t,e}) => {
     const cash = openCash(t);
     return `<tr class="click" data-id="${esc(t.id)}" tabindex="0">
@@ -958,6 +958,7 @@ function renderBlotter(S){
       <td class="r num">${(() => { if (e.status !== "open") return "—"; const c = chanceOfProfit(t); return c ? `<span style="font-weight:600">${fmtPct(c.prob)}</span>` : '<span class="muted" title="Enter price and IV under Market inputs">—</span>'; })()}</td>
       <td>${statusPill(e)}</td>
       <td class="r num">${e.exitPrice==null?"—":e.exitPrice.toFixed(2)}</td>
+      <td class="r num muted">${t.fees>0?money(t.fees,false):"$0.00"}</td>
       <td class="r num ${pnlClass(e.pnl)}" style="font-weight:600">${e.pnl==null?"—":money(e.pnl)}</td>
       <td class="adm"><div class="rowacts"><button class="btn small" type="button" data-rowact="edit" data-id="${esc(t.id)}" aria-label="Edit trade">Edit</button><button class="btn small danger ${rowArmed===t.id?"armed":""}" type="button" data-rowact="del" data-id="${esc(t.id)}">${rowArmed===t.id?"Confirm":"Remove"}</button></div></td></tr>`;
   }).join("")}</tbody></table>`;
@@ -1254,7 +1255,7 @@ function renderFeeSheet(){
   document.body.style.overflow = "hidden";
   const noFee = trades.filter(t => t.p && !(t.fees > 0)).length;
   $("#sheetRoot").innerHTML = `<div class="overlay" data-act="feeBackdrop"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="feeTitle" style="max-width:560px">
-    <div class="sheet-head"><div style="display:grid;gap:4px"><h2 id="feeTitle">Fees per contract</h2>
+    <div class="sheet-head"><div style="display:grid;gap:4px"><h2 id="feeTitle">Fees per contract${viewUid !== me && viewingName ? ` · ${esc(viewingName)}` : ""}</h2>
       <span class="hint">Charged on every contract when a trade opens and again when you close it. Nothing is charged when an option expires. A 5-lot vertical is 10 contracts.</span></div>
       <button class="x" type="button" data-act="feeClose" aria-label="Close">×</button></div>
     <div id="feeRows" style="display:grid;gap:8px">
@@ -1643,7 +1644,7 @@ document.addEventListener("click", async ev => {
   const a = ev.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "refreshMembers") return loadMembers();
-  if (act === "feeSettings"){ if (!readOnly()) openFeeSheet(); return; }
+  if (act === "feeSettings"){ if (!readOnly() || adminOK()) openFeeSheet(); return; }
   if (act === "feeBackdrop" && ev.target !== a) return;
   if (act === "feeClose" || act === "feeBackdrop") return closeFeeSheet();
   if (act === "feeAddRow"){ const f = readFeeForm(); feeSheet.rows = [...f.rows, {sym: "", rate: null}]; feeSheet.other = f.other; renderFeeSheet(); const ins = document.querySelectorAll(".fsym"); ins[ins.length-1]?.focus(); return; }
