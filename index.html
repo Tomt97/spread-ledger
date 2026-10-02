@@ -227,7 +227,8 @@ body:not(.admin) .adm{display:none!important}
       <h2 id="deskTitle">Add trades</h2>
       <span class="actions" style="gap:14px"><button class="linkish" id="sampleBtn" type="button">Paste an example order</button>
         <button class="btn small" id="importBtn" type="button">Import thinkorswim CSV</button>
-        <input type="file" id="tosFile" accept=".csv,text/csv" hidden></span>
+        <input type="file" id="tosFile" accept=".csv,text/csv" hidden>
+        <input type="file" id="priceFile" accept=".csv,.xlsx,.xls,text/csv" hidden></span>
     </div>
     <details class="hint" id="importHelp"><summary style="cursor:pointer">How to get the thinkorswim CSV</summary>
       <ol style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px">
@@ -558,7 +559,9 @@ function subscribeTo(uid){
   unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; render(); }, () => { loaded = true; render(); }));
   unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); render(); }, () => {}));
   feeCfg = JSON.parse(JSON.stringify(FEE_DEFAULTS));
-  unsubs.push(col("settings").onSnapshot(snap => { const d = snap.docs.find(x => x.id === "fees"); feeCfg = d ? {rates: {}, other: 0, ...d.data()} : JSON.parse(JSON.stringify(FEE_DEFAULTS)); updatePreview(); render(); }, () => {}));
+  priceBook = {};
+  unsubs.push(col("settings").onSnapshot(snap => { const pb = snap.docs.find(x => x.id === "prices"); priceBook = pb ? (pb.data().books || {}) : {}; if (settleSheet) renderSettleSheet();
+    const d = snap.docs.find(x => x.id === "fees"); feeCfg = d ? {rates: {}, other: 0, ...d.data()} : JSON.parse(JSON.stringify(FEE_DEFAULTS)); updatePreview(); render(); }, () => {}));
   unsubs.push(col("market").onSnapshot(snap => { market = {}; snap.docs.forEach(d => { const v = d.data(); market[v.symbol || d.id] = v; }); render(); }, () => {}));
   render();
 }
@@ -610,6 +613,7 @@ async function boot(){
   } else {
     mode = "local"; trades = lsRead(LS_KEY); accountsDb = lsRead(LS_ACCT);
     try { const fc = JSON.parse(localStorage.getItem(LS_FEES) || "null"); if (fc) feeCfg = fc; } catch {}
+    try { priceBook = JSON.parse(localStorage.getItem("spread-ledger-prices") || "{}") || {}; } catch {}
     try { market = JSON.parse(localStorage.getItem(LS_MKT) || "{}"); if (Array.isArray(market)) market = {}; } catch {}
     loaded = true;
   }
@@ -865,7 +869,7 @@ function renderAlert(S){
   if ($("#alert").querySelector('[role="alert"]')) return;
   if (!S.due.length){ $("#alert").innerHTML = ""; return; }
   const n = S.due.length;
-  $("#alert").innerHTML = `<div class="alert"><span><b>${n} trade${n>1?"s":""} expired</b> and need${n>1?"":"s"} the settlement price to book the P&amp;L.</span><button class="btn small" type="button" data-filter="due">Show ${n>1?"them":"it"}</button></div>`;
+  $("#alert").innerHTML = `<div class="alert"><span><b>${n} trade${n>1?"s":""} expired</b> and need${n>1?"":"s"} the settlement price to book the P&amp;L.</span><span class="actions"><button class="btn small" type="button" data-filter="due">Show ${n>1?"them":"it"}</button>${canRecordExit() ? '<button class="btn small primary" type="button" data-act="settleOpen">Settle with price file</button>' : ""}</span></div>`;
 }
 
 function niceTicks(lo, hi, count=5){
@@ -1041,7 +1045,7 @@ function payoffSVG(t, settle){
 function exitPreviewPnl(t, tab, price, settle){
   if (tab === "close") return price == null ? null : pnlAt(t, price) - fillFee(t.p);
   if (settle == null) return null;
-  return pnlAt(t, structValue(t.p, settle));
+  return pnlAt(t, settledValue(t, settle));
 }
 
 function renderSheet(){
@@ -1218,7 +1222,7 @@ async function saveExit(){
     exit = {kind:"closed", price, date:$("#exDate").value || todayISO(), fee: fillFee(t.p)};
   } else {
     const st = num($("#exSettle").value); if (st == null){ $("#exErr").textContent = "Enter the settlement price."; return; }
-    exit = {kind:"expired", settle:st, price:+structValue(t.p, st).toFixed(4), date:expiryOf(t.p)};
+    exit = {kind:"expired", settle:st, price:+settledValue(t, st).toFixed(4), date:expiryOf(t.p)};
   }
   sheetDirty = false;
   if (await saveTrade({...t, exit, fees: +((t.fees || 0) + (exit.fee || 0)).toFixed(2)})) renderSheet();
@@ -1299,6 +1303,134 @@ async function applyFeesToExisting(){
   const m = $("#feeErr"); if (m){ m.style.color = "var(--gain)"; m.textContent = `Applied fees to ${n} trade${n === 1 ? "" : "s"}.`; }
 }
 
+/* ---------- settle expired trades from a price file ----------
+   A price file has one row per day with Date and Close (and Open) columns, e.g. a Yahoo
+   Finance download saved as .csv or .xlsx. SPX weeklys settle at the 4:00 pm close;
+   XSP settles at SPX / 10. Monthly SPX (third Friday, not weekly) settles at the morning
+   open, so those use the Open column as an estimate and are marked. */
+let priceBook = {};          // {SPX: {"2026-10-01": [open, close]}}
+let settleSheet = null;      // {sym, msg}
+function loadXlsxLib(){
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  const srcs = ["https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
+                "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"];
+  const tryLoad = i => new Promise((ok, fail) => {
+    if (i >= srcs.length) return fail(new Error("Couldn't load the Excel reader. Save the file as .csv and try again."));
+    const sc = document.createElement("script"); sc.src = srcs[i];
+    sc.onload = () => window.XLSX ? ok(window.XLSX) : tryLoad(i + 1).then(ok, fail);
+    sc.onerror = () => tryLoad(i + 1).then(ok, fail);
+    document.head.appendChild(sc); });
+  return tryLoad(0);
+}
+function priceDate(v){
+  if (typeof v === "number" || /^\d{5}(\.\d+)?$/.test(String(v).trim())){
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(+v) * 86400000);   // Excel serial date
+    return d.toISOString().slice(0,10);
+  }
+  const t = String(v || "").trim(); if (!t) return null;
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${m[1]}-${pad2(+m[2])}-${pad2(+m[3])}`;
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (m){ let y = +m[3]; if (y < 100) y += 2000; return `${y}-${pad2(+m[1])}-${pad2(+m[2])}`; }
+  const d = new Date(t); return isNaN(d) ? null : `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+}
+function readPriceRows(rows){
+  let h = -1, cDate = -1, cClose = -1, cOpen = -1;
+  for (let i = 0; i < Math.min(rows.length, 30) && h < 0; i++){
+    const cells = rows[i].map(x => csvNorm(x).replace(/[^A-Z ]/g, "").trim());
+    const d = cells.findIndex(c => c === "DATE"), c = cells.findIndex(c => c === "CLOSE" || c === "PRICE" || c === "LAST" || c === "SETTLEMENT");
+    if (d >= 0 && c >= 0){ h = i; cDate = d; cClose = c; cOpen = cells.findIndex(c => c === "OPEN"); }
+  }
+  if (h < 0) throw new Error("Couldn't find Date and Close columns in this file.");
+  const out = {};
+  for (const r of rows.slice(h + 1)){
+    const d = priceDate(r[cDate]), c = csvNum(r[cClose]), o = cOpen >= 0 ? csvNum(r[cOpen]) : null;
+    if (d && c != null && c > 0) out[d] = [o, c];
+  }
+  if (!Object.keys(out).length) throw new Error("No dated closing prices found in this file.");
+  return out;
+}
+async function savePriceBook(){
+  if (mode === "db") return dbWrite(() => col("settings").doc("prices").set({books: priceBook, updatedAt: Date.now()}));
+  try { localStorage.setItem("spread-ledger-prices", JSON.stringify(priceBook)); } catch {} return true;
+}
+const isIndexAM = (sym, t) => ["SPX","NDX","RUT"].includes(sym) && !/WEEKLY|QUARTERLY|EOM|PM/i.test(t.p.tags || "") && thirdFriday(expiryOf(t.p));
+function settlementFor(t){
+  const sym = String(t.p.symbol).toUpperCase().replace(/^SPXW$/, "SPX"), exp = expiryOf(t.p);
+  let book = priceBook[sym], scale = 1, src = sym;
+  if (!book && sym === "XSP" && priceBook.SPX){ book = priceBook.SPX; scale = 0.1; src = "SPX ÷ 10"; }
+  const row = book && book[exp]; if (!row) return null;
+  const am = isIndexAM(sym, t);
+  const v = am ? row[0] : row[1]; if (v == null) return null;
+  return {S: +(v * scale).toFixed(4), src: `${src} ${am ? "open (AM-settled estimate)" : "close"}`, am};
+}
+/* value per unit of the structure at settlement; trades partly closed early add back what was closed */
+function settledValue(t, S){
+  const tp = t.tosPartial;
+  if (!tp) return structValue(t.p, S);
+  const dir = t.p.action === "BUY" ? 1 : -1;
+  const rest = tp.rem.reduce((a, l) => { const [, ty, k] = l.key.split("|"); return a + l.q * intrinsic(ty, +k, S); }, 0);
+  return (tp.closeCash + rest) / t.p.qty / dir;
+}
+function openSettleSheet(){ closeSheet(); settleSheet = {msg: ""}; renderSettleSheet(); }
+function closeSettleSheet(){ settleSheet = null; $("#sheetRoot").innerHTML = ""; document.body.style.overflow = ""; }
+function settleCandidates(){
+  return trades.filter(t => t.p && t.p.price != null && t.p.legs && evalTrade(t).status === "due" && (modeled(t.p) || t.tosPartial))
+    .map(t => ({t, s: settlementFor(t)}));
+}
+function renderSettleSheet(){
+  if (!settleSheet) return;
+  document.body.style.overflow = "hidden";
+  const C = settleCandidates(), ready = C.filter(c => c.s), missing = C.filter(c => !c.s);
+  const books = Object.entries(priceBook).map(([k, v]) => { const ds = Object.keys(v).sort(); return `${k}: ${ds.length} days (${fmtShort(ds[0])} to ${fmtShort(ds[ds.length-1])})`; });
+  const rows = ready.slice(0, 400).map(({t, s}) => { const V = settledValue(t, s.S), pnl = pnlAt(t, V);
+    return `<tr><td class="num" style="white-space:nowrap">${fmtShort(expiryOf(t.p))}</td><td><div class="strat">${esc(stratLabel(t.p))}</div><div class="sub">${esc(describe(t.p))} · ${esc(acctName(acctOf(t)))}</div></td>
+      <td class="r num">${fmtK(s.S)}${s.am ? ' <span class="pill due">est.</span>' : ""}</td><td class="r num ${pnlClass(pnl)}" style="white-space:nowrap">${money(pnl)}</td></tr>`; }).join("");
+  const total = ready.reduce((a, {t, s}) => a + pnlAt(t, settledValue(t, s.S)), 0);
+  $("#sheetRoot").innerHTML = `<div class="overlay" data-act="settleBackdrop"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="stTitle">
+    <div class="sheet-head"><div style="display:grid;gap:4px"><h2 id="stTitle">Settle expired trades</h2>
+      <span class="hint">${C.length} trade${C.length === 1 ? "" : "s"} expired without an exit. Each one is valued at its underlying's settlement price on the expiration day.</span></div>
+      <button class="x" type="button" data-act="settleClose" aria-label="Close">×</button></div>
+    ${settleSheet.done ? `<div class="alert" style="background:var(--gain-soft);border-color:var(--gain)"><span>${esc(settleSheet.done)}</span><button class="btn small" type="button" data-act="settleClose">Done</button></div>` : ""}
+    <div class="exitbox"><div class="card-head"><span class="label">Price file</span><button class="btn small" type="button" data-act="settleUpload">Upload price file</button></div>
+      <span class="hint">${books.length ? "Saved prices: " + esc(books.join(" · ")) : "No prices saved yet. Upload a daily price history (.xlsx or .csv) with Date and Close columns, for example from Yahoo Finance."}</span>
+      <label class="field" style="max-width:220px"><span class="label">Prices in the next file are for</span><select id="priceSym">${["SPX","XSP","NDX","RUT","SPY","QQQ","IWM"].map(x => `<option ${x === (settleSheet.sym || "SPX") ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+      <span class="err">${esc(settleSheet.msg)}</span></div>
+    ${ready.length ? `<div class="facts"><div><span class="label">Ready to settle</span><span class="v">${ready.length}</span></div><div><span class="label">Missing a price</span><span class="v">${missing.length}</span></div><div><span class="label">P&amp;L of these</span><span class="v ${pnlClass(total)}">${money(total)}</span></div></div>
+      <div class="scroll" style="max-height:44vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px"><table><thead><tr><th>Expired</th><th>Strategy</th><th class="r">Settlement</th><th class="r">P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div>` : ""}
+    ${missing.length ? `<details><summary class="hint" style="cursor:pointer">No price for ${missing.length} trade${missing.length === 1 ? "" : "s"}</summary><ul class="hint" style="margin:6px 0 0;padding-left:18px">${missing.slice(0,100).map(({t}) => `<li>${esc(t.p.symbol)} expiring ${fmtShort(expiryOf(t.p))} · ${esc(describe(t.p))}</li>`).join("")}</ul></details>` : ""}
+    ${ready.some(r => r.s.am) ? `<div class="hint"><span class="pill due">est.</span> Monthly index options settle at the next morning's opening print, which isn't in a daily price file, so the day's open is used. Check these against your statement.</div>` : ""}
+    ${ready.length ? `<div class="actions"><span class="hint" id="settleProgress"></span><span class="spacer"></span><button class="btn primary" type="button" data-act="settleGo">Settle ${ready.length} trade${ready.length === 1 ? "" : "s"}</button></div>` : ""}
+  </div></div>`;
+}
+async function handlePriceFile(file){
+  if (!file || !settleSheet) return;
+  const sym = ($("#priceSym") && $("#priceSym").value) || "SPX";
+  try {
+    let rows;
+    if (/\.xlsx?$/i.test(file.name)){
+      const X = await loadXlsxLib();
+      const wb = X.read(await file.arrayBuffer(), {type: "array"});
+      rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1, raw: true, defval: ""});
+    } else rows = parseCSV(await file.text());
+    const got = readPriceRows(rows);
+    priceBook = {...priceBook, [sym]: {...(priceBook[sym] || {}), ...got}};
+    settleSheet = {sym, msg: "", done: ""};
+    await savePriceBook();
+  } catch(e){ settleSheet.msg = e.message || String(e); }
+  $("#priceFile").value = "";
+  renderSettleSheet();
+}
+async function runSettle(){
+  const ready = settleCandidates().filter(c => c.s);
+  let n = 0;
+  for (const {t, s} of ready){
+    const exit = {kind: "expired", settle: s.S, price: +settledValue(t, s.S).toFixed(4), date: expiryOf(t.p), source: s.src};
+    if (!await saveTrade({...t, exit})) break;
+    n++; const pr = $("#settleProgress"); if (pr) pr.textContent = `Settled ${n} of ${ready.length}…`;
+  }
+  settleSheet = {msg: "", done: n < ready.length ? `Settled ${n} of ${ready.length}. The rest weren't saved; check your connection and open this again.` : `Settled ${n} trade${n === 1 ? "" : "s"}.`};
+  renderSettleSheet();
+}
+
 /* ---------- thinkorswim CSV import ----------
    Reads the "Account Trade History" section of a thinkorswim Account Statement export,
    rebuilds each order from its legs (side, qty, strike, type, expiration, price), matches
@@ -1358,7 +1490,7 @@ function readTosCsv(text){
   const sec = csvSection(rows, ["EXEC TIME","SIDE","QTY","SYMBOL","STRIKE","TYPE"]);
   if (!sec) throw new Error("This file has no Account Trade History section. In thinkorswim, export the Account Statement (not the Order History or a position list).");
   const H = sec.hdr, col = (r, name) => H[name] != null ? String(r[H[name]] ?? "").trim() : "";
-  const fees = {};
+  const fees = {}, descs = {};
   const cb = csvSection(rows, ["DATE","TIME","TYPE","DESCRIPTION"]);
   if (cb){
     const C = cb.hdr;
@@ -1369,6 +1501,7 @@ function readTosCsv(text){
       let f = 0;
       for (const k of ["MISC FEES","COMMISSIONS & FEES","COMMISSIONS","FEES"]) if (C[k] != null){ const v = csvNum(r[C[k]]); if (v) f += Math.abs(v); }
       fees[d.key] = (fees[d.key] || 0) + f;
+      (descs[d.key] ||= []).push(csvNorm(r[C["DESCRIPTION"]]));
     }
   }
   const orders = []; let cur = null;
@@ -1388,7 +1521,7 @@ function readTosCsv(text){
       price: csvNum(col(r, "PRICE")),
     });
   }
-  return {orders: orders.filter(o => o.time), fees, sections: {trades: true, fees: !!cb}};
+  return {orders: orders.filter(o => o.time), fees, descs, sections: {trades: true, fees: !!cb}};
 }
 
 /* Turn per-unit actual legs A [{t,k,exp,q}] and cash per unit into a tracker order (p). */
@@ -1455,10 +1588,11 @@ function rawFor(p){
   const name = p.strategy === "SINGLE" ? "" : p.strategy + " ";
   const ratio = p.ratio ? p.ratio.join("/") + " " : "";
   const types = p.types.map(t => t === "C" ? "CALL" : "PUT").join("/");
-  return `${p.action === "BUY" ? "BOUGHT +" : "SOLD -"}${p.qty} ${ratio}${name}${p.symbol} ${p.mult} ${exps.map(tosDateText).join("/")} ${p.strikes.map(fmtK).join("/")} ${types} @${String(p.price).replace(/^0\./, ".")}`;
+  return `${p.action === "BUY" ? "BOUGHT +" : "SOLD -"}${p.qty} ${ratio}${name}${p.symbol} ${p.mult} ${p.tags ? p.tags + " " : ""}${exps.map(tosDateText).join("/")} ${p.strikes.map(fmtK).join("/")} ${types} @${String(p.price).replace(/^0\./, ".")}`;
 }
 
-function planTosImport(parsed, existing){
+function planTosImport(parsed, existing, opts = {}){
+  const useSchedule = opts.feeSource === "schedule";
   const report = {orders: parsed.orders.length, skipped: [], unmatched: [], partial: [], fees: parsed.sections.fees};
   const pool = [];
   const byId = new Map(existing.map(t => [t.id, t]));
@@ -1468,17 +1602,23 @@ function planTosImport(parsed, existing){
   }
   const seenCloses = new Set(existing.flatMap(t => t.tosCloseKeys || []));
   const orders = [...parsed.orders].sort((a,b) => a.time.key.localeCompare(b.time.key));
+  const seenKey = new Map(), everOpened = new Set(existing.flatMap(t => (t.tosLegs || []).map(l => l.key)));
   for (const o of orders){
     const bad = o.legs.find(l => (l.type !== "CALL" && l.type !== "PUT") || l.qty == null || l.k == null || !l.exp || l.price == null);
     if (bad){ report.skipped.push({when: o.time.iso, text: o.text[0], why: bad.type && bad.type !== "CALL" && bad.type !== "PUT" ? `not an option (${bad.type.toLowerCase()})` : "missing price, strike or expiration"}); continue; }
     const sym = o.legs[0].sym;
-    const okey = strHash(o.time.key + "|" + o.legs.map(l => `${l.exp}${l.type}${l.k}${l.qty}@${l.price}`).join(";"));
+    const base = o.time.key + "|" + o.legs.map(l => `${l.exp}${l.type}${l.k}${l.qty}@${l.price}`).join(";");
+    const nth = (seenKey.get(base) || 0) + 1; seenKey.set(base, nth);        // identical fills in the same second
+    const okey = strHash(nth > 1 ? base + "#" + nth : base);
+    const desc = (parsed.descs && parsed.descs[o.time.key] || []).find(d => d.includes(" " + sym + " ")) || "";
+    const tags = (desc.match(/\((WEEKLYS|QUARTERLYS|EOM|AM|PM)[^)]*\)/) || [""])[0];
     const contracts = o.legs.reduce((s,l) => s + Math.abs(l.qty), 0);
-    const feePer = parsed.fees[o.time.key] != null ? (contracts ? parsed.fees[o.time.key] / contracts : 0) : feeRate(o.legs[0].sym);
+    const feePer = !useSchedule && parsed.fees[o.time.key] != null ? (contracts ? parsed.fees[o.time.key] / contracts : 0) : feeRate(o.legs[0].sym);
     const L = o.legs.map(l => ({t: l.type[0], k: l.k, exp: l.exp, qty: l.qty, price: l.price, pos: l.pos}));
     const findOpen = l => pool.find(ps => ps.legs.some(x => x.key === legKey(l) && Math.sign(x.rem) === -Math.sign(l.qty)));
     const closing = L.filter(l => l.pos === "TO CLOSE" || (l.pos !== "TO OPEN" && findOpen(l)));
     const opening = L.filter(l => !closing.includes(l));
+    const overflow = [];
     for (const l of closing){
       if (seenCloses.has(okey)) break;
       let need = l.qty;
@@ -1494,18 +1634,24 @@ function planTosImport(parsed, existing){
         ps.lastClose = o.time.iso;
         if (!ps.closeKeys.includes(okey)) ps.closeKeys.push(okey);
       }
-      if (need) report.unmatched.push({when: o.time.iso, text: `${l.qty > 0 ? "Buy" : "Sell"} ${Math.abs(need)} ${sym} ${fmtShort(l.exp)} ${fmtK(l.k)} ${l.t === "C" ? "call" : "put"} to close`, why: "no matching open position in this file"});
+      if (need && everOpened.has(legKey(l))){
+        // Closed more than was open (thinkorswim filled a closing order twice): the extra opened a new position.
+        overflow.push({...l, qty: need});
+        report.overclosed = (report.overclosed || 0) + 1;
+      } else if (need) report.unmatched.push({when: o.time.iso, text: `${l.qty > 0 ? "Buy" : "Sell"} ${Math.abs(need)} ${sym} ${fmtShort(l.exp)} ${fmtK(l.k)} ${l.t === "C" ? "call" : "put"} to close`, why: "no matching open position in this file"});
     }
+    opening.forEach(l => everOpened.add(legKey(l)));
+    if (overflow.length && !seenCloses.has(okey)) opening.push(...overflow);
     if (opening.length){
       const units = opening.reduce((g,l) => gcd(g, Math.abs(l.qty)), 0);
       const A = opening.map(l => ({t: l.t, k: l.k, exp: l.exp, q: l.qty / units}));
       const cashU = opening.reduce((s,l) => s - l.qty * l.price, 0) / units;
       const p = classifyLegs(A, cashU, sym);
-      p.qty = units;
+      p.qty = units; p.tags = tags;
       const id = "tos_" + okey;
       if (byId.has(id)) continue;                          // already imported earlier
       const trade = {id, raw: rawFor(p), p, openDate: o.time.iso, fees: +(feePer * opening.reduce((s,l) => s + Math.abs(l.qty), 0)).toFixed(2),
-        notes: "Imported from thinkorswim", exit: null, createdAt: Date.parse(o.time.key.replace(" ", "T")) || Date.now(),
+        notes: overflow.length ? "Imported from thinkorswim · opened by an extra closing fill" : "Imported from thinkorswim", exit: null, createdAt: Date.parse(o.time.key.replace(" ", "T")) || Date.now(),
         tosLegs: opening.map(l => ({key: legKey(l), q: l.qty})), tosCloseKeys: []};
       pool.push({trade, existing: false, units, legs: trade.tosLegs.map(l => ({...l, rem: l.q, full: l.q})), closeCash: 0, closeFees: 0, closeKeys: [], lastClose: null});
     }
@@ -1534,8 +1680,12 @@ function planTosImport(parsed, existing){
       out.push({kind: "new", trade: closed});
       out.push({kind: ps.existing ? "update" : "new", trade: rest});
     } else {
+      // Part of the position was closed with a different combination (e.g. one side of a condor);
+      // keep what was closed and settle the remaining legs at expiration.
       report.partial.push({when: t.openDate, text: t.raw});
-      if (!ps.existing) out.push({kind: "new", trade: {...t, notes: t.notes + " · partly closed in thinkorswim with a different combination, review the exit"}});
+      const tp = {closeCash: +ps.closeCash.toFixed(4), rem: ps.legs.filter(l => l.rem).map(l => ({key: l.key, q: l.rem})), lastClose: ps.lastClose};
+      out.push({kind: ps.existing ? "update" : "new", trade: {...t, fees: +((t.fees || 0) + ps.closeFees).toFixed(2), tosPartial: tp,
+        tosCloseKeys: [...(t.tosCloseKeys || []), ...ps.closeKeys], notes: t.notes + " · part closed early in thinkorswim, the rest settles at expiration"}});
     }
   }
   out.sort((a,b) => (a.trade.openDate || "").localeCompare(b.trade.openDate || ""));
@@ -1546,6 +1696,7 @@ function planTosImport(parsed, existing){
 
 /* import sheet */
 let importPlan = null, importBusy = false, importDone = null;
+let importParsed = null, importFeeSource = "statement";
 function openImportSheet(plan){
   importPlan = plan; importDone = null; importBusy = false;
   closeSheet(); acctSheet = false;
@@ -1578,7 +1729,11 @@ function renderImportSheet(){
     ${list(P.unmatched, "Closing fills with no matching open in this file")}
     ${list(P.partial, "Partly closed with a different combination (imported as open)")}
     ${list(P.skipped, "Skipped fills")}
-    <div class="hint">Fees come from the statement's Cash Balance section; fills without fee data use your fee schedule. Trades still open after their expiration show as "Needs settlement".</div>
+    ${P.overclosed ? `<div class="hint">${P.overclosed} closing fill${P.overclosed === 1 ? "" : "s"} closed more contracts than were open, which opened the reverse position in thinkorswim. Those positions are included.</div>` : ""}
+    <label class="field" style="max-width:320px"><span class="label">Fees</span><select id="impFees">
+      <option value="statement" ${importFeeSource === "statement" ? "selected" : ""}>From the statement (what was charged)</option>
+      <option value="schedule" ${importFeeSource === "schedule" ? "selected" : ""}>From my fee schedule</option></select></label>
+    <div class="hint">Statement fees come from the Cash Balance section; fills without fee data use your fee schedule. Trades still open after their expiration show as "Needs settlement".</div>
     ${items.length && !importDone ? `<div class="actions">
       <label class="field" style="min-width:180px"><span class="label">Import into account</span><select id="impAcct">${accounts().map(a => `<option value="${esc(a.id)}" ${a.id === (curAcct === ALL ? "main" : curAcct) ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>
       <span class="spacer"></span><span class="hint" id="impProgress"></span>
@@ -1611,7 +1766,8 @@ async function handleTosFile(file){
     const parsed = readTosCsv(text);
     if (!parsed.orders.length) throw new Error("The Account Trade History section is empty for this date range.");
     msg.textContent = "";
-    openImportSheet(planTosImport(parsed, trades));
+    importParsed = parsed; importFeeSource = "statement";
+    openImportSheet(planTosImport(parsed, trades, {feeSource: importFeeSource}));
   } catch(e){ msg.textContent = e.message || String(e); }
   $("#tosFile").value = "";
 }
@@ -1654,6 +1810,11 @@ document.addEventListener("click", async ev => {
   if (act === "importBackdrop" && ev.target !== a) return;
   if (act === "importClose" || act === "importBackdrop") return closeImportSheet();
   if (act === "importGo") return runImport();
+  if (act === "settleOpen"){ if (canRecordExit()) openSettleSheet(); return; }
+  if (act === "settleBackdrop" && ev.target !== a) return;
+  if (act === "settleClose" || act === "settleBackdrop") return closeSettleSheet();
+  if (act === "settleUpload"){ settleSheet.sym = $("#priceSym").value; $("#priceFile").click(); return; }
+  if (act === "settleGo") return runSettle();
   if (act === "toggleAdmin"){ adminMode = !adminMode; try { localStorage.setItem("spread-ledger-admin", adminMode ? "1" : "0"); } catch {} rowArmed = null; render(); return; }
   if (readOnly() && ["manageAccts","saveMkt"].includes(act)) return;
   if (!adminOK() && ["edit","delete","saveEdit"].includes(act)) return;
@@ -1712,18 +1873,23 @@ document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && acctSheet) closeAcctSheet();
   if (ev.key === "Escape" && importPlan) closeImportSheet();
   if (ev.key === "Escape" && feeSheet) closeFeeSheet();
+  if (ev.key === "Escape" && settleSheet) closeSettleSheet();
   if (ev.key === "Enter" && ev.target.matches("tr[data-id]")) openSheet(ev.target.dataset.id);
   if (ev.key === "Enter" && ev.target.matches("tr[data-member]")) viewMember(ev.target.dataset.member);
 });
 $("#paste").addEventListener("input", updatePreview);
 $("#addBtn").addEventListener("click", addParsed);
 $("#importBtn").addEventListener("click", () => $("#tosFile").click());
+document.addEventListener("change", ev => {
+  if (ev.target.id === "impFees" && importParsed && !importBusy){ importFeeSource = ev.target.value; const acct = $("#impAcct")?.value; importPlan = planTosImport(importParsed, trades, {feeSource: importFeeSource}); renderImportSheet(); if (acct && $("#impAcct")) $("#impAcct").value = acct; }
+  if (ev.target.id === "priceFile") handlePriceFile(ev.target.files[0]);
+});
 $("#tosFile").addEventListener("change", ev => handleTosFile(ev.target.files[0]));
 $("#sampleBtn").addEventListener("click", () => { $("#paste").value = "SELL -5 VERTICAL SPX 100 (Weeklys) 1 OCT 26 7800/7820 CALL @.55 LMT"; updatePreview(); $("#paste").focus(); });
 $("#addDate").value = todayISO();
 
 if (window.LEDGER_HOSTED) window.startLedger = boot;
-window.__ledger = {readTosCsv, planTosImport, classifyLegs, parseCSV, chanceOfProfit, yearsToExpiry, parseOrder, optionStratUrl, structValue, riskProfile, stratLabel};
+window.__ledger = {readPriceRows, settlementFor, settledValue, readTosCsv, planTosImport, classifyLegs, parseCSV, chanceOfProfit, yearsToExpiry, parseOrder, optionStratUrl, structValue, riskProfile, stratLabel};
 if (!window.LEDGER_HOSTED) boot();
 })();
 </script>
