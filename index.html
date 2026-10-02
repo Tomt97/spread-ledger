@@ -225,8 +225,18 @@ body:not(.admin) .adm{display:none!important}
   <section class="panel desk rw" aria-labelledby="deskTitle">
     <div class="desk-head">
       <h2 id="deskTitle">Add trades</h2>
-      <button class="linkish" id="sampleBtn" type="button">Paste an example order</button>
+      <span class="actions" style="gap:14px"><button class="linkish" id="sampleBtn" type="button">Paste an example order</button>
+        <button class="btn small" id="importBtn" type="button">Import thinkorswim CSV</button>
+        <input type="file" id="tosFile" accept=".csv,text/csv" hidden></span>
     </div>
+    <details class="hint" id="importHelp"><summary style="cursor:pointer">How to get the thinkorswim CSV</summary>
+      <ol style="margin:6px 0 0;padding-left:18px;display:grid;gap:3px">
+        <li>Open thinkorswim on a computer and go to <b>Monitor → Account Statement</b>.</li>
+        <li>Pick the date range you want (you can import overlapping ranges; trades already imported are skipped).</li>
+        <li>Open the menu at the top right of the statement and choose <b>Export to File</b>, then save the .csv.</li>
+        <li>Here, choose <b>Import thinkorswim CSV</b> and pick that file. You'll see a preview before anything is saved.</li>
+      </ol></details>
+    <div class="err" id="importMsg" role="alert"></div>
     <textarea id="paste" spellcheck="false" placeholder="SELL -5 VERTICAL SPX 100 (Weeklys) 1 OCT 26 7800/7820 CALL @.55 LMT&#10;One order per line. thinkorswim format."></textarea>
     <div class="previews" id="previews"></div>
     <div class="desk-row">
@@ -1211,6 +1221,323 @@ function optionStratUrl(p){
   return `https://optionstrat.com/build/custom/${encodeURIComponent(sym)}/${legs.join(",")}`;
 }
 
+/* ---------- thinkorswim CSV import ----------
+   Reads the "Account Trade History" section of a thinkorswim Account Statement export,
+   rebuilds each order from its legs (side, qty, strike, type, expiration, price), matches
+   closing legs to earlier opening legs (FIFO), and turns them into tracker trades.
+   Fees come from the "Cash Balance" section when its date/time matches the fill. */
+function parseCSV(text){
+  const rows = []; let row = [], f = "", q = false;
+  text = String(text).replace(/^﻿/, "");
+  for (let i = 0; i < text.length; i++){
+    const c = text[i];
+    if (q){ if (c === '"'){ if (text[i+1] === '"'){ f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === ","){ row.push(f); f = ""; }
+    else if (c === "\n" || c === "\r"){ if (c === "\r" && text[i+1] === "\n") i++; row.push(f); rows.push(row); row = []; f = ""; }
+    else f += c;
+  }
+  if (f !== "" || row.length){ row.push(f); rows.push(row); }
+  return rows;
+}
+const csvNorm = s => String(s ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+function csvSection(rows, required){
+  for (let i = 0; i < rows.length; i++){
+    const cells = rows[i].map(csvNorm);
+    if (!required.every(r => cells.includes(r))) continue;
+    const hdr = {}; cells.forEach((c,j) => { if (c && !(c in hdr)) hdr[c] = j; });
+    let end = i + 1;
+    while (end < rows.length){
+      const r = rows[end], filled = r.filter(x => String(x).trim() !== "").length;
+      if (filled === 0 || (filled === 1 && String(r[0]).trim() !== "")) break;   // blank line or next section title
+      end++;
+    }
+    return {hdr, start: i+1, end};
+  }
+  return null;
+}
+function tosDateTime(s){
+  const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:,?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i);
+  if (!m) return null;
+  let y = +m[3]; if (y < 100) y += 2000;
+  let h = +(m[4] || 0); if (m[7]){ const pm = m[7].toUpperCase() === "PM"; if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
+  const iso = `${y}-${pad2(+m[1])}-${pad2(+m[2])}`;
+  return {iso, key: `${iso} ${pad2(h)}:${m[5] || "00"}:${m[6] || "00"}`};
+}
+function tosExpiry(s){
+  const v = csvNorm(s);
+  if (/^\d{1,2} [A-Z]{3} \d{2,4}$/.test(v)) { try { return parseDate(v); } catch { return null; } }
+  const d = tosDateTime(v); return d ? d.iso : null;
+}
+const csvNum = s => { const t = String(s ?? "").replace(/[$,\s]/g, "").replace(/^\((.*)\)$/, "-$1"); if (t === "") return null; const n = Number(t); return isFinite(n) ? n : null; };
+function strHash(s){ let h1 = 0x811c9dc5, h2 = 0x01000193; for (let i = 0; i < s.length; i++){ const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619); h2 = Math.imul(h2 + c, 2246822519) ^ (h2 >>> 13); } return (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36); }
+const gcd = (a,b) => b ? gcd(b, a % b) : a;
+const tosDateText = iso => { const [y,m,d] = iso.split("-").map(Number); return `${d} ${Object.keys(MON)[m-1]} ${String(y).slice(2)}`; };
+const legKey = l => `${l.exp}|${l.t}|${l.k}`;
+
+function readTosCsv(text){
+  const rows = parseCSV(text);
+  const sec = csvSection(rows, ["EXEC TIME","SIDE","QTY","SYMBOL","STRIKE","TYPE"]);
+  if (!sec) throw new Error("This file has no Account Trade History section. In thinkorswim, export the Account Statement (not the Order History or a position list).");
+  const H = sec.hdr, col = (r, name) => H[name] != null ? String(r[H[name]] ?? "").trim() : "";
+  const fees = {};
+  const cb = csvSection(rows, ["DATE","TIME","TYPE","DESCRIPTION"]);
+  if (cb){
+    const C = cb.hdr;
+    for (let i = cb.start; i < cb.end; i++){
+      const r = rows[i];
+      if (csvNorm(r[C["TYPE"]]) !== "TRD") continue;
+      const d = tosDateTime(`${r[C["DATE"]]} ${r[C["TIME"]]}`); if (!d) continue;
+      let f = 0;
+      for (const k of ["MISC FEES","COMMISSIONS & FEES","COMMISSIONS","FEES"]) if (C[k] != null){ const v = csvNum(r[C[k]]); if (v) f += Math.abs(v); }
+      fees[d.key] = (fees[d.key] || 0) + f;
+    }
+  }
+  const orders = []; let cur = null;
+  for (let i = sec.start; i < sec.end; i++){
+    const r = rows[i], t = col(r, "EXEC TIME");
+    if (t){ cur = {time: tosDateTime(t), legs: [], text: []}; orders.push(cur); }
+    if (!cur) continue;
+    cur.text.push(r.map(x => String(x).trim()).filter(Boolean).join(" "));
+    const side = csvNorm(col(r, "SIDE")), q = csvNum(col(r, "QTY")), type = csvNorm(col(r, "TYPE"));
+    cur.legs.push({
+      type, side,
+      qty: q == null ? null : (side.startsWith("S") ? -Math.abs(q) : side.startsWith("B") ? Math.abs(q) : q),
+      pos: csvNorm(col(r, "POS EFFECT")),
+      sym: csvNorm(col(r, "SYMBOL")).replace(/^\$/, ""),
+      exp: tosExpiry(col(r, "EXP")),
+      k: csvNum(col(r, "STRIKE")),
+      price: csvNum(col(r, "PRICE")),
+    });
+  }
+  return {orders: orders.filter(o => o.time), fees, sections: {trades: true, fees: !!cb}};
+}
+
+/* Turn per-unit actual legs A [{t,k,exp,q}] and cash per unit into a tracker order (p). */
+function classifyLegs(A, cashU, symbol){
+  const exps = [...new Set(A.map(l => l.exp))].sort();
+  const sorted = [...A].sort((a,b) => a.k - b.k || (a.t < b.t ? -1 : 1));
+  const one = A.every(l => Math.abs(l.q) === 1);
+  const base = {qty: 1, ratio: null, symbol, mult: 100, tags: "", orderType: "LMT", expiries: exps};
+  const sgn = Math.sign;
+  let p = null, dir = 0;
+  const n = A.length, calls = A.filter(l => l.t === "C"), puts = A.filter(l => l.t === "P");
+  const priceDir = () => cashU <= 0 ? 1 : -1;   // paid a debit -> BUY; received a credit -> SELL
+  if (n === 1){
+    dir = sgn(A[0].q);
+    p = {...base, strategy: "SINGLE", strikes: [A[0].k], types: [A[0].t]};
+  } else if (n === 2 && one && exps.length === 1 && A[0].t === A[1].t && A[0].q === -A[1].q){
+    dir = priceDir();
+    const plus = A.find(l => l.q * dir > 0), minus = A.find(l => l.q * dir < 0);
+    p = {...base, strategy: "VERTICAL", strikes: [plus.k, minus.k], types: [plus.t]};
+  } else if (n === 2 && one && exps.length === 1 && A[0].t !== A[1].t && A[0].q === A[1].q){
+    dir = sgn(A[0].q);
+    const c = A.find(l => l.t === "C"), pt = A.find(l => l.t === "P");
+    p = c.k === pt.k ? {...base, strategy: "STRADDLE", strikes: [c.k], types: ["C","P"]} : {...base, strategy: "STRANGLE", strikes: [c.k, pt.k], types: ["C","P"]};
+  } else if (n === 2 && one && exps.length === 2 && A[0].t === A[1].t && A[0].q === -A[1].q && A[0].k === A[1].k){
+    const far = A.find(l => l.exp === exps[1]); dir = sgn(far.q);
+    p = {...base, strategy: "CALENDAR", strikes: [A[0].k], types: [A[0].t], expiries: [exps[1], exps[0]]};
+  } else if (n === 2 && one && exps.length === 2 && A[0].t === A[1].t && A[0].q === -A[1].q){
+    dir = priceDir();
+    const plus = A.find(l => l.q * dir > 0), minus = A.find(l => l.q * dir < 0);
+    p = {...base, strategy: "DIAGONAL", strikes: [plus.k, minus.k], types: [plus.t], expiries: [plus.exp, minus.exp]};
+  } else if (n === 3 && exps.length === 1 && (calls.length === 3 || puts.length === 3)
+             && sgn(sorted[0].q) === sgn(sorted[2].q) && sgn(sorted[1].q) === -sgn(sorted[0].q)){
+    dir = sgn(sorted[0].q);
+    const r = sorted.map(l => Math.abs(l.q));
+    p = {...base, strategy: "BUTTERFLY", strikes: sorted.map(l => l.k), types: [sorted[0].t], ratio: r.join("/") === "1/2/1" ? null : r};
+  } else if (n === 4 && one && exps.length === 1 && (calls.length === 4 || puts.length === 4)){
+    dir = sgn(sorted[0].q);
+    p = {...base, strategy: "CONDOR", strikes: sorted.map(l => l.k), types: [sorted[0].t]};
+  } else if (n === 4 && one && exps.length === 1 && calls.length === 2 && puts.length === 2){
+    const ps = puts.sort((a,b) => a.k - b.k), cs = calls.sort((a,b) => a.k - b.k);
+    dir = sgn(ps[1].q);
+    p = ps[1].k === cs[0].k
+      ? {...base, strategy: "IRON BUTTERFLY", strikes: [ps[0].k, ps[1].k, cs[1].k], types: ["C","P"]}
+      : {...base, strategy: "IRON CONDOR", strikes: [cs[0].k, cs[1].k, ps[1].k, ps[0].k], types: ["C","P"]};
+  }
+  if (p){
+    p.action = dir > 0 ? "BUY" : "SELL";
+    p.legs = buildLegs(p);
+    const want = A.map(l => `${legKey(l)}:${l.q}`).sort().join(",");
+    const got = p.legs ? p.legs.map(l => `${legKey(l)}:${l.q * dir}`).sort().join(",") : "";
+    if (want !== got) p = null;
+  }
+  if (!p){
+    dir = priceDir();
+    p = {...base, strategy: "CUSTOM", action: dir > 0 ? "BUY" : "SELL", strikes: sorted.map(l => l.k), types: [...new Set(sorted.map(l => l.t))],
+         legs: A.map(l => ({q: l.q * dir, t: l.t, k: l.k, exp: l.exp}))};
+  }
+  p.price = +(-cashU / dir).toFixed(4);
+  if (Object.is(p.price, -0)) p.price = 0;
+  return p;
+}
+function rawFor(p){
+  const exps = p.strategy === "CALENDAR" || p.strategy === "DIAGONAL" ? p.expiries : [...new Set(p.expiries)];
+  const name = p.strategy === "SINGLE" ? "" : p.strategy + " ";
+  const ratio = p.ratio ? p.ratio.join("/") + " " : "";
+  const types = p.types.map(t => t === "C" ? "CALL" : "PUT").join("/");
+  return `${p.action === "BUY" ? "BOUGHT +" : "SOLD -"}${p.qty} ${ratio}${name}${p.symbol} ${p.mult} ${exps.map(tosDateText).join("/")} ${p.strikes.map(fmtK).join("/")} ${types} @${String(p.price).replace(/^0\./, ".")}`;
+}
+
+function planTosImport(parsed, existing){
+  const report = {orders: parsed.orders.length, skipped: [], unmatched: [], partial: [], fees: parsed.sections.fees};
+  const pool = [];
+  const byId = new Map(existing.map(t => [t.id, t]));
+  for (const t of existing){                              // earlier imports that are still open
+    if (!t.tosLegs || t.exit) continue;
+    pool.push({trade: t, existing: true, units: t.p.qty, legs: t.tosLegs.map(l => ({...l, rem: l.q, full: l.q})), closeCash: 0, closeFees: 0, closeKeys: [], lastClose: null});
+  }
+  const seenCloses = new Set(existing.flatMap(t => t.tosCloseKeys || []));
+  const orders = [...parsed.orders].sort((a,b) => a.time.key.localeCompare(b.time.key));
+  for (const o of orders){
+    const bad = o.legs.find(l => (l.type !== "CALL" && l.type !== "PUT") || l.qty == null || l.k == null || !l.exp || l.price == null);
+    if (bad){ report.skipped.push({when: o.time.iso, text: o.text[0], why: bad.type && bad.type !== "CALL" && bad.type !== "PUT" ? `not an option (${bad.type.toLowerCase()})` : "missing price, strike or expiration"}); continue; }
+    const sym = o.legs[0].sym;
+    const okey = strHash(o.time.key + "|" + o.legs.map(l => `${l.exp}${l.type}${l.k}${l.qty}@${l.price}`).join(";"));
+    const contracts = o.legs.reduce((s,l) => s + Math.abs(l.qty), 0);
+    const feePer = contracts ? (parsed.fees[o.time.key] || 0) / contracts : 0;
+    const L = o.legs.map(l => ({t: l.type[0], k: l.k, exp: l.exp, qty: l.qty, price: l.price, pos: l.pos}));
+    const findOpen = l => pool.find(ps => ps.legs.some(x => x.key === legKey(l) && Math.sign(x.rem) === -Math.sign(l.qty)));
+    const closing = L.filter(l => l.pos === "TO CLOSE" || (l.pos !== "TO OPEN" && findOpen(l)));
+    const opening = L.filter(l => !closing.includes(l));
+    for (const l of closing){
+      if (seenCloses.has(okey)) break;
+      let need = l.qty;
+      for (const ps of pool){
+        if (!need) break;
+        const pl = ps.legs.find(x => x.key === legKey(l) && x.rem && Math.sign(x.rem) === -Math.sign(need));
+        if (!pl) continue;
+        const take = Math.min(Math.abs(need), Math.abs(pl.rem));
+        pl.rem -= Math.sign(pl.rem) * take;
+        need -= Math.sign(need) * take;
+        ps.closeCash += -Math.sign(l.qty) * l.price * take;
+        ps.closeFees += feePer * take;
+        ps.lastClose = o.time.iso;
+        if (!ps.closeKeys.includes(okey)) ps.closeKeys.push(okey);
+      }
+      if (need) report.unmatched.push({when: o.time.iso, text: `${l.qty > 0 ? "Buy" : "Sell"} ${Math.abs(need)} ${sym} ${fmtShort(l.exp)} ${fmtK(l.k)} ${l.t === "C" ? "call" : "put"} to close`, why: "no matching open position in this file"});
+    }
+    if (opening.length){
+      const units = opening.reduce((g,l) => gcd(g, Math.abs(l.qty)), 0);
+      const A = opening.map(l => ({t: l.t, k: l.k, exp: l.exp, q: l.qty / units}));
+      const cashU = opening.reduce((s,l) => s - l.qty * l.price, 0) / units;
+      const p = classifyLegs(A, cashU, sym);
+      p.qty = units;
+      const id = "tos_" + okey;
+      if (byId.has(id)) continue;                          // already imported earlier
+      const trade = {id, raw: rawFor(p), p, openDate: o.time.iso, fees: +(feePer * opening.reduce((s,l) => s + Math.abs(l.qty), 0)).toFixed(2),
+        notes: "Imported from thinkorswim", exit: null, createdAt: Date.parse(o.time.key.replace(" ", "T")) || Date.now(),
+        tosLegs: opening.map(l => ({key: legKey(l), q: l.qty})), tosCloseKeys: []};
+      pool.push({trade, existing: false, units, legs: trade.tosLegs.map(l => ({...l, rem: l.q, full: l.q})), closeCash: 0, closeFees: 0, closeKeys: [], lastClose: null});
+    }
+  }
+  const out = [];
+  for (const ps of pool){
+    const t = ps.trade, dir = t.p.action === "BUY" ? 1 : -1;
+    const fr = ps.legs.map(l => (l.full - l.rem) / l.full);
+    const closedAll = fr.every(f => f === 1), none = fr.every(f => f === 0);
+    if (none){ if (!ps.existing) out.push({kind: "new", trade: t}); continue; }
+    const withExit = (tr, units, cash, fees) => ({...tr, fees: +(fees).toFixed(2),
+      exit: {kind: "closed", price: +((cash / units) / dir).toFixed(4), date: ps.lastClose},
+      tosCloseKeys: [...(tr.tosCloseKeys || []), ...ps.closeKeys]});
+    if (closedAll){
+      out.push({kind: ps.existing ? "update" : "new", trade: withExit(t, ps.units, ps.closeCash, (t.fees || 0) + ps.closeFees)});
+      continue;
+    }
+    const f = fr[0], cu = Math.round(f * ps.units);
+    if (fr.every(x => Math.abs(x - f) < 1e-9) && Math.abs(f * ps.units - cu) < 1e-9 && cu > 0){
+      const share = cu / ps.units;
+      const closed = withExit({...t, id: t.id + "_c" + strHash(ps.closeKeys.join(",")).slice(0,6), p: {...t.p, qty: cu},
+        tosLegs: t.tosLegs.map(l => ({...l, q: l.q * share}))}, cu, ps.closeCash, (t.fees || 0) * share + ps.closeFees);
+      closed.raw = rawFor(closed.p);
+      const rest = {...t, p: {...t.p, qty: ps.units - cu}, fees: +((t.fees || 0) * (1 - share)).toFixed(2), tosLegs: t.tosLegs.map(l => ({...l, q: l.q * (1 - share)}))};
+      rest.raw = rawFor(rest.p);
+      out.push({kind: "new", trade: closed});
+      out.push({kind: ps.existing ? "update" : "new", trade: rest});
+    } else {
+      report.partial.push({when: t.openDate, text: t.raw});
+      if (!ps.existing) out.push({kind: "new", trade: {...t, notes: t.notes + " · partly closed in thinkorswim with a different combination, review the exit"}});
+    }
+  }
+  out.sort((a,b) => (a.trade.openDate || "").localeCompare(b.trade.openDate || ""));
+  report.items = out;
+  report.already = parsed.orders.length - report.skipped.length; // refined in the sheet
+  return report;
+}
+
+/* import sheet */
+let importPlan = null, importBusy = false, importDone = null;
+function openImportSheet(plan){
+  importPlan = plan; importDone = null; importBusy = false;
+  closeSheet(); acctSheet = false;
+  renderImportSheet();
+}
+function renderImportSheet(){
+  const P = importPlan; if (!P) return;
+  document.body.style.overflow = "hidden";
+  const items = P.items, nNew = items.filter(i => i.kind === "new").length, nUpd = items.filter(i => i.kind === "update").length;
+  const S = computeStats(items.map(i => i.trade));
+  const rows = items.slice(0, 300).map(i => { const e = evalTrade(i.trade); const t = i.trade;
+    return `<tr><td class="num" style="white-space:nowrap">${fmtShort(t.openDate)}</td><td><div class="strat">${esc(e.label)}</div><div class="sub">${esc(describe(t.p))}</div></td>
+      <td class="r num">${t.p.qty}</td><td class="r num">${t.p.price.toFixed(2)}</td><td>${statusPill(e)}${i.kind === "update" ? ' <span class="pill open">update</span>' : ""}</td>
+      <td class="r num">${e.exitPrice == null ? "—" : e.exitPrice.toFixed(2)}</td><td class="r num ${pnlClass(e.pnl)}" style="white-space:nowrap">${e.pnl == null ? "—" : money(e.pnl)}</td></tr>`; }).join("");
+  const list = (arr, title) => arr.length ? `<details><summary class="hint" style="cursor:pointer">${title} (${arr.length})</summary><ul class="hint" style="margin:6px 0 0;padding-left:18px">${arr.slice(0,100).map(x => `<li>${fmtShort(x.when)} · ${esc(x.text)}${x.why ? ` (${esc(x.why)})` : ""}</li>`).join("")}</ul></details>` : "";
+  $("#sheetRoot").innerHTML = `<div class="overlay" data-act="importBackdrop"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="imTitle">
+    <div class="sheet-head"><div style="display:grid;gap:4px"><h2 id="imTitle">Import from thinkorswim</h2>
+      <span class="hint">${P.orders} fills read · ${nNew} new trade${nNew === 1 ? "" : "s"}${nUpd ? ` · ${nUpd} update${nUpd === 1 ? "" : "s"} to earlier imports` : ""}${P.fees ? "" : " · no fee data found"}</span></div>
+      <button class="x" type="button" data-act="importClose" aria-label="Close">×</button></div>
+    ${importDone ? `<div class="alert" style="background:var(--gain-soft);border-color:var(--gain)"><span>${esc(importDone)}</span><button class="btn small" type="button" data-act="importClose">Done</button></div>` : ""}
+    ${items.length ? `<div class="facts">
+      <div><span class="label">Trades</span><span class="v">${items.length}</span></div>
+      <div><span class="label">Closed</span><span class="v">${S.closed.length}</span></div>
+      <div><span class="label">Net P&amp;L</span><span class="v ${pnlClass(S.total)}">${S.closed.length ? money(S.total) : "—"}</span></div>
+      <div><span class="label">Win rate</span><span class="v">${S.winRate == null ? "—" : (S.winRate*100).toFixed(0) + "%"}</span></div>
+    </div>
+    <div class="scroll" style="max-height:44vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px"><table><thead><tr><th>Opened</th><th>Strategy</th><th class="r">Qty</th><th class="r">Entry</th><th>Status</th><th class="r">Exit</th><th class="r">P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${items.length > 300 ? `<div class="hint">Showing the first 300 of ${items.length}. All of them will be imported.</div>` : ""}`
+    : `<div class="empty"><b>Nothing new to import</b>Every trade in this file is already in the tracker, or the file has no option trades.</div>`}
+    ${list(P.unmatched, "Closing fills with no matching open in this file")}
+    ${list(P.partial, "Partly closed with a different combination (imported as open)")}
+    ${list(P.skipped, "Skipped fills")}
+    <div class="hint">Fees come from the statement's Cash Balance section. Trades still open after their expiration show as "Needs settlement".</div>
+    ${items.length && !importDone ? `<div class="actions">
+      <label class="field" style="min-width:180px"><span class="label">Import into account</span><select id="impAcct">${accounts().map(a => `<option value="${esc(a.id)}" ${a.id === (curAcct === ALL ? "main" : curAcct) ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>
+      <span class="spacer"></span><span class="hint" id="impProgress"></span>
+      <button class="btn primary" type="button" data-act="importGo" ${importBusy ? "disabled" : ""}>Import ${items.length} trade${items.length === 1 ? "" : "s"}</button></div>` : ""}
+  </div></div>`;
+}
+function closeImportSheet(){ if (importBusy) return; importPlan = null; $("#sheetRoot").innerHTML = ""; document.body.style.overflow = ""; }
+async function runImport(){
+  if (!importPlan || importBusy) return;
+  importBusy = true; renderImportSheet();
+  const acct = $("#impAcct") ? $("#impAcct").value : "main";
+  const items = importPlan.items; let done = 0, failed = 0;
+  for (const it of items){
+    const t = {...it.trade};
+    if (it.kind === "new") t.account = acct;
+    if (await saveTrade(t)) done++; else { failed++; break; }
+    const pr = $("#impProgress"); if (pr) pr.textContent = `Saving ${done} of ${items.length}…`;
+  }
+  importBusy = false;
+  importDone = failed ? `Saved ${done} of ${items.length}. The rest weren't saved; check your connection and import the same file again (already-saved trades are skipped).`
+                      : `Imported ${done} trade${done === 1 ? "" : "s"}.`;
+  renderImportSheet();
+}
+async function handleTosFile(file){
+  if (!file) return;
+  const msg = $("#importMsg");
+  try {
+    if (file.size > 15 * 1024 * 1024) throw new Error("That file is over 15 MB. Export a shorter date range.");
+    const text = await file.text();
+    const parsed = readTosCsv(text);
+    if (!parsed.orders.length) throw new Error("The Account Trade History section is empty for this date range.");
+    msg.textContent = "";
+    openImportSheet(planTosImport(parsed, trades));
+  } catch(e){ msg.textContent = e.message || String(e); }
+  $("#tosFile").value = "";
+}
+
 /* ---------- events ---------- */
 document.addEventListener("click", async ev => {
   const f = ev.target.closest("[data-filter]");
@@ -1239,6 +1566,9 @@ document.addEventListener("click", async ev => {
   const a = ev.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "refreshMembers") return loadMembers();
+  if (act === "importBackdrop" && ev.target !== a) return;
+  if (act === "importClose" || act === "importBackdrop") return closeImportSheet();
+  if (act === "importGo") return runImport();
   if (act === "toggleAdmin"){ adminMode = !adminMode; try { localStorage.setItem("spread-ledger-admin", adminMode ? "1" : "0"); } catch {} rowArmed = null; render(); return; }
   if (readOnly() && ["manageAccts","saveMkt"].includes(act)) return;
   if (!adminOK() && ["edit","delete","saveEdit"].includes(act)) return;
@@ -1295,16 +1625,19 @@ document.addEventListener("click", async ev => {
 document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && openId) closeSheet();
   if (ev.key === "Escape" && acctSheet) closeAcctSheet();
+  if (ev.key === "Escape" && importPlan) closeImportSheet();
   if (ev.key === "Enter" && ev.target.matches("tr[data-id]")) openSheet(ev.target.dataset.id);
   if (ev.key === "Enter" && ev.target.matches("tr[data-member]")) viewMember(ev.target.dataset.member);
 });
 $("#paste").addEventListener("input", updatePreview);
 $("#addBtn").addEventListener("click", addParsed);
+$("#importBtn").addEventListener("click", () => $("#tosFile").click());
+$("#tosFile").addEventListener("change", ev => handleTosFile(ev.target.files[0]));
 $("#sampleBtn").addEventListener("click", () => { $("#paste").value = "SELL -5 VERTICAL SPX 100 (Weeklys) 1 OCT 26 7800/7820 CALL @.55 LMT"; updatePreview(); $("#paste").focus(); });
 $("#addDate").value = todayISO();
 
 if (window.LEDGER_HOSTED) window.startLedger = boot;
-window.__ledger = {chanceOfProfit, yearsToExpiry, parseOrder, optionStratUrl, structValue, riskProfile, stratLabel};
+window.__ledger = {readTosCsv, planTosImport, classifyLegs, parseCSV, chanceOfProfit, yearsToExpiry, parseOrder, optionStratUrl, structValue, riskProfile, stratLabel};
 if (!window.LEDGER_HOSTED) boot();
 })();
 </script>
