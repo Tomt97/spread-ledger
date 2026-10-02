@@ -309,7 +309,9 @@ function parseDate(s){
 }
 
 function parseOrder(line){
-  let s = line.toUpperCase().replace(/\s+/g," ").trim();
+  // Treat |, \, and look-alike slashes the same as "/" (some platforms and phones paste them),
+  // and tolerate spaces around separators.
+  let s = line.toUpperCase().replace(/[|\\\u2215\u2044\uFF0F\u2502\u00A6]/g,"/").replace(/\s*\/\s*/g,"/").replace(/\s+/g," ").trim();
   if (!s) return null;
   const head = s.match(/\b(BUY|SELL|BOUGHT|SOLD|BOT)\b/);
   if (!head) throw new Error("Start the line with BUY or SELL.");
