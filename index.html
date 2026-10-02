@@ -1339,7 +1339,12 @@ function readPriceRows(rows){
     const d = cells.findIndex(c => c === "DATE"), c = cells.findIndex(c => c === "CLOSE" || c === "PRICE" || c === "LAST" || c === "SETTLEMENT");
     if (d >= 0 && c >= 0){ h = i; cDate = d; cClose = c; cOpen = cells.findIndex(c => c === "OPEN"); }
   }
-  if (h < 0) throw new Error("Couldn't find Date and Close columns in this file.");
+  if (h < 0){
+    // No header row: accept the standard Yahoo layout Date, Open, High, Low, Close
+    const first = rows.find(r => r.some(x => String(x).trim() !== ""));
+    if (first && priceDate(first[0]) && csvNum(first[4]) != null){ h = -1; cDate = 0; cOpen = 1; cClose = 4; }
+    else throw new Error("Couldn't find Date and Close columns in this file.");
+  }
   const out = {};
   for (const r of rows.slice(h + 1)){
     const d = priceDate(r[cDate]), c = csvNum(r[cClose]), o = cOpen >= 0 ? csvNum(r[cOpen]) : null;
@@ -1392,7 +1397,8 @@ function renderSettleSheet(){
     ${settleSheet.done ? `<div class="alert" style="background:var(--gain-soft);border-color:var(--gain)"><span>${esc(settleSheet.done)}</span><button class="btn small" type="button" data-act="settleClose">Done</button></div>` : ""}
     <div class="exitbox"><div class="card-head"><span class="label">Price file</span><button class="btn small" type="button" data-act="settleUpload">Upload price file</button></div>
       <span class="hint">${books.length ? "Saved prices: " + esc(books.join(" · ")) : "No prices saved yet. Upload a daily price history (.xlsx or .csv) with Date and Close columns, for example from Yahoo Finance."}</span>
-      <label class="field" style="max-width:220px"><span class="label">Prices in the next file are for</span><select id="priceSym">${["SPX","XSP","NDX","RUT","SPY","QQQ","IWM"].map(x => `<option ${x === (settleSheet.sym || "SPX") ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+      <label class="field" style="max-width:260px"><span class="label">Prices in the next file are for</span><span class="hint">A workbook with tabs named SPX, RUT, NDX loads each tab as that symbol.</span><select id="priceSym">${["SPX","XSP","NDX","RUT","SPY","QQQ","IWM"].map(x => `<option ${x === (settleSheet.sym || "SPX") ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+      ${settleSheet.loaded ? `<span class="hint" style="color:var(--gain)">${esc(settleSheet.loaded)}</span>` : ""}
       <span class="err">${esc(settleSheet.msg)}</span></div>
     ${ready.length ? `<div class="facts"><div><span class="label">Ready to settle</span><span class="v">${ready.length}</span></div><div><span class="label">Missing a price</span><span class="v">${missing.length}</span></div><div><span class="label">P&amp;L of these</span><span class="v ${pnlClass(total)}">${money(total)}</span></div></div>
       <div class="scroll" style="max-height:44vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px"><table><thead><tr><th>Expired</th><th>Strategy</th><th class="r">Settlement</th><th class="r">P&amp;L</th></tr></thead><tbody>${rows}</tbody></table></div>` : ""}
@@ -1405,15 +1411,26 @@ async function handlePriceFile(file){
   if (!file || !settleSheet) return;
   const sym = ($("#priceSym") && $("#priceSym").value) || "SPX";
   try {
-    let rows;
+    // One tab per symbol: a workbook with tabs named SPX / RUT / NDX loads each tab under its name.
+    const sheets = [];
     if (/\.xlsx?$/i.test(file.name)){
       const X = await loadXlsxLib();
       const wb = X.read(await file.arrayBuffer(), {type: "array"});
-      rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1, raw: true, defval: ""});
-    } else rows = parseCSV(await file.text());
-    const got = readPriceRows(rows);
-    priceBook = {...priceBook, [sym]: {...(priceBook[sym] || {}), ...got}};
-    settleSheet = {sym, msg: "", done: ""};
+      const named = wb.SheetNames.length > 1;
+      for (const name of wb.SheetNames){
+        const tag = name.trim().toUpperCase().replace(/^\$|^\^/, "");
+        sheets.push({sym: named && /^[A-Z]{1,6}$/.test(tag) ? tag : sym, rows: X.utils.sheet_to_json(wb.Sheets[name], {header: 1, raw: true, defval: ""}), name});
+      }
+    } else sheets.push({sym, rows: parseCSV(await file.text()), name: file.name});
+    const loaded = [], failed = [];
+    let book = {...priceBook};
+    for (const sh of sheets){
+      try { const got = readPriceRows(sh.rows); book[sh.sym] = {...(book[sh.sym] || {}), ...got}; loaded.push(`${sh.sym} ${Object.keys(got).length} days`); }
+      catch(e){ failed.push(`${sh.name}: ${e.message}`); }
+    }
+    if (!loaded.length) throw new Error(failed.join(" "));
+    priceBook = book;
+    settleSheet = {sym, msg: failed.length ? "Skipped " + failed.join("; ") : "", done: "", loaded: "Loaded " + loaded.join(", ") + "."};
     await savePriceBook();
   } catch(e){ settleSheet.msg = e.message || String(e); }
   $("#priceFile").value = "";
