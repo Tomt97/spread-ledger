@@ -219,7 +219,7 @@ body:not(.admin) .adm{display:none!important}
   <div id="dash" style="display:grid;gap:18px">
   <nav class="acctbar" aria-label="Accounts">
     <div class="tabs acct-tabs" id="acctTabs" role="group" aria-label="Choose account"></div>
-    <button class="btn small rw" type="button" data-act="manageAccts">Manage accounts</button>
+    <span class="actions"><button class="btn small rw" type="button" data-act="feeSettings">Fees</button><button class="btn small rw" type="button" data-act="manageAccts">Manage accounts</button></span>
   </nav>
 
   <section class="panel desk rw" aria-labelledby="deskTitle">
@@ -242,7 +242,7 @@ body:not(.admin) .adm{display:none!important}
     <div class="desk-row">
       <label class="field" style="width:170px"><span class="label">Account</span><select id="addAcct"></select></label>
       <label class="field" style="width:160px"><span class="label">Opened</span><input type="date" id="addDate"></label>
-      <label class="field" style="width:120px"><span class="label">Fees ($)</span><input type="number" id="addFees" step="0.01" min="0" placeholder="0.00"></label>
+      <label class="field" style="width:130px"><span class="label">Fees ($)</span><input type="number" id="addFees" step="0.01" min="0" placeholder="auto"></label>
       <label class="field" style="flex:1;min-width:180px"><span class="label">Notes</span><input type="text" id="addNotes" placeholder="Optional"></label>
       <button class="btn primary" id="addBtn" type="button" disabled>Add to tracker</button>
     </div>
@@ -488,6 +488,20 @@ function setAcct(id){
   curAcct = id; if (!readOnly()) try { localStorage.setItem("spread-ledger-acct", id); } catch {}
   render();
 }
+/* Fee schedule: per-contract fee by underlying, plus a default for every other symbol.
+   Charged on each fill (open and close); nothing is charged when an option expires. */
+const FEE_DEFAULTS = {rates: {XSP: 0.46, SPX: 1.08}, other: 0};
+let feeCfg = JSON.parse(JSON.stringify(FEE_DEFAULTS));
+const LS_FEES = "spread-ledger-fees";
+const feeRate = sym => { const k = String(sym || "").toUpperCase().replace(/^\$/, "").replace(/^SPXW$/, "SPX");
+  const r = feeCfg.rates && feeCfg.rates[k]; return isFinite(r) ? +r : (+feeCfg.other || 0); };
+const contractsOf = p => p.legs ? p.legs.reduce((s,l) => s + Math.abs(l.q), 0) * p.qty : (p.strikes ? p.strikes.length : 1) * p.qty;
+const fillFee = p => +(feeRate(p.symbol) * contractsOf(p)).toFixed(2);
+async function saveFeeCfg(cfg){
+  const clean = {rates: cfg.rates, other: cfg.other, updatedAt: Date.now()};
+  if (mode === "db") return dbWrite(() => col("settings").doc("fees").set(clean));
+  feeCfg = clean; try { localStorage.setItem(LS_FEES, JSON.stringify(clean)); } catch {} render(); return true;
+}
 const visibleTrades = () => curAcct === ALL ? trades : trades.filter(t => acctOf(t) === curAcct);
 
 function setSync(){
@@ -543,6 +557,8 @@ function subscribeTo(uid){
   if (uid === me) try { curAcct = localStorage.getItem("spread-ledger-acct") || "main"; } catch {}
   unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; render(); }, () => { loaded = true; render(); }));
   unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); render(); }, () => {}));
+  feeCfg = JSON.parse(JSON.stringify(FEE_DEFAULTS));
+  unsubs.push(col("settings").onSnapshot(snap => { const d = snap.docs.find(x => x.id === "fees"); feeCfg = d ? {rates: {}, other: 0, ...d.data()} : JSON.parse(JSON.stringify(FEE_DEFAULTS)); updatePreview(); render(); }, () => {}));
   unsubs.push(col("market").onSnapshot(snap => { market = {}; snap.docs.forEach(d => { const v = d.data(); market[v.symbol || d.id] = v; }); render(); }, () => {}));
   render();
 }
@@ -593,6 +609,7 @@ async function boot(){
     subscribeTo(me);
   } else {
     mode = "local"; trades = lsRead(LS_KEY); accountsDb = lsRead(LS_ACCT);
+    try { const fc = JSON.parse(localStorage.getItem(LS_FEES) || "null"); if (fc) feeCfg = fc; } catch {}
     try { market = JSON.parse(localStorage.getItem(LS_MKT) || "{}"); if (Array.isArray(market)) market = {}; } catch {}
     loaded = true;
   }
@@ -953,11 +970,11 @@ function updatePreview(){
   parsed = lines.map(line => { try { return {line, p:parseOrder(line)}; } catch(e){ return {line, err:e.message}; } });
   $("#previews").innerHTML = parsed.map(r => {
     if (r.err) return `<div class="pv bad"><span class="tag loss">Can't read</span><span class="meta">${esc(r.line)}<br><span style="color:var(--loss);font-family:var(--body)">${esc(r.err)}</span></span><span></span></div>`;
-    const t = {p:r.p, fees:0}, rp = riskProfile(t), cash = r.p.price==null ? null : openCash(t);
+    const t = {p:r.p, fees:0}, rp = riskProfile(t), cash = r.p.price==null ? null : openCash(t), autoFee = fillFee(r.p);
     const dupe = trades.some(x => x.raw && x.raw.trim().toUpperCase() === r.line.toUpperCase());
     return `<div class="pv"><span class="tag">${esc(stratLabel(r.p))}</span>
       <span class="meta">${r.p.action} ${r.p.qty} × ${esc(describe(r.p))}${r.p.price==null?' · <span class="loss">no fill price — set it after adding</span>':""}${dupe?' · <span style="color:var(--warn)">already in tracker</span>':""}</span>
-      <span class="num" style="text-align:right;font-size:13px">${cash==null?"":`<span class="${cash>=0?"gain":"loss"}">${cash>=0?"Credit":"Debit"} ${money0(Math.abs(cash))}</span>`}${rp?`<br><span class="muted">max loss ${isFinite(rp.maxL)?money0(rp.maxL):"unlimited"}</span>`:""}</span></div>`;
+      <span class="num" style="text-align:right;font-size:13px">${cash==null?"":`<span class="${cash>=0?"gain":"loss"}">${cash>=0?"Credit":"Debit"} ${money0(Math.abs(cash))}</span>`}<br><span class="muted">fees ${money(autoFee, false)} · ${contractsOf(r.p)} × $${feeRate(r.p.symbol).toFixed(2)}</span>${rp?`<br><span class="muted">max loss ${isFinite(rp.maxL)?money0(rp.maxL):"unlimited"}</span>`:""}</span></div>`;
   }).join("");
   const good = parsed.filter(r=>r.p).length;
   $("#addBtn").disabled = !good;
@@ -967,11 +984,11 @@ async function addParsed(){
   const good = parsed.filter(r=>r.p);
   if (!good.length) return;
   const date = $("#addDate").value || todayISO();
-  const fees = num($("#addFees").value) || 0;
+  const typedFee = num($("#addFees").value);   // blank = use the fee schedule
   const notes = $("#addNotes").value.trim();
   $("#addBtn").disabled = true;
   for (const [i,r] of good.entries()){
-    const t = {id:uid(), raw:r.line, p:r.p, openDate:date, fees, notes, account:$("#addAcct").value || "main", exit:null, createdAt:Date.now()+i};
+    const t = {id:uid(), raw:r.line, p:r.p, openDate:date, fees: typedFee != null ? typedFee : fillFee(r.p), notes, account:$("#addAcct").value || "main", exit:null, createdAt:Date.now()+i};
     if (!await saveTrade(t)) { $("#addBtn").disabled = false; return; }
   }
   $("#paste").value = parsed.filter(r=>r.err).map(r=>r.line).join("\n");
@@ -1021,7 +1038,7 @@ function payoffSVG(t, settle){
 }
 
 function exitPreviewPnl(t, tab, price, settle){
-  if (tab === "close") return price == null ? null : pnlAt(t, price);
+  if (tab === "close") return price == null ? null : pnlAt(t, price) - fillFee(t.p);
   if (settle == null) return null;
   return pnlAt(t, structValue(t.p, settle));
 }
@@ -1101,7 +1118,7 @@ function wireSheet(t, chart){
     const el = $("#exPreview"); if (!el) return;
     const price = num($("#exPrice")?.value), settle = num($("#exSettle")?.value);
     const v = exitPreviewPnl(t, exitTab, price, settle);
-    el.innerHTML = v == null ? "" : `P&amp;L <span class="${pnlClass(v)}" style="font-weight:700">${money(v)}</span>`;
+    el.innerHTML = v == null ? "" : `P&amp;L after fees <span class="${pnlClass(v)}" style="font-weight:700">${money(v)}</span>`;
     sheetDirty = (price != null || settle != null);
   };
   $("#exPrice")?.addEventListener("input", prev);
@@ -1197,13 +1214,13 @@ async function saveExit(){
   let exit;
   if (exitTab === "close"){
     const price = num($("#exPrice").value); if (price == null){ $("#exErr").textContent = "Enter the price you closed at."; return; }
-    exit = {kind:"closed", price, date:$("#exDate").value || todayISO()};
+    exit = {kind:"closed", price, date:$("#exDate").value || todayISO(), fee: fillFee(t.p)};
   } else {
     const st = num($("#exSettle").value); if (st == null){ $("#exErr").textContent = "Enter the settlement price."; return; }
     exit = {kind:"expired", settle:st, price:+structValue(t.p, st).toFixed(4), date:expiryOf(t.p)};
   }
   sheetDirty = false;
-  if (await saveTrade({...t, exit})) renderSheet();
+  if (await saveTrade({...t, exit, fees: +((t.fees || 0) + (exit.fee || 0)).toFixed(2)})) renderSheet();
 }
 
 /* OptionStrat deep link: /build/custom/<UNDERLYING>/<-?>.<ROOT><YYMMDD><C|P><strike>x<qty>,... */
@@ -1219,6 +1236,66 @@ function optionStratUrl(p){
     return `${eff<0?"-":""}.${root}${l.exp.slice(2).replace(/-/g,"")}${l.t}${fmtK(l.k)}x${Math.abs(eff)}`;
   });
   return `https://optionstrat.com/build/custom/${encodeURIComponent(sym)}/${legs.join(",")}`;
+}
+
+/* ---------- fee settings sheet ---------- */
+let feeSheet = null;   // {rows:[{sym, rate}], other, msg}
+function openFeeSheet(){
+  closeSheet();
+  feeSheet = {rows: Object.entries(feeCfg.rates || {}).map(([sym, rate]) => ({sym, rate})), other: feeCfg.other || 0, msg: "", applyArmed: false};
+  renderFeeSheet();
+}
+function readFeeForm(){
+  const rows = [...document.querySelectorAll("#feeRows .feerow")].map(r => ({sym: r.querySelector(".fsym").value.trim().toUpperCase().replace(/^\$/, ""), rate: num(r.querySelector(".frate").value)}));
+  return {rows, other: num($("#feeOther").value)};
+}
+function renderFeeSheet(){
+  const F = feeSheet; if (!F) return;
+  document.body.style.overflow = "hidden";
+  const noFee = trades.filter(t => t.p && !(t.fees > 0)).length;
+  $("#sheetRoot").innerHTML = `<div class="overlay" data-act="feeBackdrop"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="feeTitle" style="max-width:560px">
+    <div class="sheet-head"><div style="display:grid;gap:4px"><h2 id="feeTitle">Fees per contract</h2>
+      <span class="hint">Charged on every contract when a trade opens and again when you close it. Nothing is charged when an option expires. A 5-lot vertical is 10 contracts.</span></div>
+      <button class="x" type="button" data-act="feeClose" aria-label="Close">×</button></div>
+    <div id="feeRows" style="display:grid;gap:8px">
+      ${F.rows.map((r,i) => `<div class="feerow grid2" style="grid-template-columns:1fr 1fr auto;align-items:end">
+        <label class="field"><span class="label">Symbol</span><input class="fsym" type="text" value="${esc(r.sym)}" maxlength="10" autocapitalize="characters"></label>
+        <label class="field"><span class="label">Fee per contract ($)</span><input class="frate" type="number" step="0.01" min="0" value="${r.rate ?? ""}"></label>
+        <button class="btn small danger" type="button" data-act="feeRemoveRow" data-i="${i}">Remove</button></div>`).join("")}
+    </div>
+    <div class="actions"><button class="btn small" type="button" data-act="feeAddRow">Add symbol</button></div>
+    <label class="field" style="max-width:260px"><span class="label">Default for all other symbols ($ per contract)</span><input id="feeOther" type="number" step="0.01" min="0" value="${F.other ?? 0}"></label>
+    <div class="actions"><span class="err" id="feeErr">${esc(F.msg)}</span><span class="spacer"></span><button class="btn primary" type="button" data-act="feeSave">Save fees</button></div>
+    ${noFee ? `<div class="exitbox"><span class="label">Trades with no fees recorded</span>
+      <span class="hint">${noFee} trade${noFee === 1 ? "" : "s"} in this dashboard ha${noFee === 1 ? "s" : "ve"} $0 fees. Apply the saved rates to them: opening fees, plus closing fees for trades closed at a price.</span>
+      <div class="actions"><span class="hint" id="feeApplyMsg"></span><span class="spacer"></span><button class="btn small ${F.applyArmed ? "armed danger" : ""}" type="button" data-act="feeApply">${F.applyArmed ? `Confirm: update ${noFee} trade${noFee === 1 ? "" : "s"}` : "Apply to these trades"}</button></div></div>` : ""}
+  </div></div>`;
+}
+function closeFeeSheet(){ feeSheet = null; $("#sheetRoot").innerHTML = ""; document.body.style.overflow = ""; }
+async function saveFeeForm(){
+  const {rows, other} = readFeeForm();
+  const rates = {};
+  for (const r of rows){
+    if (!r.sym && r.rate == null) continue;
+    if (!/^[A-Z0-9./]{1,10}$/.test(r.sym)){ feeSheet.msg = "Each symbol needs letters or numbers, like SPX."; return renderFeeSheet(); }
+    if (r.rate == null || r.rate < 0){ feeSheet.msg = `Enter a fee of 0 or more for ${r.sym}.`; return renderFeeSheet(); }
+    rates[r.sym] = r.rate;
+  }
+  if (other == null || other < 0){ feeSheet.msg = "Enter a default fee of 0 or more."; return renderFeeSheet(); }
+  if (await saveFeeCfg({rates, other})){ feeCfg = {rates, other}; feeSheet = {rows: Object.entries(rates).map(([sym, rate]) => ({sym, rate})), other, msg: "", applyArmed: false}; renderFeeSheet(); const e = $("#feeErr"); if (e){ e.style.color = "var(--gain)"; e.textContent = "Saved. New trades and closes use these rates."; } updatePreview(); }
+}
+async function applyFeesToExisting(){
+  const list = trades.filter(t => t.p && !(t.fees > 0));
+  let n = 0;
+  for (const t of list){
+    const open = fillFee(t.p), close = t.exit && t.exit.kind === "closed" ? fillFee(t.p) : 0;
+    const nt = {...t, fees: +(open + close).toFixed(2)};
+    if (t.exit && t.exit.kind === "closed") nt.exit = {...t.exit, fee: close};
+    if (!await saveTrade(nt)) break;
+    n++; const m = $("#feeApplyMsg"); if (m) m.textContent = `Updated ${n} of ${list.length}…`;
+  }
+  feeSheet.applyArmed = false; renderFeeSheet();
+  const m = $("#feeErr"); if (m){ m.style.color = "var(--gain)"; m.textContent = `Applied fees to ${n} trade${n === 1 ? "" : "s"}.`; }
 }
 
 /* ---------- thinkorswim CSV import ----------
@@ -1396,7 +1473,7 @@ function planTosImport(parsed, existing){
     const sym = o.legs[0].sym;
     const okey = strHash(o.time.key + "|" + o.legs.map(l => `${l.exp}${l.type}${l.k}${l.qty}@${l.price}`).join(";"));
     const contracts = o.legs.reduce((s,l) => s + Math.abs(l.qty), 0);
-    const feePer = contracts ? (parsed.fees[o.time.key] || 0) / contracts : 0;
+    const feePer = parsed.fees[o.time.key] != null ? (contracts ? parsed.fees[o.time.key] / contracts : 0) : feeRate(o.legs[0].sym);
     const L = o.legs.map(l => ({t: l.type[0], k: l.k, exp: l.exp, qty: l.qty, price: l.price, pos: l.pos}));
     const findOpen = l => pool.find(ps => ps.legs.some(x => x.key === legKey(l) && Math.sign(x.rem) === -Math.sign(l.qty)));
     const closing = L.filter(l => l.pos === "TO CLOSE" || (l.pos !== "TO OPEN" && findOpen(l)));
@@ -1500,7 +1577,7 @@ function renderImportSheet(){
     ${list(P.unmatched, "Closing fills with no matching open in this file")}
     ${list(P.partial, "Partly closed with a different combination (imported as open)")}
     ${list(P.skipped, "Skipped fills")}
-    <div class="hint">Fees come from the statement's Cash Balance section. Trades still open after their expiration show as "Needs settlement".</div>
+    <div class="hint">Fees come from the statement's Cash Balance section; fills without fee data use your fee schedule. Trades still open after their expiration show as "Needs settlement".</div>
     ${items.length && !importDone ? `<div class="actions">
       <label class="field" style="min-width:180px"><span class="label">Import into account</span><select id="impAcct">${accounts().map(a => `<option value="${esc(a.id)}" ${a.id === (curAcct === ALL ? "main" : curAcct) ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>
       <span class="spacer"></span><span class="hint" id="impProgress"></span>
@@ -1566,6 +1643,13 @@ document.addEventListener("click", async ev => {
   const a = ev.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "refreshMembers") return loadMembers();
+  if (act === "feeSettings"){ if (!readOnly()) openFeeSheet(); return; }
+  if (act === "feeBackdrop" && ev.target !== a) return;
+  if (act === "feeClose" || act === "feeBackdrop") return closeFeeSheet();
+  if (act === "feeAddRow"){ const f = readFeeForm(); feeSheet.rows = [...f.rows, {sym: "", rate: null}]; feeSheet.other = f.other; renderFeeSheet(); const ins = document.querySelectorAll(".fsym"); ins[ins.length-1]?.focus(); return; }
+  if (act === "feeRemoveRow"){ const f = readFeeForm(); f.rows.splice(+a.dataset.i, 1); feeSheet.rows = f.rows; feeSheet.other = f.other; renderFeeSheet(); return; }
+  if (act === "feeSave") return saveFeeForm();
+  if (act === "feeApply"){ if (!feeSheet.applyArmed){ feeSheet.applyArmed = true; renderFeeSheet(); return; } return applyFeesToExisting(); }
   if (act === "importBackdrop" && ev.target !== a) return;
   if (act === "importClose" || act === "importBackdrop") return closeImportSheet();
   if (act === "importGo") return runImport();
@@ -1616,7 +1700,7 @@ document.addEventListener("click", async ev => {
   if (act === "cancelEdit"){ sheetMode = "view"; renderSheet(); return; }
   if (act === "saveEdit") return saveEdit();
   if (act === "saveExit") return saveExit();
-  if (act === "reopen"){ const t = trades.find(x=>x.id===openId); if (t && await saveTrade({...t, exit:null})){ exitTab = null; renderSheet(); } return; }
+  if (act === "reopen"){ const t = trades.find(x=>x.id===openId); if (t && await saveTrade({...t, exit:null, fees: +Math.max(0, (t.fees || 0) - ((t.exit && t.exit.fee) || 0)).toFixed(2)})){ exitTab = null; renderSheet(); } return; }
   if (act === "delete"){
     if (!delArmed){ delArmed = true; renderSheet(); setTimeout(() => { if (delArmed && openId){ delArmed = false; if (sheetMode==="view") renderSheet(); } }, 4000); return; }
     const id = openId; delArmed = false; if (await removeTrade(id)) closeSheet(); return;
@@ -1626,6 +1710,7 @@ document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && openId) closeSheet();
   if (ev.key === "Escape" && acctSheet) closeAcctSheet();
   if (ev.key === "Escape" && importPlan) closeImportSheet();
+  if (ev.key === "Escape" && feeSheet) closeFeeSheet();
   if (ev.key === "Enter" && ev.target.matches("tr[data-id]")) openSheet(ev.target.dataset.id);
   if (ev.key === "Enter" && ev.target.matches("tr[data-member]")) viewMember(ev.target.dataset.member);
 });
