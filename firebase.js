@@ -64,6 +64,7 @@ const user = {
     return { name: u.displayName || pendingName || (u.email || "").split("@")[0] || "Member", email: u.email || "" };
   },
 };
+window.LEDGER_APPROVAL = true;
 window.claude = { use: async name => (name === "db" ? db : name === "user" ? user : null) };
 
 /* ---- account deletion (after the tracker erased the member's data) ---- */
@@ -129,18 +130,64 @@ $("#forgotBtn").addEventListener("click", async () => {
 });
 $("#signOutBtn").addEventListener("click", async () => { await signOut(auth); });
 
-let started = false;
+/* ---- approval gate: new members wait until the owner approves them ---- */
+const ownerSet = !OWNER_UID.startsWith("PASTE");
+function gate(kind, u) {
+  $("#app").hidden = true; $("#gate").hidden = false;
+  $("#gateWho").textContent = u.email || u.displayName || "";
+  const t = {
+    setup: ["Finish setup", `Your user ID is <code>${u.uid}</code>. Paste it into <code>config.js</code> (OWNER_UID) and <code>firestore.rules</code>, publish the rules in Firebase, then reload this page.`],
+    pending: ["Waiting for approval", "Your account was created. The owner needs to approve it before you can use the tracker. This page opens automatically once you're approved."],
+    declined: ["Access not approved", "The owner hasn't approved this account. If you think this is a mistake, contact them."],
+    error: ["Can't check your access", "Couldn't reach the database. Check your connection and reload. If this keeps happening, the owner may need to publish the latest firestore.rules."],
+  }[kind];
+  $("#gateTitle").textContent = t[0];
+  $("#gateText").innerHTML = t[1];
+}
+let started = false, stopWatch = null, lastStatus = null;
+function enterApp() {
+  $("#gate").hidden = true; $("#app").hidden = false;
+  if (!started) { started = true; window.startLedger(); }
+}
+async function checkAccess(u) {
+  if (!ownerSet) return gate("setup", u);
+  if (u.uid === OWNER_UID) {
+    const ref = doc(fs, `members/${u.uid}`);
+    try {
+      const snap = await getDoc(ref);
+      if (!snap.exists()) await setDoc(ref, { joinedAt: Date.now(), ...user.memberInfo(), status: "approved" });
+      else if (snap.data().status !== "approved") await updateDoc(ref, { status: "approved" });
+    } catch (e) { return gate("error", u); }
+    return enterApp();
+  }
+  const ref = doc(fs, `members/${u.uid}`);
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) await setDoc(ref, { joinedAt: Date.now(), ...user.memberInfo(), status: "pending" });
+  } catch (e) { return gate("error", u); }
+  stopWatch = onSnapshot(ref, s => {
+    if (!s.exists()) return;                       // membership deleted
+    const st = s.data().status || "pending";
+    if (st === "approved") {
+      if (lastStatus && lastStatus !== "approved") location.reload();
+      else enterApp();
+    } else {
+      if (started) return location.reload();       // access was removed while using the app
+      gate(st === "declined" ? "declined" : "pending", u);
+    }
+    lastStatus = st;
+  }, () => gate("error", u));
+}
+$("#gateSignOut").addEventListener("click", () => signOut(auth));
+
 onAuthStateChanged(auth, u => {
   if (!u) {
+    if (stopWatch) { stopWatch(); stopWatch = null; }
     if (leaving) return;
     if (started) return location.reload();
-    $("#login").hidden = false; $("#app").hidden = true; return;
+    $("#login").hidden = false; $("#app").hidden = true; $("#gate").hidden = true; return;
   }
-  $("#login").hidden = true; $("#app").hidden = false;
+  $("#login").hidden = true;
   $("#whoami").textContent = u.email || u.displayName || "";
-  if (OWNER_UID.startsWith("PASTE")) {
-    $("#ownerSetup").hidden = false;
-    $("#myUid").textContent = u.uid;
-  }
-  if (!started) { started = true; window.startLedger(); }
+  checkAccess(u);
 });

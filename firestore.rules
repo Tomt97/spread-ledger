@@ -3,17 +3,31 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Master account: replace with your user ID (shown on the site after you sign up).
     function isOwner() {
-      return request.auth != null && request.auth.uid == "PASTE_YOUR_USER_ID";
+      return request.auth != null && request.auth.uid == "owe2stqvSHZFvSqISvgwsh7tLUg2";
     }
     function isSelf(uid) {
       return request.auth != null && request.auth.uid == uid;
     }
+    function isApproved(uid) {
+      return get(/databases/$(database)/documents/members/$(uid)).data.status == "approved";
+    }
 
-    // Each member's private area. Only that member and the owner can read or write it.
     match /members/{uid} {
-      allow read, write: if isSelf(uid) || isOwner();
+      // The member record holds sign-up info and approval status.
+      allow get: if isSelf(uid) || isOwner();
+      allow list: if isOwner();
+      // New sign-ups can only create themselves as "pending".
+      allow create: if isOwner() || (isSelf(uid)
+        && request.resource.data.status == "pending"
+        && request.resource.data.keys().hasOnly(["joinedAt", "name", "email", "status"]));
+      // Only the owner approves, declines or suspends.
+      allow update: if isOwner();
+      // Members may delete their own membership.
+      allow delete: if isSelf(uid) || isOwner();
+
+      // Trades, accounts and market inputs: the owner, or the member once approved.
       match /{rest=**} {
-        allow read, write: if isSelf(uid) || isOwner();
+        allow read, write: if isOwner() || (isSelf(uid) && isApproved(uid));
       }
     }
 

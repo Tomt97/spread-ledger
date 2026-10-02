@@ -190,6 +190,14 @@ body:not(.admin) .adm{display:none!important}
     <div id="loginMsg" role="alert"></div>
   </div>
 </section>
+<section id="gate" class="login" hidden>
+  <div class="panel login-card">
+    <h1>Spread<span>/</span>Ledger</h1>
+    <h2 id="gateTitle" style="font-size:17px">Waiting for approval</h2>
+    <p id="gateText" style="margin:0"></p>
+    <div class="userbar" style="justify-content:space-between"><span id="gateWho"></span><button class="btn small" id="gateSignOut" type="button" style="width:auto">Sign out</button></div>
+  </div>
+</section>
 <div id="app" hidden>
 <div class="wrap">
   <header class="top">
@@ -200,7 +208,6 @@ body:not(.admin) .adm{display:none!important}
     <div style="display:grid;gap:6px;justify-items:end"><div class="userbar"><span id="whoami"></span><button class="btn small" id="signOutBtn" type="button">Sign out</button></div><div class="sync" id="sync"><i></i><span>Connecting…</span></div></div>
   </header>
 
-  <div id="ownerSetup" class="setup" hidden><b>Finish setup: make this the master account</b><span>Your user ID: <code id="myUid"></code></span><span>Paste it into <code>config.js</code> (OWNER_UID) and <code>firestore.rules</code>, publish the rules in Firebase, then reload. Until then nobody is master.</span></div>
   <div id="ownerBar" style="display:grid;gap:10px"></div>
 
   <section class="panel" id="membersView" hidden aria-labelledby="mbTitle">
@@ -570,7 +577,7 @@ async function boot(){
   if (DB && me){
     mode = "db"; viewUid = me;
     await registerMember();
-    if (isOwnerView) await migrateLegacy();
+    if (isOwnerView){ await migrateLegacy(); if (window.LEDGER_APPROVAL) loadMembers(); }
     subscribeTo(me);
   } else {
     mode = "local"; trades = lsRead(LS_KEY); accountsDb = lsRead(LS_ACCT);
@@ -581,7 +588,14 @@ async function boot(){
 }
 
 /* ---------- owner: members overview ---------- */
-let page = "mine", members = [], membersLoading = false, viewingName = "";
+let page = "mine", members = [], membersLoading = false, viewingName = "", pendingCount = 0, memberBusy = null;
+const statusOf = m => (m.info && m.info.status) || "pending";
+async function setMemberStatus(uid, status){
+  memberBusy = uid; render();
+  try { await DB.doc(`members/${uid}`).update({status}); const m = members.find(x => x.uid === uid); if (m) m.info = {...m.info, status}; }
+  catch(e){ toastErr(e); }
+  memberBusy = null; pendingCount = members.filter(m => !m.isMe && statusOf(m) === "pending").length; render();
+}
 async function loadMembers(){
   if (!DB || !isOwnerView) return;
   membersLoading = true; render();
@@ -596,7 +610,9 @@ async function loadMembers(){
     let names = {};
     try { names = await USER.profiles(out.map(m => m.uid)) || {}; } catch {}
     out.forEach((m,i) => { m.name = (names[m.uid] && names[m.uid].name) || m.info.name || (m.uid === me ? "You" : `Member ${i+1}`); m.isMe = m.uid === me; });
-    members = out.sort((a,b) => (b.isMe - a.isMe) || (a.joinedAt||0) - (b.joinedAt||0));
+    const rank = m => m.isMe ? 0 : !window.LEDGER_APPROVAL ? 1 : statusOf(m) === "pending" ? 1 : statusOf(m) === "approved" ? 2 : 3;
+    members = out.sort((a,b) => rank(a) - rank(b) || (a.joinedAt||0) - (b.joinedAt||0));
+    pendingCount = members.filter(m => !m.isMe && statusOf(m) === "pending").length;
   } catch { members = []; }
   membersLoading = false; render();
 }
@@ -604,10 +620,18 @@ function renderMembers(){
   const el = $("#membersBody");
   if (membersLoading){ el.innerHTML = `<div class="empty">Loading members…</div>`; return; }
   if (!members.length){ el.innerHTML = `<div class="empty"><b>No members yet</b>People appear here after they open the tracker while signed in.</div>`; return; }
-  el.innerHTML = `<table><thead><tr><th>Member</th><th>Joined</th><th class="r">Accounts</th><th class="r">Trades</th><th class="r">Open</th><th class="r">Win %</th><th class="r">Max DD</th><th>Top strategy</th><th class="r">Net P&amp;L</th></tr></thead><tbody>
+  const A = !!window.LEDGER_APPROVAL;
+  const pill = m => m.isMe ? "" : statusOf(m) === "approved" ? '<span class="pill win">Approved</span>' : statusOf(m) === "declined" ? '<span class="pill lossp">Declined</span>' : '<span class="pill due">Pending</span>';
+  const acts = m => {
+    if (m.isMe) return "";
+    const busy = memberBusy === m.uid ? "disabled" : "";
+    const st = statusOf(m);
+    return `<div class="rowacts">${st !== "approved" ? `<button class="btn small" type="button" data-approve="${esc(m.uid)}" ${busy}>Approve</button>` : ""}${st === "pending" ? `<button class="btn small danger" type="button" data-decline="${esc(m.uid)}" ${busy}>Decline</button>` : ""}${st === "approved" ? `<button class="btn small danger" type="button" data-decline="${esc(m.uid)}" ${busy}>Remove access</button>` : ""}</div>`;
+  };
+  el.innerHTML = `<table><thead><tr><th>Member</th>${A?"<th>Status</th>":""}<th>Joined</th><th class="r">Accounts</th><th class="r">Trades</th><th class="r">Open</th><th class="r">Win %</th><th class="r">Max DD</th><th>Top strategy</th><th class="r">Net P&amp;L</th>${A?'<th><span class="sr">Approve</span></th>':""}</tr></thead><tbody>
     ${members.map(m => { const S = computeStats(m.trades);
       return `<tr class="click" data-member="${esc(m.uid)}" tabindex="0">
-        <td><span class="strat">${esc(m.name)}</span>${m.isMe ? ' <span class="pill open">Owner</span>' : ""}${m.info && m.info.email ? `<div class="sub">${esc(m.info.email)}</div>` : ""}</td>
+        <td><span class="strat">${esc(m.name)}</span>${m.isMe ? ' <span class="pill open">Owner</span>' : ""}${m.info && m.info.email ? `<div class="sub">${esc(m.info.email)}</div>` : ""}</td>${A?`<td>${pill(m)}</td>`:""}
         <td class="num">${m.joinedAt ? fmtShort(new Date(m.joinedAt).toISOString().slice(0,10)) : "—"}</td>
         <td class="r num">${accounts(m.accounts).length}</td>
         <td class="r num">${m.trades.length}</td>
@@ -615,7 +639,7 @@ function renderMembers(){
         <td class="r num">${S.winRate == null ? "—" : (S.winRate*100).toFixed(0) + "%"}</td>
         <td class="r num ${S.dd > 0 ? "loss" : ""}">${S.dd > 0 ? money0(-S.dd) : "—"}</td>
         <td>${S.strats[0] ? esc(S.strats[0].name) : '<span class="muted">—</span>'}</td>
-        <td class="r num ${pnlClass(S.total)}" style="font-weight:600">${S.closed.length ? money(S.total) : "—"}</td></tr>`; }).join("")}
+        <td class="r num ${pnlClass(S.total)}" style="font-weight:600">${S.closed.length ? money(S.total) : "—"}</td>${A?`<td>${acts(m)}</td>`:""}</tr>`; }).join("")}
   </tbody></table>`;
 }
 function viewMember(uid){
@@ -736,7 +760,7 @@ function renderOwnerBar(){
   if (isOwnerView){
     html += `<div class="ownerbar"><div class="tabs" role="group" aria-label="Owner view">
       <button type="button" data-page="mine" aria-pressed="${page==="mine" && viewUid===me}">My dashboard</button>
-      <button type="button" data-page="members" aria-pressed="${page==="members"}">Members</button></div>
+      <button type="button" data-page="members" aria-pressed="${page==="members"}">Members${pendingCount ? ` <span class="pill due" style="margin-left:4px">${pendingCount} pending</span>` : ""}</button></div>
       <span class="actions"><span class="hint">${adminMode ? "Edit and Remove are on" : "Owner"}</span><button class="btn small adminbtn" type="button" data-act="toggleAdmin" aria-pressed="${adminMode}">Admin mode: ${adminMode ? "On" : "Off"}</button></span></div>`;
   }
   if (viewUid !== me && page === "mine"){
@@ -1191,6 +1215,9 @@ document.addEventListener("click", async ev => {
   if (f){ filter = f.dataset.filter; try { localStorage.setItem("spread-ledger-filter", filter); } catch {} render(); if (f.closest(".alert")) $("#blotter").scrollIntoView({behavior:"smooth",block:"start"}); return; }
   const pg = ev.target.closest("[data-page]");
   if (pg){ closeSheet(); if (pg.dataset.page === "members"){ if (viewUid !== me) subscribeTo(me); viewingName = ""; page = "members"; loadMembers(); } else backToMine(); return; }
+  const ap = ev.target.closest("[data-approve]"), dc = ev.target.closest("[data-decline]");
+  if (ap){ if (isOwnerView) setMemberStatus(ap.dataset.approve, "approved"); return; }
+  if (dc){ if (isOwnerView) setMemberStatus(dc.dataset.decline, "declined"); return; }
   const mr = ev.target.closest("tr[data-member]");
   if (mr){ viewMember(mr.dataset.member); return; }
   const ac = ev.target.closest("[data-acct]");

@@ -34,7 +34,9 @@ Firebase → **Authentication → Settings → Authorized domains → Add domain
 4. Upload the new `config.js` to GitHub, and publish the updated rules in Firebase → Firestore → Rules.
 5. Reload the site. You now see **My dashboard | Members** and the **Admin mode** switch.
 
-Share the site link with your members. They create their own account and get their own dashboard.
+Share the site link with your members. When someone signs up they see **Waiting for approval**.
+You'll see a **pending** badge on **Members**; click **Approve** (or **Decline**). Their dashboard
+opens for them automatically once approved. **Remove access** takes an approved member back out.
 
 ## Who can do what
 | | Member | Master (you) |
@@ -45,8 +47,10 @@ Share the site link with your members. They create their own account and get the
 | Delete an account tab (and its trades) | Yes | Yes |
 | Delete whole membership | Yes (erases data and login) | No |
 | See other members | No | Members view |
+| Approve / decline / remove access | No | Members view |
 
-The database rules (`firestore.rules`) make each member's data readable only by that member and you.
+The database rules (`firestore.rules`) make each member's data readable only by that member and you,
+and only after you approve them. Sign-ups can't approve themselves.
 The "no edit/remove" limits for members are enforced by the page; the rules let members write their
 own area so they can add trades.
 

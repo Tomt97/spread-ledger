@@ -11,4 +11,4 @@ export const firebaseConfig = {
 
 // 2) After you sign up on the site the first time, it shows "Your user ID". Paste it here
 //    AND in firestore.rules so your account becomes the master account.
-export const OWNER_UID = "PASTE_YOUR_USER_ID";
+export const OWNER_UID = "owe2stqvSHZFvSqISvgwsh7tLUg2";
