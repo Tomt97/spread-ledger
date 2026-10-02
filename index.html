@@ -1,0 +1,1285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Options trade tracker: P&L, win rate, drawdown, payoff graphs.">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px/1.45 system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Spread Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: single working column — paste desk on top, KPI strip, equity + strategy split, trade blotter; trade detail opens as a sheet */
+:root{
+  --bg:#eef1f0; --surface:#ffffff; --sunk:#e5eae8; --ink:#14201b; --muted:#5a6a63; --line:#d3dbd7;
+  --accent:#2747c7; --accent-ink:#ffffff; --accent-soft:#e3e8fb;
+  --gain:#167a46; --gain-soft:#dcefe4; --loss:#bf3226; --loss-soft:#f7e0dd; --warn:#9a6200; --warn-soft:#f6ead2;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1412; --surface:#161d1a; --sunk:#1c2420; --ink:#e4ebe7; --muted:#93a39b; --line:#29342f;
+  --accent:#8ea3ff; --accent-ink:#0f1412; --accent-soft:#1f2747;
+  --gain:#45c483; --gain-soft:#173326; --loss:#ff7466; --loss-soft:#3a1d1a; --warn:#e8b04e; --warn-soft:#352a14; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1412; --surface:#161d1a; --sunk:#1c2420; --ink:#e4ebe7; --muted:#93a39b; --line:#29342f;
+  --accent:#8ea3ff; --accent-ink:#0f1412; --accent-soft:#1f2747;
+  --gain:#45c483; --gain-soft:#173326; --loss:#ff7466; --loss-soft:#3a1d1a; --warn:#e8b04e; --warn-soft:#352a14; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 60px;display:grid;gap:18px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+.num,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.gain{color:var(--gain)} .loss{color:var(--loss)}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+header.top h1{font-size:30px;font-weight:800;font-stretch:112%;letter-spacing:-.01em}
+header.top h1 span{color:var(--accent)}
+.sync{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--muted);display:inline-block}
+.sync.ok i{background:var(--gain)} .sync.local i{background:var(--warn)}
+
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+
+/* paste desk */
+.desk{padding:16px;display:grid;gap:12px}
+.desk-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.desk-head h2{font-size:17px;font-weight:700}
+textarea#paste{width:100%;min-height:76px;resize:vertical;border:1px solid var(--line);background:var(--sunk);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:13.5px;line-height:1.5}
+.desk-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.field{display:grid;gap:4px;min-width:0}
+.field input,.field textarea,.field select{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:7px 9px;min-width:0;width:100%}
+.field textarea{font-family:var(--mono);font-size:13px;min-height:64px;resize:vertical}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.primary:disabled{opacity:.45;cursor:not-allowed}
+.btn.danger{color:var(--loss)} .btn.danger.armed{background:var(--loss);color:#fff;border-color:var(--loss)}
+.btn.small{padding:5px 10px;font-size:13px}
+a.btn{text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.linkish{background:none;border:none;color:var(--accent);cursor:pointer;padding:0;font-weight:600;font-size:13px}
+.previews{display:grid;gap:8px}
+.pv{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;border:1px dashed var(--line);border-radius:8px;padding:9px 12px;font-size:13.5px}
+.pv.bad{border-color:var(--loss);background:var(--loss-soft)}
+.pv .tag{font-weight:700}
+.pv .meta{min-width:0;color:var(--muted);font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.kpi{background:var(--surface);padding:14px 16px;display:grid;gap:4px;align-content:start;min-width:0}
+.kpi .v{font-family:var(--mono);font-size:24px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.kpi .v.txt{font-family:var(--display);font-size:19px;font-weight:700;letter-spacing:0;line-height:1.2}
+.kpi .s{font-size:12.5px;color:var(--muted)}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi:last-child{grid-column:1/-1}}
+
+.alert{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--warn-soft);color:var(--ink);border:1px solid var(--warn);border-radius:var(--r);padding:10px 14px;font-size:14px}
+.alert b{color:var(--warn)}
+
+.split{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:18px}
+@media (max-width:900px){.split{grid-template-columns:1fr}}
+.card{padding:16px;display:grid;gap:10px;align-content:start;min-width:0}
+.card h2{font-size:16px;font-weight:700}
+.card-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+svg{display:block;max-width:100%}
+svg text{fill:var(--muted);font-family:var(--mono);font-size:11px}
+
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+td.r,th.r{text-align:right}
+.scroll{overflow-x:auto}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover{background:var(--sunk)}
+tbody tr:last-child td{border-bottom:none}
+
+.blotter-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 16px 8px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;background:var(--sunk);padding:3px;border-radius:9px}
+.tabs button{border:none;background:none;padding:5px 11px;border-radius:7px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.tabs .ct{font-family:var(--mono);font-weight:500;margin-left:4px;opacity:.75}
+
+.pill{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap;letter-spacing:.02em}
+.pill.open{background:var(--accent-soft);color:var(--accent)}
+.pill.due{background:var(--warn-soft);color:var(--warn)}
+.pill.win{background:var(--gain-soft);color:var(--gain)}
+.pill.lossp{background:var(--loss-soft);color:var(--loss)}
+.pill.flat{background:var(--sunk);color:var(--muted)}
+.strat{font-weight:700}
+.sub{font-family:var(--mono);font-size:12.5px;color:var(--muted);white-space:nowrap}
+.empty{padding:34px 16px;text-align:center;color:var(--muted)}
+.empty b{color:var(--ink);display:block;font-size:16px;margin-bottom:4px}
+
+/* sheet */
+.overlay{position:fixed;inset:0;background:rgba(10,16,13,.5);display:flex;justify-content:center;align-items:flex-start;overflow-y:auto;padding:max(24px,env(safe-area-inset-top,0px)) 12px 24px;z-index:20}
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:14px;width:100%;max-width:820px;display:grid;gap:16px;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.sheet-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.sheet-head h2{font-size:22px;font-weight:800;font-stretch:108%}
+.x{border:none;background:var(--sunk);border-radius:8px;width:34px;height:34px;font-size:20px;line-height:1;cursor:pointer;flex:none}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.facts div{background:var(--surface);padding:10px 12px;display:grid;gap:2px;min-width:0}
+.facts .v{font-family:var(--mono);font-weight:600;font-size:15px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.raw{font-family:var(--mono);font-size:13px;background:var(--sunk);border-radius:8px;padding:9px 11px;overflow-wrap:anywhere}
+.exitbox{border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:12px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.actions .spacer{flex:1}
+.err{color:var(--loss);font-size:13px}
+.hint{font-size:12.5px;color:var(--muted)}
+.chartwrap{position:relative}
+.readout{position:absolute;top:6px;right:8px;font-family:var(--mono);font-size:12px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:3px 7px;pointer-events:none}
+.mktrow{display:grid;grid-template-columns:70px minmax(0,1fr) minmax(0,1fr) auto minmax(0,1.2fr);gap:10px;align-items:end}
+.mktrow .sym{font-family:var(--mono);font-weight:600;padding-bottom:8px}
+@media (max-width:640px){.mktrow{grid-template-columns:60px 1fr 1fr}.mktrow .hint{grid-column:1/-1}}
+.ro .rw{display:none!important}
+body:not(.admin) .adm{display:none!important}
+.ro:not(.admin) .ex{display:none!important}
+.adminbtn[aria-pressed="true"]{background:var(--loss);border-color:var(--loss);color:#fff}
+.rowacts{display:flex;gap:6px;justify-content:flex-end}
+.rowacts .btn{padding:4px 9px;font-size:12.5px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.ownerbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.viewing{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--r);padding:10px 14px}
+.viewing b{color:var(--accent)}
+.acctbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.acct-tabs{max-width:100%;overflow-x:auto;flex-wrap:nowrap}
+.acct-tabs button{font-size:14px;padding:7px 14px}
+.acct-tabs .kind{font-weight:500;font-size:11.5px;margin-left:6px;opacity:.7}
+.acctrow{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto auto;gap:8px;align-items:end;padding-block:10px;border-bottom:1px solid var(--line)}
+@media (max-width:560px){.acctrow{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:rise .16s ease-out}@keyframes rise{from{transform:translateY(8px);opacity:.6}to{transform:none;opacity:1}}}
+</style>
+
+</head>
+<body>
+
+<style>
+.login{min-height:100vh;display:grid;place-items:center;padding-inline:16px;padding-block:40px}
+.login-card{width:100%;max-width:400px;display:grid;gap:14px;padding:24px}
+.login-card h1{font-size:28px;font-weight:800;font-stretch:112%}
+.login-card h1 span{color:var(--accent)}
+.login-card form{display:grid;gap:12px}
+.login-card .btn{width:100%;padding:10px 14px}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+#loginMsg{color:var(--loss);font-size:13.5px;min-height:1em}
+.userbar{display:flex;gap:10px;align-items:center;font-size:12.5px;color:var(--muted)}
+.setup{background:var(--warn-soft);border:1px solid var(--warn);border-radius:var(--r);padding:12px 14px;font-size:14px;display:grid;gap:6px}
+.setup code{font-family:var(--mono);background:var(--surface);padding:2px 6px;border-radius:5px;overflow-wrap:anywhere}
+</style>
+<section id="login" class="login">
+  <div class="panel login-card">
+    <h1>Spread<span>/</span>Ledger</h1>
+    <h2 id="loginTitle" style="font-size:17px">Sign in</h2>
+    <form id="loginForm">
+      <label class="field" id="nameRow" hidden><span class="label">Name</span><input id="displayName" type="text" autocomplete="name" maxlength="40"></label>
+      <label class="field"><span class="label">Email</span><input id="email" type="email" autocomplete="email" required></label>
+      <label class="field"><span class="label">Password</span><input id="password" type="password" autocomplete="current-password" minlength="6" required></label>
+      <button class="btn primary" id="loginGo" type="submit">Sign in</button>
+    </form>
+    <div class="actions" style="justify-content:space-between"><button class="linkish" id="loginSwap" type="button">New here? Create an account</button><button class="linkish" id="forgotBtn" type="button">Forgot password</button></div>
+    <div class="or">or</div>
+    <button class="btn" id="googleBtn" type="button">Continue with Google</button>
+    <div id="loginMsg" role="alert"></div>
+  </div>
+</section>
+<div id="app" hidden>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Spread<span>/</span>Ledger</h1>
+      <div class="muted" style="font-size:13.5px">Paste an order, track it to the close or to expiration.</div>
+    </div>
+    <div style="display:grid;gap:6px;justify-items:end"><div class="userbar"><span id="whoami"></span><button class="btn small" id="signOutBtn" type="button">Sign out</button></div><div class="sync" id="sync"><i></i><span>Connecting…</span></div></div>
+  </header>
+
+  <div id="ownerSetup" class="setup" hidden><b>Finish setup: make this the master account</b><span>Your user ID: <code id="myUid"></code></span><span>Paste it into <code>config.js</code> (OWNER_UID) and <code>firestore.rules</code>, publish the rules in Firebase, then reload. Until then nobody is master.</span></div>
+  <div id="ownerBar" style="display:grid;gap:10px"></div>
+
+  <section class="panel" id="membersView" hidden aria-labelledby="mbTitle">
+    <div class="blotter-head"><div style="display:grid;gap:2px"><h2 id="mbTitle" style="font-size:16px;font-weight:700">Members</h2><span class="hint">Everyone who has signed in. Click a member to open their dashboard (read-only).</span></div>
+      <button class="btn small" type="button" data-act="refreshMembers">Refresh</button></div>
+    <div class="scroll" id="membersBody"></div>
+  </section>
+
+  <div id="dash" style="display:grid;gap:18px">
+  <nav class="acctbar" aria-label="Accounts">
+    <div class="tabs acct-tabs" id="acctTabs" role="group" aria-label="Choose account"></div>
+    <button class="btn small rw" type="button" data-act="manageAccts">Manage accounts</button>
+  </nav>
+
+  <section class="panel desk rw" aria-labelledby="deskTitle">
+    <div class="desk-head">
+      <h2 id="deskTitle">Add trades</h2>
+      <button class="linkish" id="sampleBtn" type="button">Paste an example order</button>
+    </div>
+    <textarea id="paste" spellcheck="false" placeholder="SELL -5 VERTICAL SPX 100 (Weeklys) 1 OCT 26 7800/7820 CALL @.55 LMT&#10;One order per line. thinkorswim format."></textarea>
+    <div class="previews" id="previews"></div>
+    <div class="desk-row">
+      <label class="field" style="width:170px"><span class="label">Account</span><select id="addAcct"></select></label>
+      <label class="field" style="width:160px"><span class="label">Opened</span><input type="date" id="addDate"></label>
+      <label class="field" style="width:120px"><span class="label">Fees ($)</span><input type="number" id="addFees" step="0.01" min="0" placeholder="0.00"></label>
+      <label class="field" style="flex:1;min-width:180px"><span class="label">Notes</span><input type="text" id="addNotes" placeholder="Optional"></label>
+      <button class="btn primary" id="addBtn" type="button" disabled>Add to tracker</button>
+    </div>
+  </section>
+
+  <div id="alert"></div>
+
+  <section class="panel card" id="mktPanel" aria-labelledby="mktTitle" hidden>
+    <div class="card-head"><h2 id="mktTitle">Market inputs</h2><span class="hint">Used for chance of profit on open trades</span></div>
+    <div id="mktRows" style="display:grid;gap:8px"></div>
+  </section>
+
+  <section class="kpis" id="kpis" aria-label="Performance summary"></section>
+
+  <div class="split">
+    <section class="panel card">
+      <div class="card-head"><h2>Cumulative P&amp;L</h2><span class="hint" id="eqHint"></span></div>
+      <div id="equity"></div>
+    </section>
+    <section class="panel card">
+      <div class="card-head"><h2>By strategy</h2><span class="hint">closed trades</span></div>
+      <div class="scroll" id="strats"></div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="blotter-head">
+      <h2 style="font-size:16px;font-weight:700">Trades</h2>
+      <div class="tabs" role="group" aria-label="Filter trades" id="tabs"></div>
+    </div>
+    <div class="scroll" id="blotter"></div>
+  </section>
+  </div>
+</div>
+<div id="sheetRoot"></div>
+
+</div>
+<script>window.LEDGER_HOSTED = true;</script>
+<script>
+(() => {
+"use strict";
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const MON = {JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11};
+const MON_N = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const pad2 = n => String(n).padStart(2,"0");
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; };
+const fmtDate = iso => { if(!iso) return "—"; const [y,m,d] = iso.split("-").map(Number); return `${MON_N[m-1]} ${d}, ${y}`; };
+const fmtShort = iso => { if(!iso) return "—"; const [y,m,d] = iso.split("-").map(Number); return `${MON_N[m-1]} ${d} ’${String(y).slice(2)}`; };
+const money = (v, sign=true) => {
+  if (v == null || !isFinite(v)) return "—";
+  const a = Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+  return (v < 0 ? "−$" : (sign && v > 0 ? "+$" : "$")) + a;
+};
+const money0 = v => { if (v == null || !isFinite(v)) return "—"; const a = Math.abs(Math.round(v)).toLocaleString("en-US"); return (v<0?"−$":"$")+a; };
+const pnlClass = v => v > 0.005 ? "gain" : v < -0.005 ? "loss" : "";
+const num = v => { const n = parseFloat(v); return isFinite(n) ? n : null; };
+const fmtK = k => (Math.round(k*100)/100).toString();
+const uid = () => "t" + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+/* ---------- order parser (thinkorswim style) ---------- */
+const STRATS = ["IRON CONDOR","IRON BUTTERFLY","BUTTERFLY","CONDOR","VERTICAL","STRADDLE","STRANGLE","CALENDAR","DIAGONAL","DBL DIAG","DOUBLE DIAGONAL","BACKRATIO","VERT ROLL","COVERED","COLLAR","COMBO","CUSTOM"];
+const NEED = {SINGLE:1,VERTICAL:2,BUTTERFLY:3,CONDOR:4,"IRON CONDOR":4,"IRON BUTTERFLY":3,STRADDLE:1,STRANGLE:2,CALENDAR:1,DIAGONAL:2};
+const DATE_RE = "\\d{1,2} [A-Z]{3} \\d{2,4}";
+const TAGS = "((?:[\\(\\[][^\\)\\]]*[\\)\\]]\\s*)*)";
+const BODY_RE = new RegExp(`^(\\S+)\\s+(?:(\\d+)\\s+)?${TAGS}(${DATE_RE}(?:\\s*\\/\\s*${DATE_RE})*)\\s+${TAGS}([\\d.]+(?:\\/[\\d.]+)*)\\s+((?:CALL|PUT)(?:\\/(?:CALL|PUT))*)\\s*(?:@\\s*(-?[\\d.]+|MKT))?(.*)$`);
+
+function parseDate(s){
+  const m = s.trim().match(/^(\d{1,2}) ([A-Z]{3}) (\d{2,4})$/);
+  if (!m || !(m[2] in MON)) throw new Error(`Can't read the date “${s.trim()}”`);
+  let y = +m[3]; if (y < 100) y += 2000;
+  return `${y}-${pad2(MON[m[2]]+1)}-${pad2(+m[1])}`;
+}
+
+function parseOrder(line){
+  let s = line.toUpperCase().replace(/\s+/g," ").trim();
+  if (!s) return null;
+  const head = s.match(/\b(BUY|SELL|BOUGHT|SOLD|BOT)\b/);
+  if (!head) throw new Error("Start the line with BUY or SELL.");
+  s = s.slice(head.index);
+  const m = s.match(/^(BUY|SELL|BOUGHT|SOLD|BOT)\s+([+-]?\d+)\s+(.*)$/);
+  if (!m) throw new Error("Add the quantity after BUY/SELL, like “SELL -5”.");
+  const action = m[1][0] === "B" ? "BUY" : "SELL";
+  const qty = Math.abs(parseInt(m[2],10));
+  if (!qty) throw new Error("Quantity must be at least 1.");
+  let rest = m[3];
+  let ratio = null;
+  const rm = rest.match(/^(\d+(?:\/\d+)+)\s+(.*)$/);
+  if (rm){ ratio = rm[1].split("/").map(Number); rest = rm[2]; }
+  rest = rest.replace(/^~/,"");
+  let strategy = "SINGLE";
+  for (const st of STRATS){ if (rest.startsWith(st + " ")){ strategy = st; rest = rest.slice(st.length+1); break; } }
+  const b = rest.match(BODY_RE);
+  if (!b) throw new Error("Couldn't read symbol, expiration, strikes and CALL/PUT. Expected e.g. “SPX 100 (Weeklys) 1 OCT 26 7800/7820 CALL @.55”.");
+  const symbol = b[1].replace(/^\$/,"");
+  const mult = b[2] ? +b[2] : 100;
+  const tagText = (b[3] + " " + b[5]).trim();
+  const expiries = b[4].split("/").map(parseDate);
+  const strikes = b[6].split("/").map(Number);
+  if (strikes.some(k => !isFinite(k) || k <= 0)) throw new Error("A strike isn't a valid number.");
+  const types = b[7].split("/").map(t => t[0]); // "C" | "P"
+  let price = null, isMkt = false;
+  if (b[8] === "MKT") isMkt = true; else if (b[8] != null) price = parseFloat(b[8]);
+  if (b[8] != null && !isMkt && !isFinite(price)) throw new Error("Can't read the price after @.");
+  const tail = b[9].trim();
+  const orderType = (tail.match(/\b(LMT|MKT|STP LMT|STP|NET CREDIT|NET DEBIT)\b/)||[])[1] || (isMkt ? "MKT" : "");
+  const need = NEED[strategy];
+  if (need && strikes.length !== need) throw new Error(`${titleCase(strategy)} needs ${need} strike${need>1?"s":""}, found ${strikes.length}.`);
+  const p = {action, qty, ratio, strategy, symbol, mult, tags:tagText, expiries, strikes, types, price, orderType};
+  p.legs = buildLegs(p);
+  return p;
+}
+
+/* Legs describe the BUY-side structure ("the position you buy"), per 1 unit.
+   A SELL order is short that same structure. */
+function buildLegs(p){
+  const {strategy:st, strikes:K, types:T, expiries:E, ratio:R} = p;
+  const e0 = E[0], t0 = T[0];
+  const L = (q,t,k,exp=e0) => ({q,t,k,exp});
+  const s = [...K].sort((a,b)=>a-b);
+  switch(st){
+    case "SINGLE": return [L(1,t0,K[0])];
+    case "VERTICAL": return [L(1,t0,K[0]), L(-1,t0,K[1])];
+    case "BUTTERFLY": { const r = R && R.length===3 ? R : [1,2,1]; return [L(r[0],t0,K[0]), L(-r[1],t0,K[1]), L(r[2],t0,K[2])]; }
+    case "CONDOR": return [L(1,t0,K[0]), L(-1,t0,K[1]), L(-1,t0,K[2]), L(1,t0,K[3])];
+    case "IRON CONDOR": return [L(-1,"P",s[0]), L(1,"P",s[1]), L(1,"C",s[2]), L(-1,"C",s[3])];
+    case "IRON BUTTERFLY": return [L(-1,"P",s[0]), L(1,"P",s[1]), L(1,"C",s[1]), L(-1,"C",s[2])];
+    case "STRADDLE": return T.length > 1 ? [L(1,"C",K[0]), L(1,"P",K[0])] : [L(1,t0,K[0])];
+    case "STRANGLE": return [L(1,T[0],K[0]), L(1,T[1]||(T[0]==="C"?"P":"C"),K[1])];
+    case "CALENDAR": { if (E.length < 2) return null; const d=[...E].sort(); return [L(-1,t0,K[0],d[0]), L(1,t0,K[0],d[1])]; }
+    case "DIAGONAL": { if (E.length < 2) return null; return [L(1,t0,K[0],E[0]), L(-1,t0,K[1],E[1])]; }
+    default: return null;
+  }
+}
+const titleCase = s => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+const multiExpiry = p => p.legs && new Set(p.legs.map(l=>l.exp)).size > 1;
+const modeled = p => !!p.legs && !multiExpiry(p);  // can be valued at expiration from the settlement price
+const expiryOf = p => p.legs ? [...p.legs.map(l=>l.exp)].sort()[0] : [...p.expiries].sort()[0];
+
+function stratLabel(p){
+  const dir = p.action === "BUY" ? 1 : -1, LS = dir > 0 ? "Long" : "Short";
+  const tn = t => t === "C" ? "call" : "put";
+  const L = p.legs;
+  switch(p.strategy){
+    case "SINGLE": return `${LS} ${tn(L[0].t)}`;
+    case "VERTICAL": {
+      const lng = L.find(l => l.q*dir > 0), sht = L.find(l => l.q*dir < 0);
+      if (L[0].t === "C") return lng.k < sht.k ? "Bull call spread" : "Bear call spread";
+      return lng.k > sht.k ? "Bear put spread" : "Bull put spread";
+    }
+    case "IRON CONDOR": return `${LS} iron condor`;
+    case "IRON BUTTERFLY": return `${LS} iron butterfly`;
+    case "BUTTERFLY": {
+      const w1 = Math.abs(p.strikes[1]-p.strikes[0]), w2 = Math.abs(p.strikes[2]-p.strikes[1]);
+      const bw = (p.ratio && p.ratio.join("/") !== "1/2/1") || Math.abs(w1-w2) > 1e-9;
+      return `${LS} ${tn(L[0].t)} ${bw ? "broken-wing butterfly" : "butterfly"}`;
+    }
+    case "CONDOR": return `${LS} ${tn(L[0].t)} condor`;
+    case "STRADDLE": return `${LS} straddle`;
+    case "STRANGLE": return `${LS} strangle`;
+    case "CALENDAR": return `${LS} ${tn(p.types[0])} calendar`;
+    case "DIAGONAL": return `${LS} ${tn(p.types[0])} diagonal`;
+    default: return `${p.action === "BUY" ? "Bought" : "Sold"} ${titleCase(p.strategy)}`;
+  }
+}
+const describe = p => {
+  const exps = [...new Set(p.expiries)].map(fmtShort).join(" / ");
+  return `${p.symbol} ${exps} · ${p.strikes.map(fmtK).join("/")} ${p.types.join("/")}`;
+};
+
+/* ---------- valuation ---------- */
+const intrinsic = (t,k,S) => t === "C" ? Math.max(0,S-k) : Math.max(0,k-S);
+const structValue = (p,S) => p.legs.reduce((a,l) => a + l.q*intrinsic(l.t,l.k,S), 0);
+const dirOf = p => p.action === "BUY" ? 1 : -1;
+/* P&L of the whole position if the structure is worth V per unit */
+const pnlAt = (t,V) => dirOf(t.p)*(V - t.p.price)*t.p.qty*t.p.mult - (t.fees||0);
+const openCash = t => -dirOf(t.p)*t.p.price*t.p.qty*t.p.mult; // + = credit received
+
+function riskProfile(t){
+  const p = t.p; if (!modeled(p) || p.price == null) return null;
+  const ks = [...new Set(p.legs.map(l=>l.k))].sort((a,b)=>a-b);
+  const big = ks[ks.length-1]*10;
+  const xs = [0, ...ks, big];
+  const ys = xs.map(S => pnlAt(t, structValue(p,S)));
+  const callNet = p.legs.filter(l=>l.t==="C").reduce((a,l)=>a+l.q,0)*dirOf(p);
+  let maxP = Math.max(...ys), maxL = Math.min(...ys);
+  if (callNet > 0) maxP = Infinity; if (callNet < 0) maxL = -Infinity;
+  const be = [];
+  for (let i=0;i<xs.length-1;i++){
+    const [x0,x1,y0,y1] = [xs[i],xs[i+1],ys[i],ys[i+1]];
+    if (y0 === 0 && (i===0 || ys[i-1] !== 0)) { if (i>0) be.push(x0); continue; }
+    if ((y0 < 0 && y1 > 0) || (y0 > 0 && y1 < 0)) be.push(x0 + (x1-x0)*(-y0)/(y1-y0));
+  }
+  return {maxP, maxL, be, ks};
+}
+
+/* status + realized P&L */
+function evalTrade(t){
+  const p = t.p, exp = expiryOf(p), today = todayISO();
+  let status, pnl = null, closeDate = null, exitPrice = null;
+  if (t.exit && t.exit.price != null && p.price != null){
+    exitPrice = t.exit.price;
+    pnl = pnlAt(t, exitPrice);
+    closeDate = t.exit.date || exp;
+    status = t.exit.kind === "expired" ? "expired" : "closed";
+  } else if (today > exp) status = "due";
+  else status = "open";
+  return {status, pnl, closeDate, exitPrice, exp, label: stratLabel(p)};
+}
+
+/* ---------- storage ----------
+   Signed-in people each get a private area at members/<their id>/{trades,accounts,market}.
+   Access rules let only that person and the artifact owner read it. Without the db (e.g. a
+   local copy of the file) the page falls back to this browser's storage. */
+let trades = [], mode = "loading", accountsDb = [], market = {}, loaded = false;
+let DB = null, USER = null, me = null, isOwnerView = false, viewUid = null, unsubs = [], canWrite = true;
+const LS_KEY = "spread-ledger-trades", LS_ACCT = "spread-ledger-accounts", LS_MKT = "spread-ledger-market";
+const lsRead = k => { try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch { return []; } };
+const lsWrite = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(trades)); localStorage.setItem(LS_ACCT, JSON.stringify(accountsDb)); localStorage.setItem(LS_MKT, JSON.stringify(market)); } catch {} };
+const col = (name, uid = viewUid) => DB.collection(`members/${uid}/${name}`);
+const readOnly = () => mode === "db" && (viewUid !== me || !canWrite);
+/* Admin mode: only the owner can switch it on; it reveals Edit/Remove, including on members' trades. */
+let adminMode = false;
+try { adminMode = localStorage.getItem("spread-ledger-admin") === "1"; } catch {}
+const adminOK = () => mode === "local" || (mode === "db" && isOwnerView && adminMode && canWrite);
+const canRecordExit = () => !readOnly() || adminOK();
+
+/* Accounts: each trade carries an `account` id; trades without one belong to "main". */
+const ALL = "__all";
+let curAcct = "main";
+try { curAcct = localStorage.getItem("spread-ledger-acct") || "main"; } catch {}
+const acctOf = t => t.account || "main";
+function accounts(list = accountsDb){
+  const out = [...list].sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
+  if (!out.some(a => a.id === "main")) out.unshift({id:"main", name:"Main", kind:"", createdAt:0, virtual:true});
+  return out;
+}
+const acctName = id => (accounts().find(a => a.id === id) || {name:"Unknown account"}).name;
+function setAcct(id){
+  curAcct = id; if (!readOnly()) try { localStorage.setItem("spread-ledger-acct", id); } catch {}
+  render();
+}
+const visibleTrades = () => curAcct === ALL ? trades : trades.filter(t => acctOf(t) === curAcct);
+
+function setSync(){
+  const el = $("#sync");
+  el.className = "sync " + (mode === "db" ? "ok" : mode === "local" ? "local" : "");
+  el.querySelector("span").textContent = mode === "db" ? (readOnly() ? (adminOK() ? "Admin mode · editing member" : "Read-only view") : "Saved to your dashboard") : mode === "local" ? "Saved in this browser only" : "Connecting…";
+}
+const docId = sym => sym.replace(/[^A-Za-z0-9_.-]/g,"_");
+async function dbWrite(fn){ if (readOnly() && !adminOK()) return false; try { await fn(); return true; } catch(e){ toastErr(e); return false; } }
+async function saveTrade(t){
+  const clean = JSON.parse(JSON.stringify(t));
+  if (mode === "db") return dbWrite(() => col("trades").doc(t.id).set(clean));
+  const i = trades.findIndex(x => x.id === t.id);
+  if (i >= 0) trades[i] = clean; else trades.push(clean);
+  lsWrite(); render(); return true;
+}
+async function removeTrade(id){
+  if (mode === "db") return dbWrite(() => col("trades").doc(id).delete());
+  trades = trades.filter(x => x.id !== id); lsWrite(); render(); return true;
+}
+async function saveAccount(a){
+  const clean = {name:a.name, kind:a.kind||"", createdAt:a.createdAt||Date.now()};
+  if (mode === "db") return dbWrite(() => col("accounts").doc(a.id).set(clean));
+  const i = accountsDb.findIndex(x => x.id === a.id);
+  if (i >= 0) accountsDb[i] = {...clean, id:a.id}; else accountsDb.push({...clean, id:a.id});
+  lsWrite(); render(); return true;
+}
+async function removeAccount(id){
+  const mine = trades.filter(t => acctOf(t) === id);
+  for (const t of mine) if (!await removeTrade(t.id)) return false;
+  if (mode === "db"){ if (!await dbWrite(() => col("accounts").doc(id).delete())) return false; }
+  else { accountsDb = accountsDb.filter(a => a.id !== id); lsWrite(); }
+  if (curAcct === id) setAcct("main"); else render();
+  return true;
+}
+async function saveMarket(sym, m){
+  const clean = {spot:m.spot, iv:m.iv, updatedAt:Date.now(), source:"manual", symbol:sym};
+  if (mode === "db") return dbWrite(() => col("market").doc(docId(sym)).set(clean));
+  market[sym] = clean; lsWrite(); render(); return true;
+}
+function toastErr(e){
+  const code = e && e.code;
+  const msg = code === "invalid_argument" ? "You can view this page but can't save to it. Ask the owner for edit access." :
+              code === "quota_exceeded" ? "The tracker is full. Delete old trades to add more." :
+              "Couldn't save. Check your connection and try again.";
+  $("#alert").innerHTML = `<div class="alert" role="alert"><span>${esc(msg)}</span></div>`;
+}
+
+function subscribeTo(uid){
+  unsubs.forEach(u => u()); unsubs = [];
+  viewUid = uid; trades = []; accountsDb = []; market = {}; loaded = false;
+  curAcct = "main";
+  if (uid === me) try { curAcct = localStorage.getItem("spread-ledger-acct") || "main"; } catch {}
+  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; render(); }, () => { loaded = true; render(); }));
+  unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); render(); }, () => {}));
+  unsubs.push(col("market").onSnapshot(snap => { market = {}; snap.docs.forEach(d => { const v = d.data(); market[v.symbol || d.id] = v; }); render(); }, () => {}));
+  render();
+}
+
+/* member leaves: erase everything under members/<me>, then the member record itself */
+let leftTracker = false;
+async function deleteMembership(){
+  if (mode !== "db" || isOwnerView || viewUid !== me) return false;
+  try {
+    for (const name of ["trades","accounts","market"]){
+      const snap = await col(name, me).get();
+      for (const d of snap.docs) await col(name, me).doc(d.id).delete();
+    }
+    await DB.doc(`members/${me}`).delete();
+  } catch(e){ toastErr(e); return false; }
+  unsubs.forEach(u => u()); unsubs = []; trades = []; accountsDb = []; market = {};
+  leftTracker = true;
+  if (window.__afterLeave) { try { await window.__afterLeave(); } catch {} }
+  return true;
+}
+
+/* first visit: add this person to the member list the owner sees */
+async function registerMember(){
+  try {
+    const ref = DB.doc(`members/${me}`), snap = await ref.get();
+    if (!snap.exists) await ref.set({joinedAt: Date.now(), ...(USER && USER.memberInfo ? USER.memberInfo() : {})});
+  } catch(e){ if (e && e.code === "invalid_argument") canWrite = false; }
+}
+/* owner only: move trades saved before members existed into the owner's own area */
+async function migrateLegacy(){
+  for (const name of ["accounts","market","trades"]){
+    try {
+      const snap = await DB.collection(name).get();
+      for (const d of snap.docs){ await col(name, me).doc(d.id).set(d.data()); await DB.collection(name).doc(d.id).delete(); }
+    } catch {}
+  }
+}
+
+async function boot(){
+  render();
+  try { DB = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch { DB = null; }
+  try { USER = window.claude && window.claude.use ? await window.claude.use("user") : null; } catch { USER = null; }
+  if (DB && USER){ try { me = await USER.id(); isOwnerView = !!(await USER.isOwner()); } catch { me = null; } }
+  if (DB && me){
+    mode = "db"; viewUid = me;
+    await registerMember();
+    if (isOwnerView) await migrateLegacy();
+    subscribeTo(me);
+  } else {
+    mode = "local"; trades = lsRead(LS_KEY); accountsDb = lsRead(LS_ACCT);
+    try { market = JSON.parse(localStorage.getItem(LS_MKT) || "{}"); if (Array.isArray(market)) market = {}; } catch {}
+    loaded = true;
+  }
+  render();
+}
+
+/* ---------- owner: members overview ---------- */
+let page = "mine", members = [], membersLoading = false, viewingName = "";
+async function loadMembers(){
+  if (!DB || !isOwnerView) return;
+  membersLoading = true; render();
+  try {
+    const snap = await DB.collection("members").get();
+    const out = [];
+    for (const d of snap.docs){
+      const uid = d.id;
+      const [ts, ac] = await Promise.all([col("trades", uid).get(), col("accounts", uid).get()]);
+      out.push({uid, joinedAt: d.data().joinedAt, info: d.data(), trades: ts.docs.map(x => ({...x.data(), id:x.id})), accounts: ac.docs.map(x => ({...x.data(), id:x.id}))});
+    }
+    let names = {};
+    try { names = await USER.profiles(out.map(m => m.uid)) || {}; } catch {}
+    out.forEach((m,i) => { m.name = (names[m.uid] && names[m.uid].name) || m.info.name || (m.uid === me ? "You" : `Member ${i+1}`); m.isMe = m.uid === me; });
+    members = out.sort((a,b) => (b.isMe - a.isMe) || (a.joinedAt||0) - (b.joinedAt||0));
+  } catch { members = []; }
+  membersLoading = false; render();
+}
+function renderMembers(){
+  const el = $("#membersBody");
+  if (membersLoading){ el.innerHTML = `<div class="empty">Loading members…</div>`; return; }
+  if (!members.length){ el.innerHTML = `<div class="empty"><b>No members yet</b>People appear here after they open the tracker while signed in.</div>`; return; }
+  el.innerHTML = `<table><thead><tr><th>Member</th><th>Joined</th><th class="r">Accounts</th><th class="r">Trades</th><th class="r">Open</th><th class="r">Win %</th><th class="r">Max DD</th><th>Top strategy</th><th class="r">Net P&amp;L</th></tr></thead><tbody>
+    ${members.map(m => { const S = computeStats(m.trades);
+      return `<tr class="click" data-member="${esc(m.uid)}" tabindex="0">
+        <td><span class="strat">${esc(m.name)}</span>${m.isMe ? ' <span class="pill open">Owner</span>' : ""}${m.info && m.info.email ? `<div class="sub">${esc(m.info.email)}</div>` : ""}</td>
+        <td class="num">${m.joinedAt ? fmtShort(new Date(m.joinedAt).toISOString().slice(0,10)) : "—"}</td>
+        <td class="r num">${accounts(m.accounts).length}</td>
+        <td class="r num">${m.trades.length}</td>
+        <td class="r num">${S.open.length + S.due.length}</td>
+        <td class="r num">${S.winRate == null ? "—" : (S.winRate*100).toFixed(0) + "%"}</td>
+        <td class="r num ${S.dd > 0 ? "loss" : ""}">${S.dd > 0 ? money0(-S.dd) : "—"}</td>
+        <td>${S.strats[0] ? esc(S.strats[0].name) : '<span class="muted">—</span>'}</td>
+        <td class="r num ${pnlClass(S.total)}" style="font-weight:600">${S.closed.length ? money(S.total) : "—"}</td></tr>`; }).join("")}
+  </tbody></table>`;
+}
+function viewMember(uid){
+  const m = members.find(x => x.uid === uid); viewingName = m ? m.name : "";
+  page = "mine"; subscribeTo(uid); window.scrollTo(0,0);
+}
+function backToMine(){ page = "mine"; viewingName = ""; subscribeTo(me); }
+
+/* ---------- chance of profit (lognormal, zero drift, single IV) ---------- */
+function normCdf(x){
+  const t = 1/(1+0.3275911*Math.abs(x)/Math.SQRT2);
+  const y = 1 - (((((1.061405429*t - 1.453152027)*t) + 1.421413741)*t - 0.284496736)*t + 0.254829592)*t*Math.exp(-x*x/2);
+  return x >= 0 ? (1+y)/2 : (1-y)/2;
+}
+function nyOffsetHours(y,m,d){
+  try {
+    const part = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",timeZoneName:"shortOffset"})
+      .formatToParts(new Date(Date.UTC(y,m-1,d,17))).find(p => p.type === "timeZoneName").value; // "GMT-4"
+    const n = parseInt(part.replace("GMT",""),10); return isFinite(n) ? n : -5;
+  } catch { return -5; }
+}
+function yearsToExpiry(iso){
+  const [y,m,d] = iso.split("-").map(Number);
+  const expMs = Date.UTC(y,m-1,d,16 - nyOffsetHours(y,m,d)); // 4:00 pm New York
+  return (expMs - Date.now()) / (365*24*3600*1000);
+}
+function chanceOfProfit(t){
+  const p = t.p, mk = market[p.symbol];
+  if (!mk || !(mk.spot > 0) || !(mk.iv > 0) || !modeled(p) || p.price == null) return null;
+  const T = yearsToExpiry(expiryOf(p)); if (T <= 0) return null;
+  const S0 = mk.spot, sd = (mk.iv/100)*Math.sqrt(T);
+  const cdf = x => x <= 0 ? 0 : !isFinite(x) ? 1 : normCdf((Math.log(x/S0) + sd*sd/2)/sd);
+  const rp = riskProfile(t);
+  const edges = [0, ...rp.be.filter(b => b > 0).sort((a,b)=>a-b), Infinity];
+  let prob = 0;
+  for (let i = 0; i < edges.length-1; i++){
+    const a = edges[i], b = edges[i+1];
+    const mid = edges.length === 2 ? S0 : !isFinite(b) ? a*1.25 : a === 0 ? b*0.8 : (a+b)/2;
+    if (pnlAt(t, structValue(p, mid)) > 0) prob += cdf(b) - cdf(a);
+  }
+  return {prob, S0, iv:mk.iv, days:T*365, updatedAt:mk.updatedAt, source:mk.source};
+}
+const fmtPct = v => v == null ? "—" : (v*100).toFixed(v > 0.995 || v < 0.005 ? 1 : 0) + "%";
+const fmtAgo = ms => { if (!ms) return ""; const m = Math.round((Date.now()-ms)/60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m/60)} h ago` : `${Math.round(m/1440)} d ago`; };
+
+function renderMarket(S){
+  const syms = [...new Set(S.open.map(r => r.t.p.symbol))].sort();
+  $("#mktPanel").hidden = !syms.length;
+  if (!syms.length) return;
+  const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest("#mktRows");
+  if (focused && !readOnly()) return; // don't wipe what the viewer is typing
+  $("#mktRows").innerHTML = syms.map(sym => {
+    const m = market[sym] || {}, id = sym.replace(/[^A-Za-z0-9]/g,"_");
+    return `<div class="mktrow">
+      <span class="sym">${esc(sym)}</span>
+      <label class="field"><span class="label">Price now</span><input type="number" step="0.01" id="ms-${id}" value="${m.spot ?? ""}" ${readOnly()?"readonly":""} placeholder="${sym === "SPX" ? "e.g. 7790.50" : "current price"}"></label>
+      <label class="field"><span class="label">Implied vol %</span><input type="number" step="0.1" id="mi-${id}" value="${m.iv ?? ""}" ${readOnly()?"readonly":""} placeholder="${sym === "SPX" || sym === "SPY" || sym === "XSP" ? "e.g. VIX 15.2" : "e.g. 22"}"></label>
+      <button class="btn small rw" type="button" data-act="saveMkt" data-sym="${esc(sym)}">Update</button>
+      <span class="hint">${m.updatedAt ? `Updated ${fmtAgo(m.updatedAt)}${m.source && m.source !== "manual" ? " · " + esc(m.source) : ""}` : "Enter price and IV to see chance of profit"}</span>
+    </div>`;
+  }).join("");
+}
+
+/* ---------- stats ---------- */
+function computeStats(list = visibleTrades()){
+  const rows = list.filter(t => t.p).map(t => ({t, e:evalTrade(t)}));
+  const closed = rows.filter(r => r.e.pnl != null)
+    .sort((a,b) => (a.e.closeDate||"").localeCompare(b.e.closeDate||"") || (a.t.createdAt||0)-(b.t.createdAt||0));
+  let cum = 0, peak = 0, dd = 0, ddPeakI = 0, ddTroughI = 0, peakI = 0;
+  const curve = [{v:0, date:null}];
+  closed.forEach((r,i) => {
+    cum += r.e.pnl; curve.push({v:cum, date:r.e.closeDate, r});
+    if (cum > peak){ peak = cum; peakI = i+1; }
+    if (peak - cum > dd){ dd = peak - cum; ddPeakI = peakI; ddTroughI = i+1; }
+  });
+  const wins = closed.filter(r => r.e.pnl > 0), losses = closed.filter(r => r.e.pnl < 0);
+  const sum = a => a.reduce((s,r)=>s+r.e.pnl,0);
+  const by = {};
+  closed.forEach(r => { const k = r.e.label; (by[k] ||= {name:k,n:0,w:0,pnl:0}); by[k].n++; by[k].pnl += r.e.pnl; if (r.e.pnl>0) by[k].w++; });
+  const strats = Object.values(by).sort((a,b) => b.pnl - a.pnl);
+  const open = rows.filter(r => r.e.status === "open"), due = rows.filter(r => r.e.status === "due");
+  const openRisk = open.reduce((s,r) => { const rp = riskProfile(r.t); return s + (rp && isFinite(rp.maxL) ? -rp.maxL : 0); }, 0);
+  return {rows, closed, total:cum, wins, losses, winRate: closed.length ? wins.length/closed.length : null,
+    avg: closed.length ? cum/closed.length : null, avgWin: wins.length ? sum(wins)/wins.length : null,
+    avgLoss: losses.length ? sum(losses)/losses.length : null, dd, ddPeakI, ddTroughI, peak, curve, strats, open, due, openRisk};
+}
+
+/* ---------- rendering ---------- */
+let filter = "all";
+try { filter = localStorage.getItem("spread-ledger-filter") || "all"; } catch {}
+
+function render(){
+  if (leftTracker){
+    document.querySelector(".wrap").innerHTML = `<div class="panel empty" style="margin-top:40px"><b>Your membership was deleted</b>All your accounts and trades have been erased. If you open this tracker again, you'll start with a new, empty dashboard.</div>`;
+    return;
+  }
+  setSync();
+  document.body.classList.toggle("ro", readOnly());
+  document.body.classList.toggle("admin", adminOK());
+  renderOwnerBar();
+  $("#dash").hidden = page !== "mine";
+  $("#membersView").hidden = page !== "members";
+  if (page === "members"){ renderMembers(); return; }
+  const S = computeStats();
+  renderAccts(); renderMarket(S); renderKpis(S); renderAlert(S); renderEquity(S); renderStrats(S); renderTabs(S); renderBlotter(S);
+  if (acctSheet && !acctDirty) renderAcctSheet();
+  if (openId) { const t = trades.find(x => x.id === openId); if (t && sheetMode === "view" && !sheetDirty) renderSheet(); else if (!t) closeSheet(); }
+}
+
+function renderOwnerBar(){
+  const el = $("#ownerBar");
+  if (mode !== "db"){
+    el.innerHTML = mode === "local" ? `<div class="alert"><span>Not signed in, so trades are saved in this browser only. Open the tracker link while signed in to claude.ai to get your own saved dashboard.</span></div>` : "";
+    return;
+  }
+  if (!canWrite && viewUid === me){ el.innerHTML = `<div class="alert"><span>You can view this tracker but can't save trades yet. Ask the owner to give you edit access.</span></div>`; return; }
+  let html = "";
+  if (isOwnerView){
+    html += `<div class="ownerbar"><div class="tabs" role="group" aria-label="Owner view">
+      <button type="button" data-page="mine" aria-pressed="${page==="mine" && viewUid===me}">My dashboard</button>
+      <button type="button" data-page="members" aria-pressed="${page==="members"}">Members</button></div>
+      <span class="actions"><span class="hint">${adminMode ? "Edit and Remove are on" : "Owner"}</span><button class="btn small adminbtn" type="button" data-act="toggleAdmin" aria-pressed="${adminMode}">Admin mode: ${adminMode ? "On" : "Off"}</button></span></div>`;
+  }
+  if (viewUid !== me && page === "mine"){
+    html += `<div class="viewing"><span>Viewing <b>${esc(viewingName || "member")}</b>’s dashboard · ${adminOK() ? "admin mode, changes save to their dashboard" : "read-only"}</span>
+      <span class="actions"><button class="btn small" type="button" data-page="members">All members</button><button class="btn small" type="button" data-page="mine">My dashboard</button></span></div>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderAccts(){
+  const list = accounts();
+  if (curAcct !== ALL && !list.some(a => a.id === curAcct)) curAcct = "main";
+  const count = id => trades.filter(t => acctOf(t) === id).length;
+  $("#acctTabs").innerHTML = list.map(a => `<button type="button" data-acct="${esc(a.id)}" aria-pressed="${curAcct===a.id}">${esc(a.name)}${a.kind?`<span class="kind">${esc(a.kind)}</span>`:""}<span class="ct">${count(a.id)}</span></button>`).join("")
+    + (list.length > 1 ? `<button type="button" data-acct="${ALL}" aria-pressed="${curAcct===ALL}">All combined<span class="ct">${trades.length}</span></button>` : "");
+  const sel = $("#addAcct"), keep = sel.value;
+  sel.innerHTML = list.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
+  sel.value = curAcct !== ALL ? curAcct : (list.some(a => a.id === keep) ? keep : list[0].id);
+}
+
+/* account manager sheet */
+let acctSheet = false, acctDirty = false, acctArmed = null, leaveArmed = false;
+function openAcctSheet(){ closeSheet(); acctSheet = true; acctDirty = false; acctArmed = null; renderAcctSheet(); }
+function closeAcctSheet(){ acctSheet = false; $("#sheetRoot").innerHTML = ""; document.body.style.overflow = ""; }
+function renderAcctSheet(){
+  document.body.style.overflow = "hidden";
+  const list = accounts();
+  const count = id => trades.filter(t => acctOf(t) === id).length;
+  $("#sheetRoot").innerHTML = `<div class="overlay" data-act="acctBackdrop"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="acTitle">
+    <div class="sheet-head"><div style="display:grid;gap:4px"><h2 id="acTitle">Accounts</h2><span class="hint">Each account keeps its own trades, P&amp;L, win rate, drawdown and strategy ranking.</span></div>
+      <button class="x" type="button" data-act="acctClose" aria-label="Close">×</button></div>
+    <div>
+      ${list.map(a => `<div class="acctrow" data-row="${esc(a.id)}">
+        <label class="field"><span class="label">Name</span><input type="text" id="an-${esc(a.id)}" value="${esc(a.name)}" maxlength="40"></label>
+        <label class="field"><span class="label">Type / style</span><input type="text" id="ak-${esc(a.id)}" value="${esc(a.kind||"")}" maxlength="40" placeholder="e.g. IRA, Margin, 0DTE"></label>
+        <button class="btn small" type="button" data-act="acctSave" data-id="${esc(a.id)}">Save</button>
+        ${a.id !== "main" && (!readOnly() || adminOK()) ? `<button class="btn small danger ${acctArmed===a.id?"armed":""}" type="button" data-act="acctDel" data-id="${esc(a.id)}">${acctArmed===a.id?`Delete + ${count(a.id)} trade${count(a.id)===1?"":"s"}`:"Delete"}</button>` : `<span></span>`}
+      </div>`).join("")}
+    </div>
+    <div class="exitbox">
+      <span class="label">New account</span>
+      <div class="grid2">
+        <label class="field"><span class="label">Name</span><input type="text" id="anNew" maxlength="40" placeholder="e.g. Roth IRA"></label>
+        <label class="field"><span class="label">Type / style</span><input type="text" id="akNew" maxlength="40" placeholder="e.g. Credit spreads only"></label>
+      </div>
+      <div class="actions"><span class="err" id="acErr"></span><span class="spacer"></span><button class="btn primary small" type="button" data-act="acctAdd">Add account</button></div>
+    </div>
+    ${mode === "db" && !isOwnerView && viewUid === me && canWrite ? `
+    <div class="exitbox" style="border-color:var(--loss)">
+      <span class="label" style="color:var(--loss)">Delete my membership</span>
+      <span class="hint">Permanently erases your dashboard: every account, trade and market input. This can't be undone.</span>
+      <div class="actions"><span class="spacer"></span><button class="btn small danger ${leaveArmed?"armed":""}" type="button" data-act="leave">${leaveArmed?`Yes, delete everything (${trades.length} trade${trades.length===1?"":"s"})`:"Delete my membership"}</button></div>
+    </div>` : ""}
+  </div></div>`;
+  $("#sheetRoot").querySelectorAll("input").forEach(i => i.addEventListener("input", () => acctDirty = true));
+}
+
+function renderKpis(S){
+  const n = S.closed.length;
+  const top = S.strats[0];
+  const most = (() => { const c = {}; S.rows.forEach(r => c[r.e.label] = (c[r.e.label]||0)+1); return Object.entries(c).sort((a,b)=>b[1]-a[1])[0]; })();
+  $("#kpis").innerHTML = `
+    <div class="kpi"><span class="label">Net P&amp;L</span><span class="v ${pnlClass(S.total)}">${n ? money(S.total) : "$0.00"}</span><span class="s">${n} closed · ${S.open.length + S.due.length} open</span></div>
+    <div class="kpi"><span class="label">Win rate</span><span class="v">${S.winRate == null ? "—" : (S.winRate*100).toFixed(1)+"%"}</span><span class="s">${S.wins.length}W · ${S.losses.length}L${n - S.wins.length - S.losses.length ? " · "+(n - S.wins.length - S.losses.length)+" flat" : ""}</span></div>
+    <div class="kpi"><span class="label">Avg per trade</span><span class="v ${pnlClass(S.avg)}">${money(S.avg)}</span><span class="s">win <span class="gain">${money(S.avgWin)}</span> · loss <span class="loss">${money(S.avgLoss)}</span></span></div>
+    <div class="kpi"><span class="label">Max drawdown</span><span class="v ${S.dd > 0 ? "loss" : ""}">${S.dd > 0 ? money(-S.dd) : "$0.00"}</span><span class="s">${S.dd > 0 ? `peak ${money0(S.curve[S.ddPeakI].v)} → ${money0(S.curve[S.ddTroughI].v)}` : "from peak cumulative P&amp;L"}</span></div>
+    <div class="kpi"><span class="label">Top strategy</span>${top
+      ? `<span class="v txt">${esc(top.name)}</span><span class="s"><span class="${pnlClass(top.pnl)}">${money(top.pnl)}</span> · ${top.n} trade${top.n>1?"s":""} · ${Math.round(top.w/top.n*100)}% win</span>`
+      : most ? `<span class="v txt">${esc(most[0])}</span><span class="s">most traded · no closed trades yet</span>` : `<span class="v txt muted">—</span><span class="s">ranked by total P&amp;L</span>`}</div>`;
+}
+
+function renderAlert(S){
+  if ($("#alert").querySelector('[role="alert"]')) return;
+  if (!S.due.length){ $("#alert").innerHTML = ""; return; }
+  const n = S.due.length;
+  $("#alert").innerHTML = `<div class="alert"><span><b>${n} trade${n>1?"s":""} expired</b> and need${n>1?"":"s"} the settlement price to book the P&amp;L.</span><button class="btn small" type="button" data-filter="due">Show ${n>1?"them":"it"}</button></div>`;
+}
+
+function niceTicks(lo, hi, count=5){
+  if (lo === hi){ lo -= 1; hi += 1; }
+  const raw = (hi-lo)/count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1,2,2.5,5,10].map(m=>m*mag).find(s => s >= raw);
+  const a = Math.floor(lo/step)*step, b = Math.ceil(hi/step)*step;
+  const out = []; for (let v=a; v<=b+step/1e6; v+=step) out.push(+v.toFixed(10));
+  return out;
+}
+
+function renderEquity(S){
+  const el = $("#equity"), pts = S.curve;
+  if (pts.length < 2){
+    el.innerHTML = `<div class="empty"><b>No closed trades yet</b>Close a trade or enter an expiration settlement to start the curve.</div>`;
+    $("#eqHint").textContent = ""; return;
+  }
+  $("#eqHint").textContent = `${pts.length-1} closed trade${pts.length>2?"s":""}`;
+  const W = 640, H = 240, ml = 58, mr = 14, mt = 12, mb = 26;
+  const vals = pts.map(p=>p.v); const ticks = niceTicks(Math.min(0,...vals), Math.max(0,...vals), 4);
+  const y0 = ticks[0], y1 = ticks[ticks.length-1];
+  const X = i => ml + (W-ml-mr) * (i/(pts.length-1));
+  const Y = v => mt + (H-mt-mb) * (1 - (v-y0)/(y1-y0));
+  const line = pts.map((p,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y(p.v).toFixed(1)}`).join("");
+  const area = `${line}L${X(pts.length-1).toFixed(1)},${Y(0).toFixed(1)}L${X(0).toFixed(1)},${Y(0).toFixed(1)}Z`;
+  const last = pts[pts.length-1];
+  const ddBand = S.dd > 0 ? `<rect x="${X(S.ddPeakI)}" y="${mt}" width="${Math.max(2,X(S.ddTroughI)-X(S.ddPeakI))}" height="${H-mt-mb}" fill="var(--loss)" opacity=".08"/>
+     <line x1="${X(S.ddPeakI)}" x2="${X(S.ddTroughI)}" y1="${Y(pts[S.ddPeakI].v)}" y2="${Y(pts[S.ddPeakI].v)}" stroke="var(--loss)" stroke-dasharray="3 3"/>
+     <line x1="${X(S.ddTroughI)}" x2="${X(S.ddTroughI)}" y1="${Y(pts[S.ddPeakI].v)}" y2="${Y(pts[S.ddTroughI].v)}" stroke="var(--loss)" stroke-dasharray="3 3"/>` : "";
+  const xlab = [];
+  const step = Math.max(1, Math.ceil((pts.length-1)/6));
+  for (let i=1;i<pts.length;i+=step) xlab.push(i);
+  if (xlab[xlab.length-1] !== pts.length-1) xlab.push(pts.length-1);
+  const col = last.v >= 0 ? "var(--gain)" : "var(--loss)";
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative P&L, ending at ${money(last.v)}">
+    ${ticks.map(v=>`<line x1="${ml}" x2="${W-mr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" ${v===0?'stroke-width="1.4"':''}/><text x="${ml-8}" y="${Y(v)+4}" text-anchor="end">${money0(v)}</text>`).join("")}
+    ${ddBand}
+    <path d="${area}" fill="${col}" opacity=".12"/>
+    <path d="${line}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>
+    ${xlab.map(i=>`<text x="${X(i)}" y="${H-8}" text-anchor="${i===pts.length-1?"end":"middle"}">#${i}</text>`).join("")}
+    <circle cx="${X(pts.length-1)}" cy="${Y(last.v)}" r="4.5" fill="${col}" stroke="var(--surface)" stroke-width="2"/>
+  </svg>`;
+}
+
+function renderStrats(S){
+  const el = $("#strats");
+  if (!S.strats.length){ el.innerHTML = `<div class="empty" style="padding:20px 8px">Win rate and P&amp;L per strategy appear once trades close.</div>`; return; }
+  const maxAbs = Math.max(...S.strats.map(s=>Math.abs(s.pnl)), 1);
+  el.innerHTML = `<table><thead><tr><th>Strategy</th><th class="r">Trades</th><th class="r">Win %</th><th class="r">P&amp;L</th></tr></thead><tbody>
+    ${S.strats.map((s,i)=>`<tr><td><span class="strat">${esc(s.name)}</span>${i===0?' <span class="pill win" style="margin-left:4px">Top</span>':''}
+      <div style="height:4px;margin-top:6px;background:var(--sunk);border-radius:2px"><div style="height:4px;border-radius:2px;width:${(Math.abs(s.pnl)/maxAbs*100).toFixed(1)}%;background:${s.pnl>=0?"var(--gain)":"var(--loss)"}"></div></div></td>
+      <td class="r num">${s.n}</td><td class="r num">${Math.round(s.w/s.n*100)}%</td><td class="r num ${pnlClass(s.pnl)}">${money(s.pnl)}</td></tr>`).join("")}
+  </tbody></table>`;
+}
+
+function renderTabs(S){
+  const c = {all:S.rows.length, open:S.open.length, due:S.due.length, closed:S.closed.length};
+  const names = {all:"All", open:"Open", due:"Needs settlement", closed:"Closed"};
+  $("#tabs").innerHTML = Object.keys(names).map(k => `<button type="button" data-filter="${k}" aria-pressed="${filter===k}">${names[k]}<span class="ct">${c[k]}</span></button>`).join("");
+}
+
+function statusPill(e){
+  if (e.status === "open") return `<span class="pill open">Open</span>`;
+  if (e.status === "due") return `<span class="pill due">Needs settlement</span>`;
+  const cls = e.pnl > 0.005 ? "win" : e.pnl < -0.005 ? "lossp" : "flat";
+  return `<span class="pill ${cls}">${e.status === "expired" ? "Expired" : "Closed"}</span>`;
+}
+
+function renderBlotter(S){
+  const el = $("#blotter");
+  if (mode === "loading" || !loaded){ el.innerHTML = `<div class="empty">Loading trades…</div>`; return; }
+  let rows = S.rows;
+  if (filter === "open") rows = S.open; else if (filter === "due") rows = S.due; else if (filter === "closed") rows = S.closed;
+  rows = [...rows].sort((a,b) => (b.t.openDate||"").localeCompare(a.t.openDate||"") || (b.t.createdAt||0)-(a.t.createdAt||0));
+  if (!rows.length){
+    el.innerHTML = S.rows.length ? `<div class="empty">Nothing in this view.</div>` : trades.length && curAcct !== ALL ? `<div class="empty"><b>No trades in ${esc(acctName(curAcct))} yet</b>Paste an order above with this account selected.</div>`
+      : `<div class="empty"><b>No trades yet</b>Paste an order in the box above, like <span class="mono">SELL -5 VERTICAL SPX 100 (Weeklys) 1 OCT 26 7800/7820 CALL @.55 LMT</span>, then press Add to tracker.</div>`;
+    return;
+  }
+  el.innerHTML = `<table><thead><tr><th>Opened</th><th>Strategy</th><th class="r">Qty</th><th class="r">Entry</th><th>Expires</th><th class="r">Breakeven</th><th class="r">Chance of profit</th><th>Status</th><th class="r">Exit</th><th class="r">P&amp;L</th><th class="adm"><span class="sr">Actions</span></th></tr></thead><tbody>
+  ${rows.map(({t,e}) => {
+    const cash = openCash(t);
+    return `<tr class="click" data-id="${esc(t.id)}" tabindex="0">
+      <td class="num" style="white-space:nowrap">${fmtShort(t.openDate)}</td>
+      <td><div class="strat">${esc(e.label)}</div><div class="sub">${esc(describe(t.p))}${curAcct===ALL?` · ${esc(acctName(acctOf(t)))}`:""}</div></td>
+      <td class="r num">${t.p.qty}</td>
+      <td class="r num"><div>${t.p.price==null?"—":t.p.price.toFixed(2)}</div><div class="sub">${t.p.price==null?"":(cash>=0?"cr ":"db ")+money0(Math.abs(cash))}</div></td>
+      <td class="num" style="white-space:nowrap">${fmtShort(e.exp)}</td>
+      <td class="r num">${(() => { const rp = riskProfile(t); return rp && rp.be.length ? rp.be.map(b => fmtK(+b.toFixed(2))).join("<br>") : "—"; })()}</td>
+      <td class="r num">${(() => { if (e.status !== "open") return "—"; const c = chanceOfProfit(t); return c ? `<span style="font-weight:600">${fmtPct(c.prob)}</span>` : '<span class="muted" title="Enter price and IV under Market inputs">—</span>'; })()}</td>
+      <td>${statusPill(e)}</td>
+      <td class="r num">${e.exitPrice==null?"—":e.exitPrice.toFixed(2)}</td>
+      <td class="r num ${pnlClass(e.pnl)}" style="font-weight:600">${e.pnl==null?"—":money(e.pnl)}</td>
+      <td class="adm"><div class="rowacts"><button class="btn small" type="button" data-rowact="edit" data-id="${esc(t.id)}" aria-label="Edit trade">Edit</button><button class="btn small danger ${rowArmed===t.id?"armed":""}" type="button" data-rowact="del" data-id="${esc(t.id)}">${rowArmed===t.id?"Confirm":"Remove"}</button></div></td></tr>`;
+  }).join("")}</tbody></table>`;
+}
+
+/* ---------- paste desk ---------- */
+let parsed = [];
+function updatePreview(){
+  const lines = $("#paste").value.split(/\n/).map(s=>s.trim()).filter(Boolean);
+  parsed = lines.map(line => { try { return {line, p:parseOrder(line)}; } catch(e){ return {line, err:e.message}; } });
+  $("#previews").innerHTML = parsed.map(r => {
+    if (r.err) return `<div class="pv bad"><span class="tag loss">Can't read</span><span class="meta">${esc(r.line)}<br><span style="color:var(--loss);font-family:var(--body)">${esc(r.err)}</span></span><span></span></div>`;
+    const t = {p:r.p, fees:0}, rp = riskProfile(t), cash = r.p.price==null ? null : openCash(t);
+    const dupe = trades.some(x => x.raw && x.raw.trim().toUpperCase() === r.line.toUpperCase());
+    return `<div class="pv"><span class="tag">${esc(stratLabel(r.p))}</span>
+      <span class="meta">${r.p.action} ${r.p.qty} × ${esc(describe(r.p))}${r.p.price==null?' · <span class="loss">no fill price — set it after adding</span>':""}${dupe?' · <span style="color:var(--warn)">already in tracker</span>':""}</span>
+      <span class="num" style="text-align:right;font-size:13px">${cash==null?"":`<span class="${cash>=0?"gain":"loss"}">${cash>=0?"Credit":"Debit"} ${money0(Math.abs(cash))}</span>`}${rp?`<br><span class="muted">max loss ${isFinite(rp.maxL)?money0(rp.maxL):"unlimited"}</span>`:""}</span></div>`;
+  }).join("");
+  const good = parsed.filter(r=>r.p).length;
+  $("#addBtn").disabled = !good;
+  $("#addBtn").textContent = good > 1 ? `Add ${good} trades` : "Add to tracker";
+}
+async function addParsed(){
+  const good = parsed.filter(r=>r.p);
+  if (!good.length) return;
+  const date = $("#addDate").value || todayISO();
+  const fees = num($("#addFees").value) || 0;
+  const notes = $("#addNotes").value.trim();
+  $("#addBtn").disabled = true;
+  for (const [i,r] of good.entries()){
+    const t = {id:uid(), raw:r.line, p:r.p, openDate:date, fees, notes, account:$("#addAcct").value || "main", exit:null, createdAt:Date.now()+i};
+    if (!await saveTrade(t)) { $("#addBtn").disabled = false; return; }
+  }
+  $("#paste").value = parsed.filter(r=>r.err).map(r=>r.line).join("\n");
+  $("#addNotes").value = ""; $("#addFees").value = "";
+  updatePreview();
+}
+
+/* ---------- trade sheet ---------- */
+let rowArmed = null;
+let openId = null, sheetMode = "view", sheetDirty = false, exitTab = null, delArmed = false;
+function openSheet(id){ acctSheet = false; openId = id; sheetMode = "view"; sheetDirty = false; exitTab = null; delArmed = false; renderSheet(); }
+function closeSheet(){ openId = null; $("#sheetRoot").innerHTML = ""; document.body.style.overflow = ""; }
+
+function payoffSVG(t, settle){
+  const p = t.p, rp = riskProfile(t); if (!rp) return "";
+  const ks = rp.ks, lo0 = ks[0], hi0 = ks[ks.length-1];
+  const padX = Math.max((hi0-lo0)*1.2, hi0*0.006, 1);
+  let lo = Math.max(0, lo0 - padX), hi = hi0 + padX;
+  if (settle != null){ lo = Math.min(lo, settle - padX*0.3); hi = Math.max(hi, settle + padX*0.3); lo = Math.max(0, lo); }
+  const xs = [lo, ...ks.filter(k=>k>lo&&k<hi), hi];
+  const ys = xs.map(S => pnlAt(t, structValue(p,S)));
+  const W = 720, H = 280, ml = 64, mr = 16, mt = 14, mb = 30;
+  const ticks = niceTicks(Math.min(0,...ys), Math.max(0,...ys), 5);
+  const y0 = ticks[0], y1 = ticks[ticks.length-1];
+  const X = S => ml + (W-ml-mr)*(S-lo)/(hi-lo);
+  const Y = v => mt + (H-mt-mb)*(1-(v-y0)/(y1-y0));
+  const line = xs.map((S,i)=>`${i?"L":"M"}${X(S).toFixed(1)},${Y(ys[i]).toFixed(1)}`).join("");
+  const area = `${line}L${X(hi)},${Y(0)}L${X(lo)},${Y(0)}Z`;
+  const zy = Y(0);
+  const xt = niceTicks(lo, hi, 6).filter(v => v >= lo && v <= hi);
+  const set = settle != null ? (() => { const v = pnlAt(t, structValue(p,settle)); return `<line x1="${X(settle)}" x2="${X(settle)}" y1="${mt}" y2="${H-mb}" stroke="var(--accent)" stroke-width="1.5"/><circle cx="${X(settle)}" cy="${Y(v)}" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/><text x="${X(settle)+6}" y="${mt+10}" style="fill:var(--accent)">settle ${fmtK(settle)}</text>`; })() : "";
+  return {html:`<svg viewBox="0 0 ${W} ${H}" id="payoff" role="img" aria-label="Payoff at expiration">
+    <defs><clipPath id="cpUp"><rect x="0" y="0" width="${W}" height="${zy}"/></clipPath><clipPath id="cpDn"><rect x="0" y="${zy}" width="${W}" height="${H}"/></clipPath></defs>
+    ${ticks.map(v=>`<line x1="${ml}" x2="${W-mr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" ${v===0?'stroke-width="1.4"':''}/><text x="${ml-8}" y="${Y(v)+4}" text-anchor="end">${money0(v)}</text>`).join("")}
+    ${xt.map(v=>`<text x="${X(v)}" y="${H-10}" text-anchor="middle">${fmtK(v)}</text>`).join("")}
+    ${ks.map(k=>`<line x1="${X(k)}" x2="${X(k)}" y1="${mt}" y2="${H-mb}" stroke="var(--line)" stroke-dasharray="2 4"/>`).join("")}
+    <path d="${area}" fill="var(--gain)" opacity=".16" clip-path="url(#cpUp)"/>
+    <path d="${area}" fill="var(--loss)" opacity=".16" clip-path="url(#cpDn)"/>
+    <path d="${line}" fill="none" stroke="var(--gain)" stroke-width="2.2" clip-path="url(#cpUp)"/>
+    <path d="${line}" fill="none" stroke="var(--loss)" stroke-width="2.2" clip-path="url(#cpDn)"/>
+    ${rp.be.filter(b=>b>lo&&b<hi).map(b=>`<circle cx="${X(b)}" cy="${zy}" r="3.5" fill="var(--ink)"/>`).join("")}
+    ${set}
+    <line id="hx" x1="0" x2="0" y1="${mt}" y2="${H-mb}" stroke="var(--muted)" visibility="hidden"/>
+    <circle id="hd" r="4" fill="var(--ink)" visibility="hidden"/>
+    <rect x="${ml}" y="${mt}" width="${W-ml-mr}" height="${H-mt-mb}" fill="transparent" id="hov"/>
+  </svg>`, X, Y, lo, hi, W, ml, mr};
+}
+
+function exitPreviewPnl(t, tab, price, settle){
+  if (tab === "close") return price == null ? null : pnlAt(t, price);
+  if (settle == null) return null;
+  return pnlAt(t, structValue(t.p, settle));
+}
+
+function renderSheet(){
+  const t = trades.find(x => x.id === openId); if (!t) return closeSheet();
+  document.body.style.overflow = "hidden";
+  if (sheetMode === "edit" && !adminOK()) sheetMode = "view";
+  if (sheetMode === "edit") return renderEdit(t);
+  const p = t.p, e = evalTrade(t), rp = riskProfile(t), cash = p.price==null?null:openCash(t);
+  const canSettle = modeled(p);
+  if (!exitTab) exitTab = (e.status === "due" && canSettle) ? "expire" : "close";
+  const legs = p.legs ? p.legs.map(l => ({...l, eff:l.q*dirOf(p)*p.qty})) : null;
+  const os = optionStratUrl(p);
+  const chart = payoffSVG(t, t.exit && t.exit.kind==="expired" ? t.exit.settle : null);
+  const exitBlock = t.exit ? `
+    <div class="exitbox">
+      <div class="card-head"><span class="label">Exit</span>${statusPill(e)}</div>
+      <div class="grid2">
+        <div><div class="label">${t.exit.kind==="expired"?"Settlement":"Closed at"}</div><div class="num" style="font-size:17px;font-weight:600">${t.exit.kind==="expired"?fmtK(t.exit.settle)+` <span class="muted" style="font-size:13px">(value ${t.exit.price.toFixed(2)})</span>`:t.exit.price.toFixed(2)}</div></div>
+        <div><div class="label">Date</div><div class="num" style="font-size:17px">${fmtDate(e.closeDate)}</div></div>
+        <div><div class="label">Realized P&amp;L</div><div class="num ${pnlClass(e.pnl)}" style="font-size:17px;font-weight:700">${money(e.pnl)}</div></div>
+      </div>
+      <div class="actions ex"><button class="btn small" type="button" data-act="reopen">Reopen trade</button></div>
+    </div>` : `
+    <div class="exitbox ex">
+      <div class="card-head"><span class="label">Record exit</span>
+        <div class="tabs" role="group" aria-label="Exit type">
+          <button type="button" data-tab="close" aria-pressed="${exitTab==="close"}">Closed early</button>
+          <button type="button" data-tab="expire" aria-pressed="${exitTab==="expire"}" ${canSettle?"":"disabled title=\"Multi-expiry trades must be closed at a price\""}>Held to expiration</button>
+        </div></div>
+      ${exitTab==="close" ? `
+        <div class="grid2">
+          <label class="field"><span class="label">Close price (per spread)</span><input type="number" step="0.01" id="exPrice" placeholder="${p.action==="SELL"?"debit paid to close, e.g. 0.10":"credit received, e.g. 1.20"}"></label>
+          <label class="field"><span class="label">Close date</span><input type="date" id="exDate" value="${todayISO() < e.exp ? todayISO() : e.exp}"></label>
+        </div>` : `
+        <div class="grid2">
+          <label class="field"><span class="label">${esc(p.symbol)} settlement price</span><input type="number" step="0.01" id="exSettle" placeholder="e.g. 7792.40"></label>
+          <div class="field"><span class="label">Expiration</span><div class="num" style="padding:7px 0">${fmtDate(e.exp)}</div></div>
+        </div>
+        <div class="hint">Look up the official settlement (SPX weeklies settle on the 4:00 pm ET close). The tracker values every leg at intrinsic and books the result.</div>`}
+      <div class="actions"><span id="exPreview" class="num"></span><span class="spacer"></span><button class="btn primary small" type="button" data-act="saveExit">Save exit</button></div>
+      <div class="err" id="exErr"></div>
+    </div>`;
+
+  $("#sheetRoot").innerHTML = `<div class="overlay" data-act="backdrop"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shTitle">
+    <div class="sheet-head"><div style="display:grid;gap:4px;min-width:0"><span class="label">${esc(acctName(acctOf(t)))} · ${fmtDate(t.openDate)} · ${p.action} ${p.qty}</span><h2 id="shTitle">${esc(e.label)}</h2><span class="sub" style="white-space:normal">${esc(describe(p))}</span></div>
+      <button class="x" type="button" data-act="close" aria-label="Close">×</button></div>
+    <div class="raw">${esc(t.raw)}</div>
+    <div class="facts">
+      <div><span class="label">${cash==null?"Entry":cash>=0?"Credit":"Debit"}</span><span class="v">${cash==null?"—":money0(Math.abs(cash))}</span><span class="hint">${p.price==null?"set a fill price":p.price.toFixed(2)+" × "+p.qty+" × "+p.mult}</span></div>
+      <div><span class="label">Max profit</span><span class="v gain">${rp?(isFinite(rp.maxP)?money(rp.maxP):"Unlimited"):"—"}</span></div>
+      <div><span class="label">Max loss</span><span class="v loss">${rp?(isFinite(rp.maxL)?money(rp.maxL):"Unlimited"):"—"}</span></div>
+      <div><span class="label">Breakeven</span><span class="v">${rp&&rp.be.length?rp.be.map(b=>fmtK(+b.toFixed(2))).join(" / "):"—"}</span></div>
+      <div><span class="label">Expires</span><span class="v">${fmtShort(e.exp)}</span></div>
+      ${e.status === "open" ? (() => { const c = chanceOfProfit(t); return `<div><span class="label">Chance of profit</span><span class="v">${c ? fmtPct(c.prob) : "—"}</span><span class="hint">${c ? `${esc(p.symbol)} ${c.S0} · IV ${c.iv}% · ${c.days < 1 ? (c.days*24).toFixed(1)+" h" : c.days.toFixed(1)+" d"} left` : "add price + IV under Market inputs"}</span></div>`; })() : ""}
+    </div>
+    ${chart ? `<div><div class="card-head" style="margin-bottom:6px"><span class="label">P&amp;L at expiration</span><span class="hint">${(t.fees||0)?`includes ${money0(t.fees)} fees · `:""}hover to read</span></div><div class="chartwrap">${chart.html}<div class="readout" id="readout" hidden></div></div></div>`
+      : `<div class="hint">${p.price==null?"Add a fill price to see the payoff graph.":"This structure spans more than one expiration, so its payoff can't be drawn from intrinsic value. OptionStrat models it with live prices."}</div>`}
+    ${legs ? `<div class="scroll"><table><thead><tr><th>Leg</th><th class="r">Qty</th><th>Type</th><th class="r">Strike</th><th>Expiration</th></tr></thead><tbody>
+      ${legs.map(l=>`<tr><td><span class="pill ${l.eff>0?"open":"lossp"}">${l.eff>0?"Long":"Short"}</span></td><td class="r num">${l.eff>0?"+":"−"}${Math.abs(l.eff)}</td><td>${l.t==="C"?"Call":"Put"}</td><td class="r num">${fmtK(l.k)}</td><td class="num">${fmtShort(l.exp)}</td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="hint">Leg breakdown isn't available for ${esc(titleCase(p.strategy))} orders. Record the exit at a price.</div>`}
+    ${t.notes ? `<div><span class="label">Notes</span><div>${esc(t.notes)}</div></div>` : ""}
+    ${exitBlock}
+    <div class="actions">
+      ${os ? `<a class="btn" href="${esc(os)}" target="_blank" rel="noopener">Open in OptionStrat ↗</a>` : ""}
+      <button class="btn adm" type="button" data-act="edit">Edit</button>
+      <span class="spacer"></span>
+      <button class="btn danger adm ${delArmed?"armed":""}" type="button" data-act="delete">${delArmed?"Confirm delete":"Delete"}</button>
+    </div>
+  </div></div>`;
+  wireSheet(t, chart);
+}
+
+function wireSheet(t, chart){
+  const prev = () => {
+    const el = $("#exPreview"); if (!el) return;
+    const price = num($("#exPrice")?.value), settle = num($("#exSettle")?.value);
+    const v = exitPreviewPnl(t, exitTab, price, settle);
+    el.innerHTML = v == null ? "" : `P&amp;L <span class="${pnlClass(v)}" style="font-weight:700">${money(v)}</span>`;
+    sheetDirty = (price != null || settle != null);
+  };
+  $("#exPrice")?.addEventListener("input", prev);
+  $("#exSettle")?.addEventListener("input", prev);
+  const hov = $("#hov");
+  if (hov && chart){
+    const svg = $("#payoff"), ro = $("#readout"), hx = $("#hx"), hd = $("#hd");
+    const move = ev => {
+      const r = svg.getBoundingClientRect();
+      const x = (ev.clientX - r.left) * (chart.W / r.width);
+      const S = chart.lo + (x - chart.ml) / (chart.W - chart.ml - chart.mr) * (chart.hi - chart.lo);
+      if (S < chart.lo || S > chart.hi) return;
+      const v = pnlAt(t, structValue(t.p, S));
+      hx.setAttribute("x1", x); hx.setAttribute("x2", x); hx.setAttribute("visibility","visible");
+      hd.setAttribute("cx", x); hd.setAttribute("cy", chart.Y(v)); hd.setAttribute("visibility","visible");
+      ro.hidden = false; ro.innerHTML = `${esc(t.p.symbol)} ${S.toFixed(2)} → <span class="${pnlClass(v)}">${money(v)}</span>`;
+    };
+    hov.addEventListener("pointermove", move);
+    hov.addEventListener("pointerdown", move);
+    hov.addEventListener("pointerleave", () => { hx.setAttribute("visibility","hidden"); hd.setAttribute("visibility","hidden"); ro.hidden = true; });
+  }
+}
+
+function renderEdit(t){
+  const p = t.p, ex = t.exit;
+  $("#sheetRoot").innerHTML = `<div class="overlay" data-act="backdrop"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="edTitle">
+    <div class="sheet-head"><h2 id="edTitle">Edit trade</h2><button class="x" type="button" data-act="close" aria-label="Close">×</button></div>
+    <label class="field"><span class="label">Order</span><textarea id="edRaw" spellcheck="false">${esc(t.raw)}</textarea></label>
+    <div class="hint" id="edParse"></div>
+    <div class="grid2">
+      <label class="field"><span class="label">Fill price</span><input type="number" step="0.01" id="edPrice" value="${p.price ?? ""}"></label>
+      <label class="field"><span class="label">Contracts</span><input type="number" step="1" min="1" id="edQty" value="${p.qty}"></label>
+      <label class="field"><span class="label">Opened</span><input type="date" id="edDate" value="${esc(t.openDate||"")}"></label>
+      <label class="field"><span class="label">Fees ($)</span><input type="number" step="0.01" min="0" id="edFees" value="${t.fees||""}"></label>
+    </div>
+    <div class="grid2">
+      <label class="field"><span class="label">Account</span><select id="edAcct">${accounts().map(a=>`<option value="${esc(a.id)}" ${a.id===acctOf(t)?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+      <label class="field"><span class="label">Notes</span><input type="text" id="edNotes" value="${esc(t.notes||"")}"></label>
+    </div>
+    <div class="exitbox">
+      <span class="label">Exit</span>
+      <div class="grid2">
+        <label class="field"><span class="label">Status</span><select id="edExitKind">
+          <option value="" ${!ex?"selected":""}>Open (no exit)</option>
+          <option value="closed" ${ex&&ex.kind==="closed"?"selected":""}>Closed at price</option>
+          <option value="expired" ${ex&&ex.kind==="expired"?"selected":""}>Expired at settlement</option></select></label>
+        <label class="field"><span class="label">Close price</span><input type="number" step="0.01" id="edExitPrice" value="${ex&&ex.kind==="closed"?ex.price:""}"></label>
+        <label class="field"><span class="label">Settlement</span><input type="number" step="0.01" id="edSettle" value="${ex&&ex.kind==="expired"?ex.settle:""}"></label>
+        <label class="field"><span class="label">Close date</span><input type="date" id="edExitDate" value="${ex?esc(ex.date||""):""}"></label>
+      </div>
+    </div>
+    <div class="err" id="edErr"></div>
+    <div class="actions"><span class="spacer"></span><button class="btn" type="button" data-act="cancelEdit">Cancel</button><button class="btn primary" type="button" data-act="saveEdit">Save changes</button></div>
+  </div></div>`;
+  const showParse = () => {
+    try { const q = parseOrder($("#edRaw").value); $("#edParse").textContent = q ? `Reads as: ${stratLabel(q)} · ${describe(q)}` : ""; $("#edParse").style.color = ""; return q; }
+    catch(err){ $("#edParse").textContent = err.message; $("#edParse").style.color = "var(--loss)"; return null; }
+  };
+  showParse();
+  let lastRaw = $("#edRaw").value;
+  $("#edRaw").addEventListener("input", () => {
+    const q = showParse();
+    if (q && $("#edRaw").value !== lastRaw){ if (q.price != null) $("#edPrice").value = q.price; $("#edQty").value = q.qty; }
+    lastRaw = $("#edRaw").value;
+  });
+}
+
+async function saveEdit(){
+  const t = trades.find(x => x.id === openId); if (!t) return;
+  let q; try { q = parseOrder($("#edRaw").value); } catch(err){ $("#edErr").textContent = err.message; return; }
+  if (!q){ $("#edErr").textContent = "Enter the order text."; return; }
+  const price = num($("#edPrice").value), qty = parseInt($("#edQty").value,10);
+  if (price == null){ $("#edErr").textContent = "Enter the fill price."; return; }
+  if (!(qty >= 1)){ $("#edErr").textContent = "Contracts must be 1 or more."; return; }
+  q.price = price; q.qty = qty; q.legs = buildLegs(q);
+  const kind = $("#edExitKind").value; let exit = null;
+  const nt = {...t, raw:$("#edRaw").value.trim(), p:q, openDate:$("#edDate").value || t.openDate, fees:num($("#edFees").value)||0, notes:$("#edNotes").value.trim(), account:$("#edAcct").value || acctOf(t)};
+  if (kind === "closed"){
+    const cp = num($("#edExitPrice").value); if (cp == null){ $("#edErr").textContent = "Enter the close price, or set status to Open."; return; }
+    exit = {kind, price:cp, date:$("#edExitDate").value || todayISO()};
+  } else if (kind === "expired"){
+    if (!modeled(q)){ $("#edErr").textContent = "This structure can't be valued from a settlement price. Use Closed at price."; return; }
+    const st = num($("#edSettle").value); if (st == null){ $("#edErr").textContent = "Enter the settlement price."; return; }
+    exit = {kind, settle:st, price:+structValue(q, st).toFixed(4), date:expiryOf(q)};
+  }
+  nt.exit = exit;
+  if (await saveTrade(nt)){ sheetMode = "view"; sheetDirty = false; exitTab = null; renderSheet(); }
+}
+
+async function saveExit(){
+  const t = trades.find(x => x.id === openId); if (!t) return;
+  if (t.p.price == null){ $("#exErr").textContent = "Set the fill price first (Edit)."; return; }
+  let exit;
+  if (exitTab === "close"){
+    const price = num($("#exPrice").value); if (price == null){ $("#exErr").textContent = "Enter the price you closed at."; return; }
+    exit = {kind:"closed", price, date:$("#exDate").value || todayISO()};
+  } else {
+    const st = num($("#exSettle").value); if (st == null){ $("#exErr").textContent = "Enter the settlement price."; return; }
+    exit = {kind:"expired", settle:st, price:+structValue(t.p, st).toFixed(4), date:expiryOf(t.p)};
+  }
+  sheetDirty = false;
+  if (await saveTrade({...t, exit})) renderSheet();
+}
+
+/* OptionStrat deep link: /build/custom/<UNDERLYING>/<-?>.<ROOT><YYMMDD><C|P><strike>x<qty>,... */
+const WEEKLY_ROOT = {SPX:"SPXW", NDX:"NDXP", RUT:"RUTW"};
+function thirdFriday(iso){ const [y,m,d] = iso.split("-").map(Number); const dt = new Date(y,m-1,d); return dt.getDay()===5 && d>=15 && d<=21; }
+function optionStratUrl(p){
+  if (!p.legs || p.symbol.startsWith("/")) return null;
+  const sym = p.symbol.replace(/[^A-Z0-9.]/g,"");
+  const legs = p.legs.map(l => {
+    let root = sym;
+    if (WEEKLY_ROOT[sym] && (/WEEKLY|QUARTERLY|EOM/.test(p.tags) || !thirdFriday(l.exp))) root = WEEKLY_ROOT[sym];
+    const eff = l.q * dirOf(p) * p.qty;
+    return `${eff<0?"-":""}.${root}${l.exp.slice(2).replace(/-/g,"")}${l.t}${fmtK(l.k)}x${Math.abs(eff)}`;
+  });
+  return `https://optionstrat.com/build/custom/${encodeURIComponent(sym)}/${legs.join(",")}`;
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", async ev => {
+  const f = ev.target.closest("[data-filter]");
+  if (f){ filter = f.dataset.filter; try { localStorage.setItem("spread-ledger-filter", filter); } catch {} render(); if (f.closest(".alert")) $("#blotter").scrollIntoView({behavior:"smooth",block:"start"}); return; }
+  const pg = ev.target.closest("[data-page]");
+  if (pg){ closeSheet(); if (pg.dataset.page === "members"){ if (viewUid !== me) subscribeTo(me); viewingName = ""; page = "members"; loadMembers(); } else backToMine(); return; }
+  const mr = ev.target.closest("tr[data-member]");
+  if (mr){ viewMember(mr.dataset.member); return; }
+  const ac = ev.target.closest("[data-acct]");
+  if (ac){ setAcct(ac.dataset.acct); return; }
+  const ra = ev.target.closest("[data-rowact]");
+  if (ra){
+    if (!adminOK()) return;
+    const id = ra.dataset.id;
+    if (ra.dataset.rowact === "edit"){ openSheet(id); sheetMode = "edit"; renderSheet(); setTimeout(() => $("#edPrice")?.focus(), 0); return; }
+    if (rowArmed !== id){ rowArmed = id; render(); setTimeout(() => { if (rowArmed === id){ rowArmed = null; render(); } }, 4000); return; }
+    rowArmed = null; await removeTrade(id); render(); return;
+  }
+  const row = ev.target.closest("tr[data-id]");
+  if (row){ openSheet(row.dataset.id); return; }
+  const tb = ev.target.closest("[data-tab]");
+  if (tb && !tb.disabled){ exitTab = tb.dataset.tab; sheetDirty = false; renderSheet(); return; }
+  const a = ev.target.closest("[data-act]"); if (!a) return;
+  const act = a.dataset.act;
+  if (act === "refreshMembers") return loadMembers();
+  if (act === "toggleAdmin"){ adminMode = !adminMode; try { localStorage.setItem("spread-ledger-admin", adminMode ? "1" : "0"); } catch {} rowArmed = null; render(); return; }
+  if (readOnly() && ["manageAccts","saveMkt"].includes(act)) return;
+  if (!adminOK() && ["edit","delete","saveEdit"].includes(act)) return;
+  if (!canRecordExit() && ["reopen","saveExit"].includes(act)) return;
+  if (act === "manageAccts") return openAcctSheet();
+  if (act === "saveMkt"){
+    const sym = a.dataset.sym, id = sym.replace(/[^A-Za-z0-9]/g,"_");
+    const spot = num($("#ms-"+id).value), iv = num($("#mi-"+id).value);
+    if (!(spot > 0) || !(iv > 0)){ a.textContent = "Need both"; setTimeout(() => a.textContent = "Update", 1500); return; }
+    a.blur(); await saveMarket(sym, {spot, iv}); return;
+  }
+  if (act === "acctBackdrop" && ev.target !== a) return;
+  if (act === "acctClose" || act === "acctBackdrop") return closeAcctSheet();
+  if (act === "acctSave"){
+    const id = a.dataset.id, name = $("#an-"+CSS.escape(id)).value.trim();
+    if (!name){ $("#acErr").textContent = "Give the account a name."; return; }
+    const cur = accounts().find(x => x.id === id);
+    acctDirty = false;
+    if (await saveAccount({...cur, id, name, kind:$("#ak-"+CSS.escape(id)).value.trim()})){ a.textContent = "Saved"; setTimeout(() => { if (acctSheet && !acctDirty) renderAcctSheet(); }, 900); }
+    return;
+  }
+  if (act === "acctAdd"){
+    const name = $("#anNew").value.trim();
+    if (!name){ $("#acErr").textContent = "Give the new account a name."; return; }
+    const id = "a" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    acctDirty = false;
+    if (await saveAccount({id, name, kind:$("#akNew").value.trim(), createdAt:Date.now()})){ curAcct = id; try { localStorage.setItem("spread-ledger-acct", id); } catch {} renderAcctSheet(); render(); }
+    return;
+  }
+  if (act === "leave"){
+    if (!leaveArmed){ leaveArmed = true; renderAcctSheet(); setTimeout(() => { if (leaveArmed){ leaveArmed = false; if (acctSheet) renderAcctSheet(); } }, 6000); return; }
+    leaveArmed = false;
+    if (await deleteMembership()){ closeAcctSheet(); render(); }
+    return;
+  }
+  if (act === "acctDel"){
+    if (readOnly() && !adminOK()) return;
+    const id = a.dataset.id;
+    if (acctArmed !== id){ acctArmed = id; renderAcctSheet(); setTimeout(() => { if (acctArmed === id){ acctArmed = null; if (acctSheet) renderAcctSheet(); } }, 4000); return; }
+    acctArmed = null; await removeAccount(id); if (acctSheet) renderAcctSheet(); return;
+  }
+  if (act === "backdrop" && ev.target !== a) return;
+  if (act === "close" || act === "backdrop") return closeSheet();
+  if (act === "edit"){ sheetMode = "edit"; renderSheet(); return; }
+  if (act === "cancelEdit"){ sheetMode = "view"; renderSheet(); return; }
+  if (act === "saveEdit") return saveEdit();
+  if (act === "saveExit") return saveExit();
+  if (act === "reopen"){ const t = trades.find(x=>x.id===openId); if (t && await saveTrade({...t, exit:null})){ exitTab = null; renderSheet(); } return; }
+  if (act === "delete"){
+    if (!delArmed){ delArmed = true; renderSheet(); setTimeout(() => { if (delArmed && openId){ delArmed = false; if (sheetMode==="view") renderSheet(); } }, 4000); return; }
+    const id = openId; delArmed = false; if (await removeTrade(id)) closeSheet(); return;
+  }
+});
+document.addEventListener("keydown", ev => {
+  if (ev.key === "Escape" && openId) closeSheet();
+  if (ev.key === "Escape" && acctSheet) closeAcctSheet();
+  if (ev.key === "Enter" && ev.target.matches("tr[data-id]")) openSheet(ev.target.dataset.id);
+  if (ev.key === "Enter" && ev.target.matches("tr[data-member]")) viewMember(ev.target.dataset.member);
+});
+$("#paste").addEventListener("input", updatePreview);
+$("#addBtn").addEventListener("click", addParsed);
+$("#sampleBtn").addEventListener("click", () => { $("#paste").value = "SELL -5 VERTICAL SPX 100 (Weeklys) 1 OCT 26 7800/7820 CALL @.55 LMT"; updatePreview(); $("#paste").focus(); });
+$("#addDate").value = todayISO();
+
+if (window.LEDGER_HOSTED) window.startLedger = boot;
+window.__ledger = {chanceOfProfit, yearsToExpiry, parseOrder, optionStratUrl, structValue, riskProfile, stratLabel};
+if (!window.LEDGER_HOSTED) boot();
+})();
+</script>
+
+<script type="module" src="firebase.js"></script>
+</body>
+</html>

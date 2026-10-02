@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Master account: replace with your user ID (shown on the site after you sign up).
+    function isOwner() {
+      return request.auth != null && request.auth.uid == "PASTE_YOUR_USER_ID";
+    }
+    function isSelf(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Each member's private area. Only that member and the owner can read or write it.
+    match /members/{uid} {
+      allow read, write: if isSelf(uid) || isOwner();
+      match /{rest=**} {
+        allow read, write: if isSelf(uid) || isOwner();
+      }
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
