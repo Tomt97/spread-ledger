@@ -339,6 +339,8 @@ body:not(.admin) .adm{display:none!important}
       <label class="field"><span class="label">To</span><input type="date" id="rangeTo"></label>
     </div>
     <span class="hint" id="rangeHint"></span>
+    <span class="spacer" style="flex:1"></span>
+    <button class="btn small" type="button" id="exportBtn" data-act="exportXlsx">Export to Excel</button>
   </section>
 
   <section class="kpis" id="kpis" aria-label="Performance summary"></section>
@@ -1719,6 +1721,173 @@ async function runSettle(){
   renderSettleSheet();
 }
 
+/* ---------- Excel report ----------
+   Builds a real .xlsx in the browser (OOXML written by hand, zipped with JSZip) with native,
+   editable Excel charts. Uses the account and timeframe currently shown on the dashboard. */
+function loadZipLib(){
+  if (window.JSZip) return Promise.resolve(window.JSZip);
+  const srcs = ["https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
+                "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"];
+  const tryLoad = i => new Promise((ok, fail) => {
+    if (i >= srcs.length) return fail(new Error("Couldn't load the Excel writer. Check your connection and try again."));
+    const sc = document.createElement("script"); sc.src = srcs[i];
+    sc.onload = () => window.JSZip ? ok(window.JSZip) : tryLoad(i + 1).then(ok, fail);
+    sc.onerror = () => tryLoad(i + 1).then(ok, fail);
+    document.head.appendChild(sc); });
+  return tryLoad(0);
+}
+const X = {
+  esc: v => String(v ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ""),
+  col: n => { let s = ""; n++; while (n){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; },
+  serial: iso => { const [y,m,d] = iso.split("-").map(Number); return (Date.UTC(y, m-1, d) - Date.UTC(1899, 11, 30)) / 86400000; },
+};
+// styles: 0 default, 1 header, 2 money, 3 date, 4 percent, 5 number, 6 title, 7 bold, 8 money bold, 9 subtle, 10 integer
+const XS = {hdr: 1, money: 2, date: 3, pct: 4, num: 5, title: 6, bold: 7, moneyB: 8, note: 9, int: 10};
+function xCell(r, c, v, s){
+  const ref = X.col(c) + (r + 1);
+  if (v == null || v === "" || (typeof v === "number" && !isFinite(v))) return s ? `<c r="${ref}" s="${s}"/>` : "";
+  if (typeof v === "number") return `<c r="${ref}"${s ? ` s="${s}"` : ""}><v>${+v.toFixed(10)}</v></c>`;
+  if (v && v.date) return `<c r="${ref}" s="${XS.date}"><v>${X.serial(v.date)}</v></c>`;
+  return `<c r="${ref}" t="inlineStr"${s ? ` s="${s}"` : ""}><is><t xml:space="preserve">${X.esc(v)}</t></is></c>`;
+}
+/* rows: array of arrays of {v, s} or raw values; opts: widths, freeze, filter, drawing */
+function xSheet(rows, opts = {}){
+  const cols = (opts.widths || []).map((w, i) => `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join("");
+  const body = rows.map((row, r) => `<row r="${r+1}">${row.map((cell, c) => { const o = cell && typeof cell === "object" && !cell.date ? cell : {v: cell}; return xCell(r, c, o.v, o.s); }).join("")}</row>`).join("");
+  const pane = opts.freeze ? `<pane ySplit="${opts.freeze}" topLeftCell="A${opts.freeze + 1}" activePane="bottomLeft" state="frozen"/>` : "";
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"${opts.noGrid ? ' showGridLines="0"' : ""}>${pane}</sheetView></sheetViews>${cols ? `<cols>${cols}</cols>` : ""}<sheetData>${body}</sheetData>${opts.filter ? `<autoFilter ref="${opts.filter}"/>` : ""}<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>${opts.drawing ? '<drawing r:id="rId1"/>' : ""}</worksheet>`;
+}
+const XC = {gain: "167A46", loss: "BF3226", line: "2747C7", grid: "D9D9D9"};
+function xChartXml({title, type, cat, series, catFmt, barDir}){
+  const ser = series.map((s, i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/><c:tx><c:v>${X.esc(s.name)}</c:v></c:tx>
+    <c:spPr>${type === "line" ? `<a:ln w="25400" cap="rnd"><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill><a:round/></a:ln>` : `<a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill>`}</c:spPr>
+    ${type === "line" ? '<c:marker><c:symbol val="none"/></c:marker>' : '<c:invertIfNegative val="0"/>'}
+    <c:cat>${cat.num ? `<c:numRef><c:f>${cat.ref}</c:f></c:numRef>` : `<c:strRef><c:f>${cat.ref}</c:f></c:strRef>`}</c:cat>
+    <c:val><c:numRef><c:f>${s.ref}</c:f></c:numRef></c:val>${type === "line" ? '<c:smooth val="0"/>' : ""}</c:ser>`).join("");
+  const plot = type === "line"
+    ? `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${ser}<c:marker val="1"/><c:axId val="5001"/><c:axId val="5002"/></c:lineChart>`
+    : `<c:barChart><c:barDir val="${barDir || "col"}"/><c:grouping val="clustered"/><c:varyColors val="0"/>${ser}<c:gapWidth val="60"/><c:overlap val="100"/><c:axId val="5001"/><c:axId val="5002"/></c:barChart>`;
+  const horiz = barDir === "bar";
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><c:roundedCorners val="0"/>
+<c:chart><c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1200" b="1"/></a:pPr><a:r><a:rPr lang="en-US" sz="1200" b="1"/><a:t>${X.esc(title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>
+<c:plotArea><c:layout/>${plot}
+<c:catAx><c:axId val="5001"/><c:scaling><c:orientation val="${horiz ? "maxMin" : "minMax"}"/></c:scaling><c:delete val="0"/><c:axPos val="${horiz ? "l" : "b"}"/>${catFmt ? `<c:numFmt formatCode="${X.esc(catFmt)}" sourceLinked="0"/>` : ""}<c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="low"/><c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="BFBFBF"/></a:solidFill></a:ln></c:spPr><c:crossAx val="5002"/><c:crosses val="autoZero"/><c:auto val="0"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>
+<c:valAx><c:axId val="5002"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="${horiz ? "b" : "l"}"/><c:majorGridlines><c:spPr><a:ln w="6350"><a:solidFill><a:srgbClr val="${XC.grid}"/></a:solidFill></a:ln></c:spPr></c:majorGridlines><c:numFmt formatCode="&quot;$&quot;#,##0" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:spPr><a:ln><a:noFill/></a:ln></c:spPr><c:crossAx val="5001"/><c:crosses val="${horiz ? "autoZero" : "autoZero"}"/><c:crossBetween val="between"/></c:valAx>
+<c:spPr><a:noFill/></c:spPr></c:plotArea>${series.length > 1 ? '<c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>' : ""}<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart>
+<c:spPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln><a:noFill/></a:ln></c:spPr></c:chartSpace>`;
+}
+function xDrawing(anchors){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">${anchors.map((a, i) => `<xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>${a.c1}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${a.r1}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>${a.c2}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${a.r2}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${i + 2}" name="Chart ${i + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId${i + 1}"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>`).join("")}</xdr:wsDr>`;
+}
+const X_STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="4"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00;[Red]\\-&quot;$&quot;#,##0.00"/><numFmt numFmtId="165" formatCode="yyyy\\-mm\\-dd"/><numFmt numFmtId="166" formatCode="0.0%"/><numFmt numFmtId="167" formatCode="#,##0.00"/></numFmts>
+<fonts count="4"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="16"/><name val="Calibri"/><family val="2"/></font><font><i/><sz val="10"/><color rgb="FF5A6A63"/><name val="Calibri"/><family val="2"/></font></fonts>
+<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE3E8FB"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FF2747C7"/></bottom><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="11"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="167" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+
+/* closing price of the underlying on a date (XSP from SPX ÷ 10) */
+function underlyingClose(sym, iso){
+  if (!iso) return null;
+  sym = String(sym).toUpperCase().replace(/^SPXW$/, "SPX");
+  let book = bookFor(sym), k = 1;
+  if (!book && sym === "XSP"){ book = bookFor("SPX"); k = 0.1; }
+  const row = book && book[iso];
+  return row && row[1] != null ? +(row[1] * k).toFixed(2) : null;
+}
+
+function buildReport(){
+  const list = visibleTrades().filter(t => t.p).filter(inRange);
+  const S = computeStats(list);
+  const b = rangeBounds();
+  const acctLabel = curAcct === ALL ? "All accounts" : acctName(curAcct);
+  const rangeLabel = !b ? "All time" : `${b[0] < "1000" ? "start" : b[0]} to ${b[1] > "9000" ? todayISO() : b[1]}`;
+  const H = v => ({v, s: XS.hdr}), M = v => ({v, s: XS.money}), P = v => ({v, s: XS.pct}), N = v => ({v, s: XS.num}), I = v => ({v, s: XS.int}), D = iso => iso ? {date: iso} : "";
+
+  // Trades
+  const tr = [[ "Opened","Closed","Account","Strategy","Symbol","Expiration","Strikes","Type","Contracts","Entry price","Credit (+) / Debit (−)","Exit price","Exit","Underlying close on open day","Underlying close on exit day","Max profit","Max loss","Fees","P&L","Return on risk","Order"].map(H)];
+  const sorted = [...S.rows].sort((a, c) => (a.t.openDate || "").localeCompare(c.t.openDate || ""));
+  for (const {t, e} of sorted){
+    const rp = riskProfile(t), exitDay = e.closeDate || null;
+    const uExit = t.exit && t.exit.kind === "expired" ? t.exit.settle : underlyingClose(t.p.symbol, exitDay);
+    tr.push([D(t.openDate), D(exitDay), acctName(acctOf(t)), e.label, t.p.symbol, D(e.exp), t.p.strikes.map(fmtK).join("/"), t.p.types.map(x => x === "C" ? "Call" : "Put").join("/"),
+      I(t.p.qty), N(t.p.price), M(t.p.price == null ? null : openCash(t)), N(e.exitPrice), e.status === "expired" ? "Expired" : e.status === "closed" ? "Closed" : e.status === "due" ? "Needs settlement" : "Open",
+      N(underlyingClose(t.p.symbol, t.openDate)), N(uExit), M(rp && isFinite(rp.maxP) ? rp.maxP : null), M(rp && isFinite(rp.maxL) ? rp.maxL : null),
+      M(t.fees || 0), M(e.pnl), P(e.pnl != null && rp && isFinite(rp.maxL) && rp.maxL < 0 ? e.pnl / -rp.maxL : null), t.raw || ""]);
+  }
+  // Strategies
+  const st = [["Strategy","Trades","Wins","Win rate","Net P&L","Average per trade","Gain","Loss"].map(H)];
+  S.strats.forEach(x => st.push([x.name, I(x.n), I(x.w), P(x.w / x.n), M(x.pnl), M(x.pnl / x.n), M(x.pnl > 0 ? x.pnl : null), M(x.pnl < 0 ? x.pnl : null)]));
+  // Equity curve
+  const eq = [["#","Closed","Strategy","P&L","Cumulative P&L"].map(H)];
+  let cum = 0; S.closed.forEach((r, i) => { cum += r.e.pnl; eq.push([I(i + 1), D(r.e.closeDate), r.e.label, M(r.e.pnl), M(cum)]); });
+  // Monthly & daily
+  const byM = {}, byD = {};
+  S.closed.forEach(r => { const m = r.e.closeDate.slice(0, 7), d = r.e.closeDate;
+    (byM[m] ||= {n: 0, w: 0, pnl: 0}); byM[m].n++; byM[m].pnl += r.e.pnl; if (r.e.pnl > 0) byM[m].w++;
+    (byD[d] ||= {n: 0, w: 0, pnl: 0}); byD[d].n++; byD[d].pnl += r.e.pnl; if (r.e.pnl > 0) byD[d].w++; });
+  const mo = [["Month","Trades","Win rate","Net P&L","Gain","Loss"].map(H)];
+  Object.keys(byM).sort().forEach(k => { const v = byM[k]; mo.push([`${MON_N[+k.slice(5) - 1]} ${k.slice(0, 4)}`, I(v.n), P(v.w / v.n), M(v.pnl), M(v.pnl > 0 ? v.pnl : null), M(v.pnl < 0 ? v.pnl : null)]); });
+  const dy = [["Date","Weekday","Trades","Wins","Net P&L"].map(H)];
+  Object.keys(byD).sort().forEach(k => { const v = byD[k], [y, m, d] = k.split("-").map(Number); dy.push([D(k), ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(y, m - 1, d).getDay()], I(v.n), I(v.w), M(v.pnl)]); });
+  // Summary
+  const fees = S.closed.reduce((a, r) => a + (r.t.fees || 0), 0);
+  const top = S.strats[0];
+  const sm = [[{v: "Spread Ledger report", s: XS.title}], [{v: `${acctLabel} · ${rangeLabel} · generated ${todayISO()}`, s: XS.note}], [],
+    [H("Measure"), H("Value")],
+    ["Net P&L (after fees)", {v: S.closed.length ? S.total : 0, s: XS.moneyB}],
+    ["Closed trades", I(S.closed.length)], ["Open trades", I(S.open.length + S.due.length)],
+    ["Win rate", P(S.winRate)], ["Wins / losses", `${S.wins.length} / ${S.losses.length}`],
+    ["Average per trade", M(S.avg)], ["Average win", M(S.avgWin)], ["Average loss", M(S.avgLoss)],
+    ["Max drawdown", M(S.dd ? -S.dd : 0)], ["Fees on closed trades", M(fees)],
+    ["Top strategy", top ? `${top.name} (${money(top.pnl)}, ${top.n} trades)` : "—"],
+    [], [{v: "Charts read from the Equity, Strategies and Monthly sheets. Underlying closes come from the site's daily price list.", s: XS.note}]];
+  return {S, sheets: [
+    {name: "Summary", rows: sm, widths: [26, 34], noGrid: true},
+    {name: "Trades", rows: tr, widths: [11,11,16,26,8,11,20,10,9,10,13,9,15,14,14,12,12,10,12,10,70], freeze: 1, filter: `A1:${X.col(tr[0].length - 1)}${tr.length}`},
+    {name: "Strategies", rows: st, widths: [30,8,8,10,14,16,12,12], freeze: 1},
+    {name: "Equity", rows: eq, widths: [6,11,28,12,15], freeze: 1},
+    {name: "Monthly", rows: mo, widths: [12,8,10,14,12,12], freeze: 1},
+    {name: "Daily", rows: dy, widths: [11,9,8,7,14], freeze: 1},
+  ], counts: {eq: eq.length - 1, st: st.length - 1, mo: mo.length - 1}, acctLabel};
+}
+
+async function exportExcel(btn){
+  const JSZip = await loadZipLib();
+  const rep = buildReport(), zip = new JSZip();
+  const charts = [];
+  if (rep.counts.eq) charts.push({title: "Cumulative P&L", type: "line", cat: {ref: `'Equity'!$B$2:$B$${rep.counts.eq + 1}`, num: true}, catFmt: "mmm d", series: [{name: "Cumulative P&L", ref: `'Equity'!$E$2:$E$${rep.counts.eq + 1}`, color: XC.line}], at: {c1: 3, r1: 1, c2: 13, r2: 19}});
+  if (rep.counts.mo) charts.push({title: "P&L by month", type: "bar", cat: {ref: `'Monthly'!$A$2:$A$${rep.counts.mo + 1}`}, series: [{name: "Gain", ref: `'Monthly'!$E$2:$E$${rep.counts.mo + 1}`, color: XC.gain}, {name: "Loss", ref: `'Monthly'!$F$2:$F$${rep.counts.mo + 1}`, color: XC.loss}], at: {c1: 3, r1: 20, c2: 13, r2: 38}});
+  if (rep.counts.st) charts.push({title: "P&L by strategy", type: "bar", barDir: "bar", cat: {ref: `'Strategies'!$A$2:$A$${rep.counts.st + 1}`}, series: [{name: "Gain", ref: `'Strategies'!$G$2:$G$${rep.counts.st + 1}`, color: XC.gain}, {name: "Loss", ref: `'Strategies'!$H$2:$H$${rep.counts.st + 1}`, color: XC.loss}], at: {c1: 3, r1: 39, c2: 13, r2: 39 + Math.max(14, rep.counts.st * 2 + 4)}});
+  const sheets = rep.sheets;
+  sheets.forEach((sh, i) => zip.file(`xl/worksheets/sheet${i + 1}.xml`, xSheet(sh.rows, {...sh, drawing: i === 0 && charts.length})));
+  if (charts.length){
+    zip.file("xl/worksheets/_rels/sheet1.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>`);
+    zip.file("xl/drawings/drawing1.xml", xDrawing(charts.map(c => c.at)));
+    zip.file("xl/drawings/_rels/drawing1.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${charts.map((c, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${i + 1}.xml"/>`).join("")}</Relationships>`);
+    charts.forEach((c, i) => zip.file(`xl/charts/chart${i + 1}.xml`, xChartXml(c)));
+  }
+  const trades = sheets.findIndex(s => s.name === "Trades");
+  zip.file("xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets>${sheets.map((s, i) => `<sheet name="${X.esc(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="${trades}" hidden="1">'Trades'!$${sheets[trades].filter.replace(":", ":$").replace(/([A-Z]+)(\d+)/g, "$1$$$2")}</definedName></definedNames></workbook>`);
+  zip.file("xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
+  zip.file("xl/styles.xml", X_STYLES);
+  zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
+  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheets.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${charts.length ? `<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>${charts.map((c, i) => `<Override PartName="/xl/charts/chart${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`).join("")}` : ""}</Types>`);
+  const blob = await zip.generateAsync({type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  const b = rangeBounds();
+  const name = `SpreadLedger_${rep.acctLabel.replace(/[^A-Za-z0-9]+/g, "-")}_${range.key === "all" ? "all" : range.key}_${todayISO()}.xlsx`;
+  window.__lastExport = {name, blob};
+  const url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  return name;
+}
+
 /* ---------- thinkorswim CSV import ----------
    Reads the "Account Trade History" section of a thinkorswim Account Statement export,
    rebuilds each order from its legs (side, qty, strike, type, expiration, price), matches
@@ -2095,6 +2264,12 @@ document.addEventListener("click", async ev => {
   const a = ev.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "refreshMembers") return loadMembers();
+  if (act === "exportXlsx"){
+    a.disabled = true; const label = a.textContent; a.textContent = "Building report…";
+    try { await exportExcel(); a.textContent = "Downloaded"; }
+    catch (e){ a.textContent = "Export failed"; $("#alert").innerHTML = `<div class="alert" role="alert"><span>${esc(e.message || String(e))}</span></div>`; }
+    setTimeout(() => { a.textContent = label; a.disabled = false; }, 1800); return;
+  }
   if (act === "clearDay"){ dayFilter = ""; render(); return; }
   if (act === "retryLoad"){ subscribeTo(viewUid); return; }
   if (act === "dismissAuto"){ autoNote = ""; render(); return; }
@@ -2188,7 +2363,7 @@ $("#sampleBtn").addEventListener("click", () => { $("#paste").value = "SELL -5 V
 $("#addDate").value = todayISO();
 
 if (window.LEDGER_HOSTED) window.startLedger = boot;
-window.__ledger = {readPriceRows, settlementFor, settledValue, readTosCsv, planTosImport, classifyLegs, parseCSV, chanceOfProfit, yearsToExpiry, parseOrder, optionStratUrl, structValue, riskProfile, stratLabel};
+window.__ledger = {buildReport, readPriceRows, settlementFor, settledValue, readTosCsv, planTosImport, classifyLegs, parseCSV, chanceOfProfit, yearsToExpiry, parseOrder, optionStratUrl, structValue, riskProfile, stratLabel};
 if (!window.LEDGER_HOSTED) boot();
 })();
 </script>
