@@ -147,6 +147,42 @@ tbody tr:last-child td{border-bottom:none}
 .mktrow .sym{font-family:var(--mono);font-weight:600;padding-bottom:8px}
 @media (max-width:640px){.mktrow{grid-template-columns:60px 1fr 1fr}.mktrow .hint{grid-column:1/-1}}
 .ro .rw{display:none!important}
+.rangebar{display:flex;gap:10px 14px;align-items:flex-end;flex-wrap:wrap}
+.rangecustom{display:flex;gap:8px;flex-wrap:wrap}
+.rangecustom .field{width:160px}
+.calnav{display:flex;align-items:center;gap:6px}
+.calmonth{font-weight:700;min-width:120px;text-align:center}
+.calsum{display:flex;gap:6px 16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.calsum b{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr)) minmax(0,1.15fr);gap:4px}
+.cal .dow{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;padding:2px 4px}
+.cday{position:relative;border-radius:6px;background:var(--sunk);min-height:62px;padding:5px 6px;display:grid;align-content:space-between;gap:2px;min-width:0;border:2px solid transparent;font:inherit;color:inherit;text-align:left}
+.cday.out{background:transparent}
+.cday .d{font-size:11px;color:var(--muted)}
+.cday .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:600;overflow-wrap:anywhere}
+.cday .n{font-size:10.5px;color:var(--muted)}
+.cday.has{cursor:pointer}
+.cday.has:hover,.cday.sel{border-color:var(--ink)}
+.cday.today .d{color:var(--accent);font-weight:700}
+.cday.g1{background:color-mix(in srgb,var(--gain) 14%,var(--surface))}
+.cday.g2{background:color-mix(in srgb,var(--gain) 30%,var(--surface))}
+.cday.g3{background:color-mix(in srgb,var(--gain) 50%,var(--surface))}
+.cday.l1{background:color-mix(in srgb,var(--loss) 14%,var(--surface))}
+.cday.l2{background:color-mix(in srgb,var(--loss) 30%,var(--surface))}
+.cday.l3{background:color-mix(in srgb,var(--loss) 50%,var(--surface))}
+.cweek{border-radius:6px;padding:5px 6px;display:grid;align-content:center;gap:2px;border:1px dashed var(--line);min-width:0}
+.cweek .v{font-family:var(--mono);font-size:12.5px;font-weight:700;overflow-wrap:anywhere}
+.daychip{display:inline-flex;gap:8px;align-items:center;background:var(--accent-soft);color:var(--accent);border-radius:99px;padding:3px 4px 3px 12px;font-size:13px;font-weight:600}
+.daychip button{border:none;background:var(--surface);color:var(--ink);border-radius:99px;width:22px;height:22px;cursor:pointer}
+@media (max-width:700px){
+  .cal{grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+  .cweek{display:none}
+  .cal .dow.wk{display:none}
+  .cday{min-height:48px;padding:4px}
+  .cday .v{font-size:10px;white-space:nowrap;letter-spacing:-.03em}
+  .cday .n{display:none}
+  .rangecustom .field{width:calc(50% - 4px)}
+}
 #alert{display:grid;gap:10px}
 /* ---- phone layout ---- */
 .tcards{display:none}
@@ -296,6 +332,15 @@ body:not(.admin) .adm{display:none!important}
     <div id="mktRows" style="display:grid;gap:8px"></div>
   </section>
 
+  <section class="rangebar" aria-label="Timeframe">
+    <div class="tabs" role="group" aria-label="Timeframe" id="rangeTabs"></div>
+    <div class="rangecustom" id="rangeCustom" hidden>
+      <label class="field"><span class="label">From</span><input type="date" id="rangeFrom"></label>
+      <label class="field"><span class="label">To</span><input type="date" id="rangeTo"></label>
+    </div>
+    <span class="hint" id="rangeHint"></span>
+  </section>
+
   <section class="kpis" id="kpis" aria-label="Performance summary"></section>
 
   <div class="split">
@@ -308,6 +353,14 @@ body:not(.admin) .adm{display:none!important}
       <div class="scroll" id="strats"></div>
     </section>
   </div>
+
+  <section class="panel card" aria-labelledby="calTitle">
+    <div class="card-head">
+      <h2 id="calTitle">P&amp;L calendar</h2>
+      <div class="calnav"><button class="btn small" type="button" data-cal="-1" aria-label="Previous month">‹</button><span id="calMonth" class="calmonth"></span><button class="btn small" type="button" data-cal="1" aria-label="Next month">›</button></div>
+    </div>
+    <div id="calendar"></div>
+  </section>
 
   <section class="panel">
     <div class="blotter-head">
@@ -555,7 +608,7 @@ function accounts(list = accountsDb){
 }
 const acctName = id => (accounts().find(a => a.id === id) || {name:"Unknown account"}).name;
 function setAcct(id){
-  curAcct = id; if (!readOnly()) try { localStorage.setItem("spread-ledger-acct", id); } catch {}
+  curAcct = id; dayFilter = ""; if (!readOnly()) try { localStorage.setItem("spread-ledger-acct", id); } catch {}
   render();
 }
 /* Fee schedule: per-contract fee by underlying, plus a default for every other symbol.
@@ -620,6 +673,9 @@ function toastErr(e){
   $("#alert").innerHTML = `<div class="alert" role="alert"><span>${esc(msg)}</span></div>`;
 }
 
+/* Saving many trades (imports, settling) fires a snapshot per write; redraw once per burst. */
+let renderTimer = null;
+function scheduleRender(){ if (renderTimer) return; renderTimer = setTimeout(() => { renderTimer = null; render(); }, 40); }
 function subscribeTo(uid){
   unsubs.forEach(u => u()); unsubs = [];
   viewUid = uid; trades = []; accountsDb = []; market = {}; loaded = false;
@@ -628,13 +684,13 @@ function subscribeTo(uid){
   loadError = null; clearTimeout(loadTimer);
   loadTimer = setTimeout(() => { if (!loaded){ loadError = {code: "slow"}; render(); } }, 15000);
   const failed = e => { loadError = e || {code: "unavailable"}; loaded = true; render(); };
-  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; loadError = null; clearTimeout(loadTimer); render(); autoSettle(); }, failed));
-  unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); render(); }, failed));
+  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; loadError = null; clearTimeout(loadTimer); scheduleRender(); autoSettle(); }, failed));
+  unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); scheduleRender(); }, failed));
   feeCfg = JSON.parse(JSON.stringify(FEE_DEFAULTS));
   priceBook = {};
   unsubs.push(col("settings").onSnapshot(snap => { const pb = snap.docs.find(x => x.id === "prices"); priceBook = pb ? (pb.data().books || {}) : {}; if (settleSheet) renderSettleSheet(); autoSettle();
     const d = snap.docs.find(x => x.id === "fees"); feeCfg = d ? {rates: {}, other: 0, ...d.data()} : JSON.parse(JSON.stringify(FEE_DEFAULTS)); updatePreview(); render(); }, () => {}));
-  unsubs.push(col("market").onSnapshot(snap => { market = {}; snap.docs.forEach(d => { const v = d.data(); market[v.symbol || d.id] = v; }); render(); }, () => {}));
+  unsubs.push(col("market").onSnapshot(snap => { market = {}; snap.docs.forEach(d => { const v = d.data(); market[v.symbol || d.id] = v; }); scheduleRender(); }, () => {}));
   render();
 }
 
@@ -809,6 +865,96 @@ function renderMarket(S){
   }).join("");
 }
 
+/* ---------- timeframe filter + P&L calendar ----------
+   Closed trades count in the period they were closed (or expired); open trades always show. */
+let range = {key: "all", from: "", to: ""};
+try { range = {...range, ...JSON.parse(localStorage.getItem("spread-ledger-range") || "{}")}; } catch {}
+let calMonth = "", dayFilter = "";
+const isoAdd = (iso, months, days = 0) => { const [y,m,d] = iso.split("-").map(Number); const dt = new Date(y, m - 1 + months, d + days);
+  return `${dt.getFullYear()}-${pad2(dt.getMonth()+1)}-${pad2(dt.getDate())}`; };
+function rangeBounds(){
+  const today = todayISO();
+  switch (range.key){
+    case "1m": return [isoAdd(today, -1, 1), today];
+    case "3m": return [isoAdd(today, -3, 1), today];
+    case "6m": return [isoAdd(today, -6, 1), today];
+    case "1y": return [isoAdd(today, -12, 1), today];
+    case "ytd": return [today.slice(0,4) + "-01-01", today];
+    case "custom": return [range.from || "0000-01-01", range.to || "9999-12-31"];
+    default: return null;
+  }
+}
+function inRange(t){
+  const b = rangeBounds(); if (!b) return true;
+  const e = evalTrade(t);
+  if (e.pnl == null) return true;                       // still open or awaiting settlement
+  return e.closeDate >= b[0] && e.closeDate <= b[1];
+}
+function saveRange(){ try { localStorage.setItem("spread-ledger-range", JSON.stringify(range)); } catch {} }
+function renderRange(){
+  const names = {all: "All", "1m": "1M", "3m": "3M", "6m": "6M", ytd: "YTD", "1y": "1Y", custom: "Custom"};
+  $("#rangeTabs").innerHTML = Object.entries(names).map(([k, n]) => `<button type="button" data-range="${k}" aria-pressed="${range.key === k}">${n}</button>`).join("");
+  $("#rangeCustom").hidden = range.key !== "custom";
+  if (range.key === "custom"){ if (document.activeElement !== $("#rangeFrom")) $("#rangeFrom").value = range.from; if (document.activeElement !== $("#rangeTo")) $("#rangeTo").value = range.to; }
+  const b = rangeBounds();
+  $("#rangeHint").textContent = !b ? "All closed trades" : `Closed ${range.key === "custom" && !range.from ? "through" : "from " + fmtDate(b[0]) + " to"} ${range.key === "custom" && !range.to ? "today" : fmtDate(b[1])} · open trades always shown`;
+}
+const compactMoney = v => { const a = Math.abs(v), s = v < 0 ? "−" : "+";
+  return a >= 10000 ? `${s}$${(a/1000).toFixed(0)}k` : a >= 1000 ? `${s}$${(a/1000).toFixed(1)}k` : `${s}$${Math.round(a)}`; };
+function renderCalendar(){
+  const closed = visibleTrades().filter(t => t.p).map(t => ({t, e: evalTrade(t)})).filter(r => r.e.pnl != null && r.e.closeDate);
+  const byDay = {};
+  closed.forEach(r => { const d = r.e.closeDate; (byDay[d] ||= {pnl: 0, n: 0, w: 0}); byDay[d].pnl += r.e.pnl; byDay[d].n++; if (r.e.pnl > 0) byDay[d].w++; });
+  let month = calMonth;                                   // "" = follow the data (latest closed month in the timeframe)
+  if (!month){
+    const b = rangeBounds(), days = Object.keys(byDay).sort();
+    const end = b && b[1] < "9999" ? b[1] : todayISO();
+    const lastInRange = days.filter(d => d <= end).pop();
+    month = (lastInRange || end).slice(0, 7);
+  }
+  const shown = month;
+  const [y, m] = month.split("-").map(Number);
+  $("#calMonth").textContent = `${MON_N[m-1]} ${y}`; $("#calMonth").dataset.month = shown;
+  const first = new Date(y, m - 1, 1), daysIn = new Date(y, m, 0).getDate();
+  const lead = (first.getDay() + 6) % 7;                 // Monday first
+  const monthDays = Object.entries(byDay).filter(([d]) => d.startsWith(shown));
+  const maxAbs = Math.max(1, ...monthDays.map(([, v]) => Math.abs(v.pnl)));
+  const tone = v => { if (Math.abs(v) < 0.005) return ""; const r = Math.abs(v) / maxAbs, k = r > 0.66 ? 3 : r > 0.33 ? 2 : 1; return (v > 0 ? "g" : "l") + k; };
+  const today = todayISO();
+  const cells = [];
+  ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].forEach(d => cells.push(`<div class="dow">${d}</div>`));
+  cells.push(`<div class="dow wk">Week</div>`);
+  let week = {pnl: 0, n: 0};
+  const total = lead + daysIn, rows = Math.ceil(total / 7);
+  for (let i = 0; i < rows * 7; i++){
+    const day = i - lead + 1;
+    if (day < 1 || day > daysIn) cells.push(`<div class="cday out" aria-hidden="true"></div>`);
+    else {
+      const iso = `${shown}-${pad2(day)}`, v = byDay[iso];
+      if (v){ week.pnl += v.pnl; week.n += v.n; }
+      const label = v ? `${fmtDate(iso)}: ${money(v.pnl)} from ${v.n} trade${v.n === 1 ? "" : "s"} (${v.w} won)` : fmtDate(iso);
+      cells.push(v
+        ? `<button type="button" class="cday has ${tone(v.pnl)} ${iso === today ? "today" : ""} ${iso === dayFilter ? "sel" : ""}" data-day="${iso}" title="${esc(label)}" aria-label="${esc(label)}"><span class="d">${day}</span><span class="v">${compactMoney(v.pnl)}</span><span class="n">${v.n} trade${v.n === 1 ? "" : "s"}</span></button>`
+        : `<div class="cday ${iso === today ? "today" : ""}" title="${esc(label)}"><span class="d">${day}</span></div>`);
+    }
+    if (i % 7 === 6){
+      cells.push(`<div class="cweek" title="Week total"><span class="n" style="font-size:10.5px;color:var(--muted)">Week</span><span class="v ${pnlClass(week.pnl)}">${week.n ? compactMoney(week.pnl) : "—"}</span></div>`);
+      week = {pnl: 0, n: 0};
+    }
+  }
+  const mTotal = monthDays.reduce((a, [, v]) => a + v.pnl, 0), mTrades = monthDays.reduce((a, [, v]) => a + v.n, 0);
+  const gDays = monthDays.filter(([, v]) => v.pnl > 0).length, lDays = monthDays.filter(([, v]) => v.pnl < 0).length;
+  const best = monthDays.slice().sort((a, b) => b[1].pnl - a[1].pnl)[0], worst = monthDays.slice().sort((a, b) => a[1].pnl - b[1].pnl)[0];
+  $("#calendar").innerHTML = `<div class="calsum" style="margin-bottom:8px">
+      <span>Month <b class="${pnlClass(mTotal)}">${mTrades ? money(mTotal) : "—"}</b></span>
+      <span>${mTrades} trade${mTrades === 1 ? "" : "s"} closed</span>
+      <span><b class="gain">${gDays}</b> green · <b class="loss">${lDays}</b> red days</span>
+      ${best && best[1].pnl > 0 ? `<span>Best ${fmtShort(best[0])} <b class="gain">${money(best[1].pnl)}</b></span>` : ""}
+      ${worst && worst[1].pnl < 0 ? `<span>Worst ${fmtShort(worst[0])} <b class="loss">${money(worst[1].pnl)}</b></span>` : ""}
+    </div><div class="cal">${cells.join("")}</div>
+    <div class="hint" style="margin-top:8px">Each day shows P&amp;L from trades closed or expired that day. Tap a day to list those trades.</div>`;
+}
+
 /* ---------- stats ---------- */
 function computeStats(list = visibleTrades()){
   const rows = list.filter(t => t.p).map(t => ({t, e:evalTrade(t)}));
@@ -849,7 +995,8 @@ function render(){
   $("#dash").hidden = page !== "mine";
   $("#membersView").hidden = page !== "members";
   if (page === "members"){ renderMembers(); return; }
-  const S = computeStats();
+  const S = computeStats(visibleTrades().filter(inRange));
+  renderRange(); renderCalendar();
   renderAccts(); renderMarket(S); renderKpis(S); renderAlert(S); renderEquity(S); renderStrats(S); renderTabs(S); renderBlotter(S);
   if (acctSheet && !acctDirty) renderAcctSheet();
   if (openId) { const t = trades.find(x => x.id === openId); if (t && sheetMode === "view" && !sheetDirty) renderSheet(); else if (!t) closeSheet(); }
@@ -1025,6 +1172,7 @@ function renderBlotter(S){
   if (mode === "loading" || !loaded){ el.innerHTML = `<div class="empty">Loading trades…</div>`; return; }
   let rows = S.rows;
   if (filter === "open") rows = S.open; else if (filter === "due") rows = S.due; else if (filter === "closed") rows = S.closed;
+  if (dayFilter) rows = S.rows.filter(r => r.e.closeDate === dayFilter && r.e.pnl != null);
   rows = [...rows].sort((a,b) => (b.t.openDate||"").localeCompare(a.t.openDate||"") || (b.t.createdAt||0)-(a.t.createdAt||0));
   if (!rows.length){
     el.innerHTML = S.rows.length ? `<div class="empty">Nothing in this view.</div>` : trades.length && curAcct !== ALL ? `<div class="empty"><b>No trades in ${esc(acctName(curAcct))} yet</b>Paste an order above with this account selected.</div>`
@@ -1044,7 +1192,8 @@ function renderBlotter(S){
       </div>
       <div class="rowacts adm"><button class="btn small" type="button" data-rowact="edit" data-id="${esc(t.id)}">Edit</button><button class="btn small danger ${rowArmed===t.id?"armed":""}" type="button" data-rowact="del" data-id="${esc(t.id)}">${rowArmed===t.id?"Confirm":"Remove"}</button></div>
     </div>`; }).join("")}</div>`;
-  el.innerHTML = cards + `<table class="ttable"><thead><tr><th>Opened</th><th>Strategy</th><th class="r">Qty</th><th class="r">Entry</th><th>Expires</th><th class="r">Breakeven</th><th class="r">Chance of profit</th><th>Status</th><th class="r">Exit</th><th class="r">Fees</th><th class="r">P&amp;L</th><th class="adm"><span class="sr">Actions</span></th></tr></thead><tbody>
+  const chip = dayFilter ? `<div style="padding:4px 16px 10px"><span class="daychip">Closed ${fmtDate(dayFilter)} · ${rows.length} trade${rows.length === 1 ? "" : "s"} · ${money(rows.reduce((a, r) => a + r.e.pnl, 0))}<button type="button" data-act="clearDay" aria-label="Show all trades">×</button></span></div>` : "";
+  el.innerHTML = chip + cards + `<table class="ttable"><thead><tr><th>Opened</th><th>Strategy</th><th class="r">Qty</th><th class="r">Entry</th><th>Expires</th><th class="r">Breakeven</th><th class="r">Chance of profit</th><th>Status</th><th class="r">Exit</th><th class="r">Fees</th><th class="r">P&amp;L</th><th class="adm"><span class="sr">Actions</span></th></tr></thead><tbody>
   ${rows.map(({t,e}) => {
     const cash = openCash(t);
     return `<tr class="click" data-id="${esc(t.id)}" tabindex="0">
@@ -1924,6 +2073,13 @@ document.addEventListener("click", async ev => {
   if (mr){ viewMember(mr.dataset.member); return; }
   const ac = ev.target.closest("[data-acct]");
   if (ac){ setAcct(ac.dataset.acct); return; }
+  const rg = ev.target.closest("[data-range]");
+  if (rg){ range = {...range, key: rg.dataset.range}; if (range.key === "custom" && !range.from && !range.to){ const b = [isoAdd(todayISO(), -1, 1), todayISO()]; range.from = b[0]; range.to = b[1]; }
+    saveRange(); calMonth = ""; dayFilter = ""; render(); return; }
+  const cm = ev.target.closest("[data-cal]");
+  if (cm){ const [y, m] = ($("#calMonth").dataset.month || todayISO().slice(0,7)).split("-").map(Number); const d = new Date(y, m - 1 + (+cm.dataset.cal), 1); calMonth = `${d.getFullYear()}-${pad2(d.getMonth()+1)}`; render(); return; }
+  const cd = ev.target.closest("[data-day]");
+  if (cd){ dayFilter = dayFilter === cd.dataset.day ? "" : cd.dataset.day; render(); if (dayFilter) $("#blotter").scrollIntoView({behavior: "smooth", block: "start"}); return; }
   const ra = ev.target.closest("[data-rowact]");
   if (ra){
     if (!adminOK()) return;
@@ -1939,6 +2095,7 @@ document.addEventListener("click", async ev => {
   const a = ev.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "refreshMembers") return loadMembers();
+  if (act === "clearDay"){ dayFilter = ""; render(); return; }
   if (act === "retryLoad"){ subscribeTo(viewUid); return; }
   if (act === "dismissAuto"){ autoNote = ""; render(); return; }
   if (act === "feeSettings"){ if (!readOnly() || adminOK()) openFeeSheet(); return; }
@@ -2021,6 +2178,7 @@ document.addEventListener("keydown", ev => {
 $("#paste").addEventListener("input", updatePreview);
 $("#addBtn").addEventListener("click", addParsed);
 $("#importBtn").addEventListener("click", () => $("#tosFile").click());
+["rangeFrom","rangeTo"].forEach(id => $("#" + id).addEventListener("change", ev => { range = {...range, [id === "rangeFrom" ? "from" : "to"]: ev.target.value}; saveRange(); calMonth = ""; dayFilter = ""; render(); }));
 document.addEventListener("change", ev => {
   if (ev.target.id === "impFees" && importParsed && !importBusy){ importFeeSource = ev.target.value; const acct = $("#impAcct")?.value; importPlan = planTosImport(importParsed, trades, {feeSource: importFeeSource}); renderImportSheet(); if (acct && $("#impAcct")) $("#impAcct").value = acct; }
   if (ev.target.id === "priceFile") handlePriceFile(ev.target.files[0]);
