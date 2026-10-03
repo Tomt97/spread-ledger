@@ -2,7 +2,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, signOut, deleteUser, updateProfile,
+  GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, sendPasswordResetEmail, signOut, deleteUser, updateProfile,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot,
@@ -120,7 +120,14 @@ $("#loginForm").addEventListener("submit", async ev => {
   $("#loginGo").disabled = false;
 });
 $("#googleBtn").addEventListener("click", async () => {
-  try { await signInWithPopup(auth, new GoogleAuthProvider()); } catch (e) { alertBox(nice(e)); }
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch (e) {
+    // Installed apps (home-screen mode) often can't open popups; fall back to a full-page redirect.
+    if (["auth/popup-blocked", "auth/operation-not-supported-in-this-environment", "auth/cancelled-popup-request"].includes(e.code)) {
+      try { await signInWithRedirect(auth, new GoogleAuthProvider()); return; } catch (e2) { return alertBox(nice(e2)); }
+    }
+    alertBox(nice(e));
+  }
 });
 $("#forgotBtn").addEventListener("click", async () => {
   const email = $("#email").value.trim();
@@ -128,6 +135,7 @@ $("#forgotBtn").addEventListener("click", async () => {
   try { await sendPasswordResetEmail(auth, email); alertBox(`Password reset email sent to ${email}.`); }
   catch (e) { alertBox(nice(e)); }
 });
+getRedirectResult(auth).catch(e => alertBox(nice(e)));
 $("#signOutBtn").addEventListener("click", async () => { await signOut(auth); });
 
 /* ---- approval gate: new members wait until the owner approves them ---- */

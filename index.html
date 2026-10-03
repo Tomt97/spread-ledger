@@ -6,6 +6,14 @@
 <meta name="description" content="Options trade tracker: P&L, win rate, drawdown, payoff graphs.">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px/1.45 system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Spread Ledger</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2747c7">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
@@ -139,6 +147,37 @@ tbody tr:last-child td{border-bottom:none}
 .mktrow .sym{font-family:var(--mono);font-weight:600;padding-bottom:8px}
 @media (max-width:640px){.mktrow{grid-template-columns:60px 1fr 1fr}.mktrow .hint{grid-column:1/-1}}
 .ro .rw{display:none!important}
+/* ---- phone layout ---- */
+.tcards{display:none}
+.tcard{border-top:1px solid var(--line);padding:12px 16px;display:grid;gap:6px;cursor:pointer}
+.tcard:active{background:var(--sunk)}
+.tc-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.tc-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.tc-grid > div{display:grid;gap:2px;min-width:0}
+.tc-grid .num{font-size:13px;overflow-wrap:anywhere}
+.tcard .rowacts{justify-content:flex-start}
+@media (max-width:700px){
+  .tcards{display:block}
+  .ttable{display:none}
+  header.top h1{font-size:24px}
+  header.top > div:last-child{justify-items:start!important}
+  .wrap{gap:14px;padding-block:12px 40px}
+  .desk-row > .field, .desk-row > .btn{width:100%!important;flex:1 1 100%}
+  .desk-head .actions{width:100%;justify-content:space-between}
+  .acctbar{flex-direction:column;align-items:stretch}
+  .acct-tabs{width:100%}
+  .tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+  .tabs button{flex:none}
+  .blotter-head{flex-direction:column;align-items:stretch}
+  .kpi{padding:12px}
+  .kpi .v{font-size:20px}
+  .overlay{padding:0;align-items:flex-start}
+  .sheet{display:flex;flex-direction:column;border-radius:0;min-height:100%;padding:16px;padding-top:max(16px,env(safe-area-inset-top,0px));padding-bottom:max(16px,env(safe-area-inset-bottom,0px));box-shadow:none}
+  .sheet > *{flex-shrink:0}
+  .sheet .actions .btn{flex:1 1 auto}
+  .tc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (display-mode: standalone){ header.top .muted{display:none} }
 body:not(.admin) .adm{display:none!important}
 .ro:not(.admin) .ex{display:none!important}
 .adminbtn[aria-pressed="true"]{background:var(--loss);border-color:var(--loss);color:#fff}
@@ -205,7 +244,7 @@ body:not(.admin) .adm{display:none!important}
       <h1>Spread<span>/</span>Ledger</h1>
       <div class="muted" style="font-size:13.5px">Paste an order, track it to the close or to expiration.</div>
     </div>
-    <div style="display:grid;gap:6px;justify-items:end"><div class="userbar"><span id="whoami"></span><button class="btn small" id="signOutBtn" type="button">Sign out</button></div><div class="sync" id="sync"><i></i><span>Connecting…</span></div></div>
+    <div style="display:grid;gap:6px;justify-items:end"><div class="userbar"><button class="btn small primary" id="installBtn" type="button" hidden>Install app</button><span id="whoami"></span><button class="btn small" id="signOutBtn" type="button">Sign out</button></div><div class="sync" id="sync"><i></i><span>Connecting…</span></div></div>
   </header>
 
   <div id="ownerBar" style="display:grid;gap:10px"></div>
@@ -281,7 +320,35 @@ body:not(.admin) .adm{display:none!important}
 <div id="sheetRoot"></div>
 
 </div>
-<script>window.LEDGER_HOSTED = true;</script>
+<script>window.LEDGER_HOSTED = true;
+/* Installable app: register the service worker and offer "Install app" */
+(function(){
+  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  let deferred = null;
+  const btn = () => document.getElementById("installBtn");
+  window.addEventListener("beforeinstallprompt", ev => { ev.preventDefault(); deferred = ev; if (btn()) btn().hidden = false; });
+  window.addEventListener("appinstalled", () => { deferred = null; if (btn()) btn().hidden = true; });
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  document.addEventListener("DOMContentLoaded", () => {
+    const b = btn(); if (!b || standalone) return;
+    if (isIOS) b.hidden = false;
+    b.addEventListener("click", async () => {
+      if (deferred){ deferred.prompt(); await deferred.userChoice.catch(() => {}); deferred = null; b.hidden = true; return; }
+      document.getElementById("sheetRoot").innerHTML = `<div class="overlay" id="iosInstall"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="iiTitle" style="max-width:420px">
+        <div class="sheet-head"><h2 id="iiTitle">Add Ledger to your home screen</h2><button class="x" type="button" id="iiClose" aria-label="Close">×</button></div>
+        <ol style="margin:0;padding-left:20px;display:grid;gap:8px">
+          <li>Open this page in <b>Safari</b>.</li>
+          <li>Tap the <b>Share</b> button (the square with an arrow).</li>
+          <li>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+        </ol>
+        <p class="hint" style="margin:0">The app opens full screen and uses the same login and data as the website. Sign in once inside the app.</p>
+      </div></div>`;
+      document.getElementById("iiClose").onclick = () => { document.getElementById("sheetRoot").innerHTML = ""; };
+    });
+  });
+})();
+</script>
 <script>
 (() => {
 "use strict";
@@ -949,7 +1016,20 @@ function renderBlotter(S){
       : `<div class="empty"><b>No trades yet</b>Paste an order in the box above, like <span class="mono">SELL -5 VERTICAL SPX 100 (Weeklys) 1 OCT 26 7800/7820 CALL @.55 LMT</span>, then press Add to tracker.</div>`;
     return;
   }
-  el.innerHTML = `<table><thead><tr><th>Opened</th><th>Strategy</th><th class="r">Qty</th><th class="r">Entry</th><th>Expires</th><th class="r">Breakeven</th><th class="r">Chance of profit</th><th>Status</th><th class="r">Exit</th><th class="r">Fees</th><th class="r">P&amp;L</th><th class="adm"><span class="sr">Actions</span></th></tr></thead><tbody>
+  const cards = `<div class="tcards">${rows.map(({t,e}) => { const cash = openCash(t), rp = riskProfile(t);
+    const cop = e.status === "open" ? chanceOfProfit(t) : null;
+    return `<div class="tcard" data-id="${esc(t.id)}" tabindex="0" role="button">
+      <div class="tc-top"><span class="strat">${esc(e.label)}</span>${statusPill(e)}</div>
+      <div class="sub" style="white-space:normal">${esc(describe(t.p))} · ${t.p.qty} lot${t.p.qty===1?"":"s"}${curAcct===ALL?` · ${esc(acctName(acctOf(t)))}`:""}</div>
+      <div class="tc-grid">
+        <div><span class="label">Entry</span><span class="num">${t.p.price==null?"—":t.p.price.toFixed(2)} <span class="muted">${t.p.price==null?"":(cash>=0?"cr ":"db ")+money0(Math.abs(cash))}</span></span></div>
+        <div><span class="label">Expires</span><span class="num">${fmtShort(e.exp)}</span></div>
+        <div><span class="label">${cop ? "Chance" : "Breakeven"}</span><span class="num">${cop ? fmtPct(cop.prob) : rp && rp.be.length ? rp.be.map(b => fmtK(+b.toFixed(2))).join(" / ") : "—"}</span></div>
+        <div><span class="label">P&amp;L</span><span class="num ${pnlClass(e.pnl)}" style="font-weight:700">${e.pnl==null?"—":money(e.pnl)}</span></div>
+      </div>
+      <div class="rowacts adm"><button class="btn small" type="button" data-rowact="edit" data-id="${esc(t.id)}">Edit</button><button class="btn small danger ${rowArmed===t.id?"armed":""}" type="button" data-rowact="del" data-id="${esc(t.id)}">${rowArmed===t.id?"Confirm":"Remove"}</button></div>
+    </div>`; }).join("")}</div>`;
+  el.innerHTML = cards + `<table class="ttable"><thead><tr><th>Opened</th><th>Strategy</th><th class="r">Qty</th><th class="r">Entry</th><th>Expires</th><th class="r">Breakeven</th><th class="r">Chance of profit</th><th>Status</th><th class="r">Exit</th><th class="r">Fees</th><th class="r">P&amp;L</th><th class="adm"><span class="sr">Actions</span></th></tr></thead><tbody>
   ${rows.map(({t,e}) => {
     const cash = openCash(t);
     return `<tr class="click" data-id="${esc(t.id)}" tabindex="0">
@@ -1101,7 +1181,7 @@ function renderSheet(){
       <div><span class="label">Expires</span><span class="v">${fmtShort(e.exp)}</span></div>
       ${e.status === "open" ? (() => { const c = chanceOfProfit(t); return `<div><span class="label">Chance of profit</span><span class="v">${c ? fmtPct(c.prob) : "—"}</span><span class="hint">${c ? `${esc(p.symbol)} ${c.S0} · IV ${c.iv}% · ${c.days < 1 ? (c.days*24).toFixed(1)+" h" : c.days.toFixed(1)+" d"} left` : "add price + IV under Market inputs"}</span></div>`; })() : ""}
     </div>
-    ${chart ? `<div><div class="card-head" style="margin-bottom:6px"><span class="label">P&amp;L at expiration</span><span class="hint">${(t.fees||0)?`includes ${money0(t.fees)} fees · `:""}hover to read</span></div><div class="chartwrap">${chart.html}<div class="readout" id="readout" hidden></div></div></div>`
+    ${chart ? `<div><div class="card-head" style="margin-bottom:6px"><span class="label">P&amp;L at expiration</span><span class="hint">${(t.fees||0)?`includes ${money0(t.fees)} fees · `:""}tap or hover to read</span></div><div class="chartwrap">${chart.html}<div class="readout" id="readout" hidden></div></div></div>`
       : `<div class="hint">${p.price==null?"Add a fill price to see the payoff graph.":"This structure spans more than one expiration, so its payoff can't be drawn from intrinsic value. OptionStrat models it with live prices."}</div>`}
     ${legs ? `<div class="scroll"><table><thead><tr><th>Leg</th><th class="r">Qty</th><th>Type</th><th class="r">Strike</th><th>Expiration</th></tr></thead><tbody>
       ${legs.map(l=>`<tr><td><span class="pill ${l.eff>0?"open":"lossp"}">${l.eff>0?"Long":"Short"}</span></td><td class="r num">${l.eff>0?"+":"−"}${Math.abs(l.eff)}</td><td>${l.t==="C"?"Call":"Put"}</td><td class="r num">${fmtK(l.k)}</td><td class="num">${fmtShort(l.exp)}</td></tr>`).join("")}
@@ -1810,7 +1890,7 @@ document.addEventListener("click", async ev => {
     if (rowArmed !== id){ rowArmed = id; render(); setTimeout(() => { if (rowArmed === id){ rowArmed = null; render(); } }, 4000); return; }
     rowArmed = null; await removeTrade(id); render(); return;
   }
-  const row = ev.target.closest("tr[data-id]");
+  const row = ev.target.closest("tr[data-id], .tcard[data-id]");
   if (row){ openSheet(row.dataset.id); return; }
   const tb = ev.target.closest("[data-tab]");
   if (tb && !tb.disabled){ exitTab = tb.dataset.tab; sheetDirty = false; renderSheet(); return; }
@@ -1891,7 +1971,7 @@ document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && importPlan) closeImportSheet();
   if (ev.key === "Escape" && feeSheet) closeFeeSheet();
   if (ev.key === "Escape" && settleSheet) closeSettleSheet();
-  if (ev.key === "Enter" && ev.target.matches("tr[data-id]")) openSheet(ev.target.dataset.id);
+  if (ev.key === "Enter" && ev.target.matches("tr[data-id], .tcard[data-id]")) openSheet(ev.target.dataset.id);
   if (ev.key === "Enter" && ev.target.matches("tr[data-member]")) viewMember(ev.target.dataset.member);
 });
 $("#paste").addEventListener("input", updatePreview);

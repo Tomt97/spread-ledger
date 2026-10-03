@@ -38,6 +38,18 @@ Share the site link with your members. When someone signs up they see **Waiting 
 You'll see a **pending** badge on **Members**; click **Approve** (or **Decline**). Their dashboard
 opens for them automatically once approved. **Remove access** takes an approved member back out.
 
+## Phone app
+The site installs as an app (a Progressive Web App). It uses the same login and data as the website,
+so trades entered on the phone show up on the computer and the other way around.
+
+- **iPhone / iPad:** open the site in **Safari** → **Share** → **Add to Home Screen** → **Add**.
+- **Android:** open the site in **Chrome** → tap **Install app** at the top of the page
+  (or the ⋮ menu → **Install app** / **Add to Home screen**).
+
+Sign in once inside the installed app. On phones the trades list shows as cards, and trade details,
+imports and settings open full screen. App updates arrive automatically the next time it opens
+with a connection.
+
 ## Who can do what
 | | Member | Master (you) |
 |---|---|---|
