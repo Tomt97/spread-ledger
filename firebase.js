@@ -5,7 +5,7 @@ import {
   GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, sendPasswordResetEmail, signOut, deleteUser, updateProfile,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot,
+  initializeFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig, OWNER_UID } from "./config.js";
 
@@ -19,7 +19,10 @@ if (!configured) {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const fs = getFirestore(app);
+// Home-screen apps on iPhone often block Firestore's default streaming connection, which leaves the
+// dashboard empty. Installed apps use long polling; browsers auto-detect when they need it.
+const standaloneApp = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const fs = initializeFirestore(app, standaloneApp ? { experimentalForceLongPolling: true } : { experimentalAutoDetectLongPolling: true });
 
 /* ---- error mapping to the codes the tracker understands ---- */
 const mapErr = e => ({
@@ -196,6 +199,6 @@ onAuthStateChanged(auth, u => {
     $("#login").hidden = false; $("#app").hidden = true; $("#gate").hidden = true; return;
   }
   $("#login").hidden = true;
-  $("#whoami").textContent = u.email || u.displayName || "";
+  $("#whoami").textContent = `${u.email || u.displayName || ""} · ID …${u.uid.slice(-6)}`;
   checkAccess(u);
 });

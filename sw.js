@@ -1,7 +1,7 @@
 /* Spread Ledger service worker: makes the site installable and lets it open without a connection.
    App files are network-first so a new version on GitHub shows up on the next open.
    Trade data never goes through here; Firebase handles it directly. */
-const CACHE = "ledger-v1";
+const CACHE = "ledger-v2";
 const SHELL = ["./", "./index.html", "./firebase.js", "./config.js", "./manifest.webmanifest",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png", "./icons/favicon-32.png"];
 

@@ -530,6 +530,7 @@ function evalTrade(t){
    Access rules let only that person and the artifact owner read it. Without the db (e.g. a
    local copy of the file) the page falls back to this browser's storage. */
 let trades = [], mode = "loading", accountsDb = [], market = {}, loaded = false;
+let loadError = null, loadTimer = null;
 let DB = null, USER = null, me = null, isOwnerView = false, viewUid = null, unsubs = [], canWrite = true;
 const LS_KEY = "spread-ledger-trades", LS_ACCT = "spread-ledger-accounts", LS_MKT = "spread-ledger-market";
 const lsRead = k => { try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch { return []; } };
@@ -624,8 +625,11 @@ function subscribeTo(uid){
   viewUid = uid; trades = []; accountsDb = []; market = {}; loaded = false;
   curAcct = "main";
   if (uid === me) try { curAcct = localStorage.getItem("spread-ledger-acct") || "main"; } catch {}
-  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; render(); autoSettle(); }, () => { loaded = true; render(); }));
-  unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); render(); }, () => {}));
+  loadError = null; clearTimeout(loadTimer);
+  loadTimer = setTimeout(() => { if (!loaded){ loadError = {code: "slow"}; render(); } }, 15000);
+  const failed = e => { loadError = e || {code: "unavailable"}; loaded = true; render(); };
+  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; loadError = null; clearTimeout(loadTimer); render(); autoSettle(); }, failed));
+  unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); render(); }, failed));
   feeCfg = JSON.parse(JSON.stringify(FEE_DEFAULTS));
   priceBook = {};
   unsubs.push(col("settings").onSnapshot(snap => { const pb = snap.docs.find(x => x.id === "prices"); priceBook = pb ? (pb.data().books || {}) : {}; if (settleSheet) renderSettleSheet(); autoSettle();
@@ -1010,6 +1014,14 @@ function statusPill(e){
 
 function renderBlotter(S){
   const el = $("#blotter");
+  if (loadError && mode === "db"){
+    const slow = loadError.code === "slow";
+    el.innerHTML = `<div class="empty"><b>${slow ? "Still connecting to your data…" : "Couldn't load your trades"}</b>${slow
+      ? "This is taking longer than usual. Check your connection and retry."
+      : `${loadError.code === "invalid_argument" ? "The database refused access for this sign-in." : `The connection to the database dropped (${esc(loadError.code || "error")}).`} Check your connection and retry; if it keeps happening, sign out and sign in again.`}
+      <div style="margin-top:10px"><button class="btn small primary" type="button" data-act="retryLoad">Retry</button></div></div>`;
+    return;
+  }
   if (mode === "loading" || !loaded){ el.innerHTML = `<div class="empty">Loading trades…</div>`; return; }
   let rows = S.rows;
   if (filter === "open") rows = S.open; else if (filter === "due") rows = S.due; else if (filter === "closed") rows = S.closed;
@@ -1927,6 +1939,7 @@ document.addEventListener("click", async ev => {
   const a = ev.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "refreshMembers") return loadMembers();
+  if (act === "retryLoad"){ subscribeTo(viewUid); return; }
   if (act === "dismissAuto"){ autoNote = ""; render(); return; }
   if (act === "feeSettings"){ if (!readOnly() || adminOK()) openFeeSheet(); return; }
   if (act === "feeBackdrop" && ev.target !== a) return;
