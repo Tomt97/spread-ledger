@@ -147,6 +147,7 @@ tbody tr:last-child td{border-bottom:none}
 .mktrow .sym{font-family:var(--mono);font-weight:600;padding-bottom:8px}
 @media (max-width:640px){.mktrow{grid-template-columns:60px 1fr 1fr}.mktrow .hint{grid-column:1/-1}}
 .ro .rw{display:none!important}
+#alert{display:grid;gap:10px}
 /* ---- phone layout ---- */
 .tcards{display:none}
 .tcard{border-top:1px solid var(--line);padding:12px 16px;display:grid;gap:6px;cursor:pointer}
@@ -623,11 +624,11 @@ function subscribeTo(uid){
   viewUid = uid; trades = []; accountsDb = []; market = {}; loaded = false;
   curAcct = "main";
   if (uid === me) try { curAcct = localStorage.getItem("spread-ledger-acct") || "main"; } catch {}
-  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; render(); }, () => { loaded = true; render(); }));
+  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; render(); autoSettle(); }, () => { loaded = true; render(); }));
   unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); render(); }, () => {}));
   feeCfg = JSON.parse(JSON.stringify(FEE_DEFAULTS));
   priceBook = {};
-  unsubs.push(col("settings").onSnapshot(snap => { const pb = snap.docs.find(x => x.id === "prices"); priceBook = pb ? (pb.data().books || {}) : {}; if (settleSheet) renderSettleSheet();
+  unsubs.push(col("settings").onSnapshot(snap => { const pb = snap.docs.find(x => x.id === "prices"); priceBook = pb ? (pb.data().books || {}) : {}; if (settleSheet) renderSettleSheet(); autoSettle();
     const d = snap.docs.find(x => x.id === "fees"); feeCfg = d ? {rates: {}, other: 0, ...d.data()} : JSON.parse(JSON.stringify(FEE_DEFAULTS)); updatePreview(); render(); }, () => {}));
   unsubs.push(col("market").onSnapshot(snap => { market = {}; snap.docs.forEach(d => { const v = d.data(); market[v.symbol || d.id] = v; }); render(); }, () => {}));
   render();
@@ -669,6 +670,7 @@ async function migrateLegacy(){
 
 async function boot(){
   render();
+  loadSitePrices().then(() => { render(); autoSettle(); });
   try { DB = window.claude && window.claude.use ? await window.claude.use("db") : null; } catch { DB = null; }
   try { USER = window.claude && window.claude.use ? await window.claude.use("user") : null; } catch { USER = null; }
   if (DB && USER){ try { me = await USER.id(); isOwnerView = !!(await USER.isOwner()); } catch { me = null; } }
@@ -934,9 +936,10 @@ function renderKpis(S){
 
 function renderAlert(S){
   if ($("#alert").querySelector('[role="alert"]')) return;
-  if (!S.due.length){ $("#alert").innerHTML = ""; return; }
+  const note = autoNote ? `<div class="alert" style="background:var(--gain-soft);border-color:var(--gain)"><span>${esc(autoNote)}</span><button class="btn small" type="button" data-act="dismissAuto">OK</button></div>` : "";
+  if (!S.due.length){ $("#alert").innerHTML = note; return; }
   const n = S.due.length;
-  $("#alert").innerHTML = `<div class="alert"><span><b>${n} trade${n>1?"s":""} expired</b> and need${n>1?"":"s"} the settlement price to book the P&amp;L.</span><span class="actions"><button class="btn small" type="button" data-filter="due">Show ${n>1?"them":"it"}</button>${canRecordExit() ? '<button class="btn small primary" type="button" data-act="settleOpen">Settle with price file</button>' : ""}</span></div>`;
+  $("#alert").innerHTML = note + `<div class="alert"><span><b>${n} trade${n>1?"s":""} expired</b> and need${n>1?"":"s"} the settlement price to book the P&amp;L.</span><span class="actions"><button class="btn small" type="button" data-filter="due">Show ${n>1?"them":"it"}</button>${canRecordExit() ? '<button class="btn small primary" type="button" data-act="settleOpen">Settle with price file</button>' : ""}</span></div>`;
 }
 
 function niceTicks(lo, hi, count=5){
@@ -1388,7 +1391,34 @@ async function applyFeesToExisting(){
    Finance download saved as .csv or .xlsx. SPX weeklys settle at the 4:00 pm close;
    XSP settles at SPX / 10. Monthly SPX (third Friday, not weekly) settles at the morning
    open, so those use the Open column as an estimate and are marked. */
-let priceBook = {};          // {SPX: {"2026-10-01": [open, close]}}
+let priceBook = {};          // {SPX: {"2026-10-01": [open, close]}} — files this member uploaded
+let sitePrices = {};         // same shape, from prices.json published with the site (refreshed daily by a GitHub Action)
+const bookFor = sym => (sitePrices[sym] || priceBook[sym]) ? {...(sitePrices[sym] || {}), ...(priceBook[sym] || {})} : null;
+async function loadSitePrices(){
+  try {
+    const r = await fetch("prices.json", {cache: "no-cache"});
+    if (!r.ok) return;
+    const j = await r.json(), out = {};
+    for (const [k, v] of Object.entries(j)) if (/^[A-Z]{1,6}$/.test(k) && v && typeof v === "object" && !Array.isArray(v)) out[k] = v;
+    sitePrices = out;
+  } catch {}
+}
+/* Expired trades close themselves at the expiration-day closing price as soon as that price is known.
+   Monthly AM-settled index options (priced from the open) are left for the Settle screen to confirm. */
+let autoBusy = false, autoNote = "";
+async function autoSettle(){
+  if (autoBusy || mode === "loading" || !loaded || readOnly()) return;
+  const ready = settleCandidates().filter(c => c.s && !c.s.am);
+  if (!ready.length) return;
+  autoBusy = true; let n = 0;
+  for (const {t, s} of ready){
+    const exit = {kind: "expired", settle: s.S, price: +settledValue(t, s.S).toFixed(4), date: expiryOf(t.p), source: "auto · " + s.src};
+    if (!await saveTrade({...t, exit})) break;
+    n++;
+  }
+  autoBusy = false;
+  if (n){ autoNote = `Closed ${n} expired trade${n === 1 ? "" : "s"} automatically at the expiration-day close. Open a trade and use Reopen if one needs a different exit.`; render(); }
+}
 let settleSheet = null;      // {sym, msg}
 function loadXlsxLib(){
   if (window.XLSX) return Promise.resolve(window.XLSX);
@@ -1440,8 +1470,8 @@ async function savePriceBook(){
 const isIndexAM = (sym, t) => ["SPX","NDX","RUT"].includes(sym) && !/WEEKLY|QUARTERLY|EOM|PM/i.test(t.p.tags || "") && thirdFriday(expiryOf(t.p));
 function settlementFor(t){
   const sym = String(t.p.symbol).toUpperCase().replace(/^SPXW$/, "SPX"), exp = expiryOf(t.p);
-  let book = priceBook[sym], scale = 1, src = sym;
-  if (!book && sym === "XSP" && priceBook.SPX){ book = priceBook.SPX; scale = 0.1; src = "SPX ÷ 10"; }
+  let book = bookFor(sym), scale = 1, src = sym;
+  if (!book && sym === "XSP" && bookFor("SPX")){ book = bookFor("SPX"); scale = 0.1; src = "SPX ÷ 10"; }
   const row = book && book[exp]; if (!row) return null;
   const am = isIndexAM(sym, t);
   const v = am ? row[0] : row[1]; if (v == null) return null;
@@ -1465,7 +1495,7 @@ function renderSettleSheet(){
   if (!settleSheet) return;
   document.body.style.overflow = "hidden";
   const C = settleCandidates(), ready = C.filter(c => c.s), missing = C.filter(c => !c.s);
-  const books = Object.entries(priceBook).map(([k, v]) => { const ds = Object.keys(v).sort(); return `${k}: ${ds.length} days (${fmtShort(ds[0])} to ${fmtShort(ds[ds.length-1])})`; });
+  const books = [...new Set([...Object.keys(sitePrices), ...Object.keys(priceBook)])].map(k => [k, bookFor(k)]).map(([k, v]) => { const ds = Object.keys(v).sort(); return `${k}: ${ds.length} days (${fmtShort(ds[0])} to ${fmtShort(ds[ds.length-1])})`; });
   const rows = ready.slice(0, 400).map(({t, s}) => { const V = settledValue(t, s.S), pnl = pnlAt(t, V);
     return `<tr><td class="num" style="white-space:nowrap">${fmtShort(expiryOf(t.p))}</td><td><div class="strat">${esc(stratLabel(t.p))}</div><div class="sub">${esc(describe(t.p))} · ${esc(acctName(acctOf(t)))}</div></td>
       <td class="r num">${fmtK(s.S)}${s.am ? ' <span class="pill due">est.</span>' : ""}</td><td class="r num ${pnlClass(pnl)}" style="white-space:nowrap">${money(pnl)}</td></tr>`; }).join("");
@@ -1897,6 +1927,7 @@ document.addEventListener("click", async ev => {
   const a = ev.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "refreshMembers") return loadMembers();
+  if (act === "dismissAuto"){ autoNote = ""; render(); return; }
   if (act === "feeSettings"){ if (!readOnly() || adminOK()) openFeeSheet(); return; }
   if (act === "feeBackdrop" && ev.target !== a) return;
   if (act === "feeClose" || act === "feeBackdrop") return closeFeeSheet();
