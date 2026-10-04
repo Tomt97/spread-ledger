@@ -65,6 +65,19 @@ tbody tr:last-child td{border-bottom:none}
 .l1{background:color-mix(in srgb,var(--loss) 14%,var(--surface))!important}.l2{background:color-mix(in srgb,var(--loss) 30%,var(--surface))!important}.l3{background:color-mix(in srgb,var(--loss) 50%,var(--surface))!important}
 .empty{padding:40px 16px;text-align:center;color:var(--muted)} .empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
 .foot{font-size:12.5px;color:var(--muted);text-align:center}
+.pill{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.pill.open{background:var(--accent-soft);color:var(--accent)} .pill.win{background:var(--gain-soft);color:var(--gain)} .pill.lossp{background:var(--loss-soft);color:var(--loss)} .pill.flat{background:var(--sunk);color:var(--muted)}
+.sub{font-family:var(--mono);font-size:12px;color:var(--muted)}
+tr.trow{cursor:pointer} tr.trow:hover{background:var(--sunk)} tr.trow[aria-expanded="true"]{background:var(--sunk)}
+tr.drow td{background:var(--sunk);padding:12px 14px}
+.det{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:14px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.facts div{background:var(--surface);padding:7px 9px;display:grid;gap:1px}
+.facts .v{font-family:var(--mono);font-weight:600;font-size:13.5px}
+.order{font-family:var(--mono);font-size:12.5px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 9px;overflow-wrap:anywhere}
+.legs{font-size:13px;display:grid;gap:2px}
+.show-sm{display:none}
+@media (max-width:760px){ .det{grid-template-columns:1fr;max-width:calc(100vw - 62px)} .hide-sm{display:none} .show-sm{display:inline} tr.drow td{padding:10px} td,th{padding:8px 6px} }
 @media (max-width:760px){
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .split{grid-template-columns:1fr}
   .kpi .v{font-size:19px} .cday{min-height:44px;padding:4px} .cday .v{font-size:10px;letter-spacing:-.03em}
@@ -83,7 +96,7 @@ tbody tr:last-child td{border-bottom:none}
     <button class="btn" type="button" id="refresh">Refresh</button>
   </header>
   <main id="main" style="display:grid;gap:16px"></main>
-  <p class="foot">Shared from Spread Ledger. This page shows results only and can't change anything.</p>
+  <p class="foot">Shared from Spread Ledger. View only: nothing on this page can be changed, and opening it doesn't affect your own account.</p>
 </div>
 
 <script type="module">
@@ -120,7 +133,8 @@ async function load(){
     data = {...raw,
       daily: (raw.daily || []).map(o => [o.d, o.p, o.n, o.w]),
       strategies: (raw.strategies || []).map(o => [o.s, o.n, o.w, o.p]),
-      trades: raw.trades ? raw.trades.map(o => [o.o || "", o.c, o.s, o.u, o.q, o.p]) : null};
+      trades: raw.trades ? raw.trades.map(o => [o.o || "", o.c, o.s, o.u, o.q, o.p]) : null,
+      full: raw.full || null};
     render();
   } catch (e) { showMsg("Couldn't load this page", "Check your connection and press Refresh."); }
 }
@@ -163,7 +177,7 @@ function render(){
       <div class="scroll"><table><thead><tr><th>Strategy</th><th class="r">Trades</th><th class="r">Win %</th><th class="r">P&amp;L</th></tr></thead><tbody>
       ${(D.strategies || []).map(s => `<tr><td><b>${esc(s[0])}</b></td><td class="r num">${s[1]}</td><td class="r num">${Math.round(s[2] / s[1] * 100)}%</td><td class="r num ${cls(s[3])}">${money(s[3])}</td></tr>`).join("") || '<tr><td colspan="4" class="muted">No closed trades yet.</td></tr>'}
       </tbody></table></div></section>
-    ${D.trades ? tradeList(D.trades.filter(t => !b || (t[1] >= b[0] && t[1] <= b[1]))) : ""}`;
+    ${D.full ? fullList(D.full.filter(t => !t.c || !b || (t.c >= b[0] && t.c <= b[1]))) : D.trades ? tradeList(D.trades.filter(t => !b || (t[1] >= b[0] && t[1] <= b[1]))) : ""}`;
   renderCal(days);
 }
 function lineChart(pts){
@@ -214,6 +228,90 @@ function renderCal(days){
   const mt = inMonth.reduce((a, r) => a + r[1], 0);
   $("#cal").innerHTML = `<div class="muted" style="font-size:13px;margin-bottom:6px">Month <b class="num ${cls(mt)}">${inMonth.length ? money(mt) : "—"}</b> · ${inMonth.reduce((a, r) => a + r[2], 0)} trades</div><div class="cal">${cells.join("")}</div>`;
 }
+/* ---- full trade details (for studying entries and exits) ---- */
+let fullFilter = "all", fullLimit = 100, openRow = -1;
+const fmtK = k => String(Math.round(k * 100) / 100);
+const intrinsic = (t, k, S) => t === "C" ? Math.max(0, S - k) : Math.max(0, k - S);
+const sameExpiry = t => t.l.length && new Set(t.l.map(l => l.x)).size === 1;
+const valueAt = (t, S) => t.l.reduce((a, l) => a + l.q * intrinsic(l.t, l.k, S), 0);
+const pnlAt = (t, S) => (t.a === "BUY" ? 1 : -1) * (valueAt(t, S) - t.e) * t.q * t.m - (t.f || 0);
+function risk(t){
+  if (!sameExpiry(t) || t.e == null) return null;
+  const ks = [...new Set(t.l.map(l => l.k))].sort((a, b) => a - b), big = ks[ks.length - 1] * 10, xs = [0, ...ks, big], ys = xs.map(S => pnlAt(t, S));
+  const callNet = t.l.filter(l => l.t === "C").reduce((a, l) => a + l.q, 0) * (t.a === "BUY" ? 1 : -1);
+  let maxP = Math.max(...ys), maxL = Math.min(...ys); if (callNet > 0) maxP = Infinity; if (callNet < 0) maxL = -Infinity;
+  const be = []; for (let i = 0; i < xs.length - 1; i++){ const [y0, y1] = [ys[i], ys[i + 1]]; if ((y0 < 0 && y1 > 0) || (y0 > 0 && y1 < 0)) be.push(xs[i] + (xs[i + 1] - xs[i]) * (-y0) / (y1 - y0)); }
+  return {ks, maxP, maxL, be};
+}
+function payoff(t, rp){
+  const ks = rp.ks, pad = Math.max((ks[ks.length - 1] - ks[0]) * 1.2, ks[ks.length - 1] * 0.006, 1);
+  let lo = Math.max(0, ks[0] - pad), hi = ks[ks.length - 1] + pad;
+  if (t.sv != null){ lo = Math.max(0, Math.min(lo, t.sv - pad * 0.3)); hi = Math.max(hi, t.sv + pad * 0.3); }
+  const xs = [lo, ...ks.filter(k => k > lo && k < hi), hi], ys = xs.map(S => pnlAt(t, S));
+  const W = 520, H = 200, ml = 58, mr = 10, mt = 10, mb = 24, ymin = Math.min(0, ...ys), ymax = Math.max(0, ...ys), yr = (ymax - ymin) || 1;
+  const X = S => ml + (W - ml - mr) * (S - lo) / (hi - lo), Y = v => mt + (H - mt - mb) * (1 - (v - ymin) / yr);
+  const line = xs.map((S, i) => `${i ? "L" : "M"}${X(S).toFixed(1)},${Y(ys[i]).toFixed(1)}`).join(""), zy = Y(0), uid = Math.random().toString(36).slice(2, 8);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Payoff at expiration">
+    <defs><clipPath id="u${uid}"><rect x="0" y="0" width="${W}" height="${zy}"/></clipPath><clipPath id="d${uid}"><rect x="0" y="${zy}" width="${W}" height="${H}"/></clipPath></defs>
+    <line x1="${ml}" x2="${W - mr}" y1="${zy}" y2="${zy}" stroke="var(--line)" stroke-width="1.5"/>
+    ${Math.abs(Y(ymax) - zy) > 14 ? `<text x="${ml - 6}" y="${Y(ymax) + 9}" text-anchor="end">${compact(ymax)}</text>` : ""}${Math.abs(Y(ymin) - zy) > 14 ? `<text x="${ml - 6}" y="${Y(ymin)}" text-anchor="end">${compact(ymin)}</text>` : ""}<text x="${ml - 6}" y="${zy + 4}" text-anchor="end">$0</text>
+    ${ks.map(k => `<line x1="${X(k)}" x2="${X(k)}" y1="${mt}" y2="${H - mb}" stroke="var(--line)" stroke-dasharray="2 4"/>`).join("")}
+    ${(() => { let last = -1e9; return ks.map(k => { const x = X(k); if (x - last < 38) return ""; last = x; return `<text x="${x}" y="${H - 7}" text-anchor="middle">${fmtK(k)}</text>`; }).join(""); })()}
+    <path d="${line}L${X(hi)},${zy}L${X(lo)},${zy}Z" fill="var(--gain)" opacity=".16" clip-path="url(#u${uid})"/><path d="${line}L${X(hi)},${zy}L${X(lo)},${zy}Z" fill="var(--loss)" opacity=".16" clip-path="url(#d${uid})"/>
+    <path d="${line}" fill="none" stroke="var(--gain)" stroke-width="2" clip-path="url(#u${uid})"/><path d="${line}" fill="none" stroke="var(--loss)" stroke-width="2" clip-path="url(#d${uid})"/>
+    ${t.sv != null ? `<line x1="${X(t.sv)}" x2="${X(t.sv)}" y1="${mt}" y2="${H - mb}" stroke="var(--accent)" stroke-width="1.5"/><text x="${X(t.sv) + 5}" y="${mt + 10}" style="fill:var(--accent)">settled ${fmtK(t.sv)}</text>` : ""}</svg>`;
+}
+function statusPill(t){
+  if (t.st === "open") return '<span class="pill open">Open</span>';
+  if (t.st === "due") return '<span class="pill open">Expired, not settled</span>';
+  const c = t.p > 0.005 ? "win" : t.p < -0.005 ? "lossp" : "flat";
+  return `<span class="pill ${c}">${t.xk === "expired" ? "Expired" : "Closed"}</span>`;
+}
+function fullList(all){
+  const rows = all.filter(t => fullFilter === "all" || (fullFilter === "open" ? t.p == null : t.p != null))
+    .sort((a, b) => (b.c || "9999").localeCompare(a.c || "9999") || b.o.localeCompare(a.o));
+  const shown = rows.slice(0, fullLimit);
+  const cash = t => (t.a === "BUY" ? -1 : 1) * t.e * t.q * t.m;
+  const counts = {all: all.length, open: all.filter(t => t.p == null).length, closed: all.filter(t => t.p != null).length};
+  return `<section class="panel card"><div class="card-head"><h2>Trades</h2>
+      <div class="tabs" role="group" aria-label="Which trades">${[["all","All"],["open","Open"],["closed","Closed"]].map(([k, n]) => `<button type="button" data-ff="${k}" aria-pressed="${fullFilter === k}">${n} <span class="muted">${counts[k]}</span></button>`).join("")}</div></div>
+    <div class="scroll"><table><thead><tr><th class="hide-sm">Opened</th><th>Strategy</th><th class="r hide-sm">Lots</th><th class="r">Entry</th><th class="r hide-sm">Exit</th><th class="r hide-sm">Fees</th><th class="r">P&amp;L</th><th class="hide-sm">Status</th></tr></thead><tbody>
+    ${shown.map((t, i) => { const c = cash(t);
+      return `<tr class="trow" data-row="${i}" tabindex="0" aria-expanded="${openRow === i}">
+        <td class="num hide-sm" style="white-space:nowrap">${t.o ? fmtShort(t.o) : "—"}</td>
+        <td><b>${esc(t.s)}</b><div class="sub">${esc(t.u)} ${t.x ? fmtShort(t.x) : ""} · ${esc(t.k)} ${esc(t.ty)}<span class="show-sm"> · ${t.q} lot${t.q === 1 ? "" : "s"}</span></div></td>
+        <td class="r num hide-sm">${t.q}</td>
+        <td class="r num">${t.e == null ? "—" : t.e.toFixed(2)}<div class="sub hide-sm">${t.e == null ? "" : (c >= 0 ? "cr " : "db ") + money0(Math.abs(c))}</div></td>
+        <td class="r num hide-sm">${t.xp == null ? "—" : t.xp.toFixed(2)}${t.c ? `<div class="sub">${fmtShort(t.c)}</div>` : ""}</td>
+        <td class="r num hide-sm muted">${money0(t.f || 0)}</td>
+        <td class="r num ${cls(t.p ?? 0)}" style="font-weight:700;white-space:nowrap">${t.p == null ? "—" : money(t.p)}</td>
+        <td class="hide-sm">${statusPill(t)}</td></tr>
+        ${openRow === i ? `<tr class="drow"><td colspan="8">${detail(t)}</td></tr>` : ""}`; }).join("") || '<tr><td colspan="8" class="muted">No trades in this view.</td></tr>'}
+    </tbody></table></div>
+    ${rows.length > shown.length ? `<button class="btn" type="button" data-more="1" style="justify-self:center">Show more (${rows.length - shown.length} left)</button>` : ""}
+    <span class="muted" style="font-size:12.5px">Tap a trade to see its order, legs and payoff graph.</span></section>`;
+}
+function detail(t){
+  const rp = risk(t), dir = t.a === "BUY" ? 1 : -1;
+  const legs = t.l.map(l => { const n = l.q * dir * t.q; return `<span>${n > 0 ? "Long" : "Short"} ${Math.abs(n)} × ${fmtK(l.k)} ${l.t === "C" ? "call" : "put"} · ${fmtShort(l.x)}</span>`; }).join("");
+  return `<div class="det"><div style="display:grid;gap:10px;align-content:start">
+      ${t.r ? `<div class="order">${esc(t.r)}</div>` : ""}
+      <div class="facts">
+        <div><span class="label">Opened</span><span class="v">${t.o ? fmtShort(t.o) : "—"}</span></div>
+        <div><span class="label">Entry</span><span class="v">${t.e == null ? "—" : t.e.toFixed(2)}</span></div>
+        <div><span class="label">Exit</span><span class="v">${t.xp == null ? "—" : t.xp.toFixed(2)}</span></div>
+        <div><span class="label">${t.xk === "expired" ? "Settled at" : "Closed"}</span><span class="v">${t.sv != null ? fmtK(t.sv) : t.c ? fmtShort(t.c) : "—"}</span></div>
+        <div><span class="label">Fees</span><span class="v">${money0(t.f || 0)}</span></div>
+        <div><span class="label">Max profit</span><span class="v gain">${rp ? (isFinite(rp.maxP) ? money(rp.maxP) : "Unlimited") : "—"}</span></div>
+        <div><span class="label">Max loss</span><span class="v loss">${rp ? (isFinite(rp.maxL) ? money(rp.maxL) : "Unlimited") : "—"}</span></div>
+        <div><span class="label">Breakeven</span><span class="v">${rp && rp.be.length ? rp.be.map(v => fmtK(v)).join(" / ") : "—"}</span></div>
+        <div><span class="label">P&amp;L</span><span class="v ${cls(t.p ?? 0)}">${t.p == null ? "open" : money(t.p)}</span></div>
+      </div>
+      <div class="legs">${legs}</div>
+      ${t.n ? `<div class="muted" style="font-size:13px">Note: ${esc(t.n)}</div>` : ""}
+    </div>
+    <div>${rp ? `<div class="label" style="margin-bottom:4px">P&amp;L at expiration</div>${payoff(t, rp)}` : '<span class="muted">No payoff graph for this structure.</span>'}</div></div>`;
+}
 function tradeList(rows){
   // rows: [opened, closed, strategy, symbol, contracts, pnl]
   rows = rows.slice().sort((a, c) => c[1].localeCompare(a[1]));
@@ -225,11 +323,18 @@ function tradeList(rows){
 }
 document.addEventListener("click", ev => {
   const r = ev.target.closest("[data-range]");
-  if (r){ range = r.dataset.range; calMonth = ""; try { localStorage.setItem("ledger-view-range", range); } catch {} render(); return; }
+  if (r){ range = r.dataset.range; calMonth = ""; openRow = -1; fullLimit = 100; try { localStorage.setItem("ledger-view-range", range); } catch {} render(); return; }
+  const ff = ev.target.closest("[data-ff]");
+  if (ff){ fullFilter = ff.dataset.ff; fullLimit = 100; openRow = -1; render(); return; }
+  const mr = ev.target.closest("[data-more]");
+  if (mr){ fullLimit += 100; render(); return; }
+  const tr = ev.target.closest("tr.trow");
+  if (tr){ const i = +tr.dataset.row; openRow = openRow === i ? -1 : i; render(); return; }
   const c = ev.target.closest("[data-cal]");
   if (c){ const [y, m] = ($("#calM").dataset.month || todayISO().slice(0, 7)).split("-").map(Number); const d = new Date(y, m - 1 + (+c.dataset.cal), 1); calMonth = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
     const b = bounds(); renderCal((data.daily || []).filter(x => !b || (x[0] >= b[0] && x[0] <= b[1])).sort((a, e) => a[0].localeCompare(e[0]))); }
 });
+document.addEventListener("keydown", ev => { if (ev.key === "Enter" && ev.target.matches("tr.trow")) ev.target.click(); });
 load();
 </script>
 </body>

@@ -1961,8 +1961,24 @@ function buildShareDoc(cfg){
     openCount: rows.length - closed.length,
     daily: Object.values(daily).map(d => ({...d, p: r2(d.p)})),
     strategies: Object.values(strat).map(x => ({...x, p: r2(x.p)})).sort((a, b) => b.p - a.p),
-    trades: cfg.trades ? closed.slice(-2000).map(({t, e}) => ({o: t.openDate || "", c: e.closeDate, s: e.label, u: t.p.symbol, q: t.p.qty, p: r2(e.pnl)})) : null,
+    trades: detailOf(cfg) === "summary" ? closed.slice(-2000).map(({t, e}) => ({o: t.openDate || "", c: e.closeDate, s: e.label, u: t.p.symbol, q: t.p.qty, p: r2(e.pnl)})) : null,
+    detail: detailOf(cfg),
+    full: detailOf(cfg) === "full" ? fullTrades(rows) : null,
   };
+}
+const detailOf = cfg => cfg.detail || (cfg.trades ? "summary" : "none");
+/* full trade details for studying: strikes, legs, entry/exit, fees, order text (newest kept if the list is very long) */
+function fullTrades(rows){
+  const r4 = v => v == null || !isFinite(v) ? null : Math.round(v * 10000) / 10000;
+  let out = rows.slice().sort((a, b) => (a.t.openDate || "").localeCompare(b.t.openDate || "")).map(({t, e}) => ({
+    o: t.openDate || "", c: e.closeDate || "", s: e.label, st: e.status, u: t.p.symbol, a: t.p.action, q: t.p.qty, m: t.p.mult || 100,
+    k: t.p.strikes.map(fmtK).join("/"), ty: t.p.types.join("/"), x: e.exp, e: r4(t.p.price), xp: r4(e.exitPrice),
+    xk: t.exit ? t.exit.kind : "", sv: t.exit && t.exit.settle != null ? t.exit.settle : null, f: Math.round((t.fees || 0) * 100) / 100,
+    p: e.pnl == null ? null : Math.round(e.pnl * 100) / 100, r: t.raw || "", n: t.notes && !/^Imported from thinkorswim/.test(t.notes) ? t.notes.slice(0, 300) : "",
+    l: t.p.legs ? t.p.legs.map(l => ({q: l.q, t: l.t, k: l.k, x: l.exp})) : [],
+  }));
+  while (out.length > 50 && JSON.stringify(out).length > 850000) out = out.slice(Math.ceil(out.length * 0.1));   // stay under the 1 MB record limit
+  return out;
 }
 async function syncShare(force){
   if (!shareCfg || mode !== "db" || viewUid !== me || !loaded || readOnly()) return;
@@ -1976,11 +1992,12 @@ function closeShareSheet(){ shareSheet = null; $("#sheetRoot").innerHTML = ""; d
 function renderShareSheet(){
   if (!shareSheet) return;
   document.body.style.overflow = "hidden";
-  const c = shareCfg || {title: "Trading progress", acct: curAcct, trades: true};
+  const c = shareCfg || {title: "Trading progress", acct: curAcct, detail: "full"};
+  const det = detailOf(c);
   const opts = [...accounts().map(a => [a.id, a.name]), ...(accounts().length > 1 ? [[ALL, "All accounts combined"]] : [])];
   $("#sheetRoot").innerHTML = `<div class="overlay" data-act="shareBackdrop"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shTitle2" style="max-width:600px">
     <div class="sheet-head"><div style="display:grid;gap:4px"><h2 id="shTitle2">Share your progress</h2>
-      <span class="hint">Anyone with the link sees a read-only page: P&amp;L, win rate, drawdown, charts, calendar and strategy results. They can't change anything and never see strikes, prices, orders, fees or your other accounts.</span></div>
+      <span class="hint">Anyone with the link sees a read-only page with your P&amp;L, win rate, drawdown, charts, calendar and strategy results for the account you pick. They can't add, change or delete anything, and opening it never affects their own account. Your other accounts and your email stay private.</span></div>
       <button class="x" type="button" data-act="shareClose" aria-label="Close">×</button></div>
     ${shareCfg ? `<div class="invite" style="margin:0"><div style="display:grid;gap:2px;min-width:0"><span class="label">Your share link</span>
         <span class="mono" id="shareUrl" style="overflow-wrap:anywhere">${esc(shareUrl(shareCfg))}</span>
@@ -1990,15 +2007,17 @@ function renderShareSheet(){
       <label class="field"><span class="label">Page title</span><input type="text" id="shareTitle" maxlength="80" value="${esc(c.title)}"></label>
       <label class="field"><span class="label">Account to show</span><select id="shareAcct">${opts.map(([id, n]) => `<option value="${esc(id)}" ${id === c.acct ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
     </div>
-    <label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="shareTrades" ${c.trades ? "checked" : ""} style="margin-top:4px">
-      <span>Include a list of closed trades<br><span class="hint">Close date, strategy, symbol, lots and P&amp;L only.</span></span></label>
+    <label class="field"><span class="label">Trade details to show</span><select id="shareDetail">
+      <option value="full" ${det === "full" ? "selected" : ""}>Full details: strikes, entry and exit prices, fees, order text, payoff graph (open and closed trades)</option>
+      <option value="summary" ${det === "summary" ? "selected" : ""}>Summary: date, strategy, symbol, lots and P&amp;L of closed trades</option>
+      <option value="none" ${det === "none" ? "selected" : ""}>No trade list, only totals and charts</option></select></label>
     <div class="actions"><span class="err">${esc(shareSheet.msg)}</span><span class="spacer"></span>
       ${shareCfg ? `<button class="btn small danger ${shareSheet.armed ? "armed" : ""}" type="button" data-act="shareStop">${shareSheet.armed ? "Confirm: turn off link" : "Stop sharing"}</button>` : ""}
       <button class="btn primary" type="button" data-act="shareSave">${shareCfg ? "Save changes" : "Create share link"}</button></div>
   </div></div>`;
 }
 async function saveShare(){
-  const cfg = {id: shareCfg ? shareCfg.id : newShareId(), title: $("#shareTitle").value.trim() || "Trading progress", acct: $("#shareAcct").value, trades: $("#shareTrades").checked};
+  const cfg = {id: shareCfg ? shareCfg.id : newShareId(), title: $("#shareTitle").value.trim() || "Trading progress", acct: $("#shareAcct").value, detail: $("#shareDetail").value};
   try {
     await col("settings").doc("share").set(cfg);
     shareCfg = cfg; lastShareJson = "";

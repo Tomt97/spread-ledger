@@ -64,8 +64,10 @@ with a connection.
 **Share progress** (next to Export to Excel) creates a link like
 `https://<you>.github.io/spread-ledger/view.html?s=<random code>` for one account (or all combined).
 Anyone with the link sees P&L, win rate, drawdown, the cumulative and monthly charts, the calendar,
-strategy results and (optionally) a closed-trade list with date, strategy, symbol, lots and P&L.
-They can't change anything and never see strikes, prices, orders, fees or other accounts. The page
+strategy results and, by default, every trade in that account with strikes, entry and exit prices,
+fees, order text and a payoff graph (or choose a summary list, or no list). They can't add or change
+anything, and opening the link while signed in to their own account doesn't affect it. Your email and
+other accounts are never included. The page
 refreshes itself whenever you open the app; **Stop sharing** turns the link off.
 Requires the `shares` rule in `firestore.rules` to be published in Firebase.
 
