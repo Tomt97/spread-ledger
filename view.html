@@ -111,6 +111,7 @@ const pad2 = n => String(n).padStart(2, "0");
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; };
 const isoAdd = (iso, months, days = 0) => { const [y,m,d] = iso.split("-").map(Number); const t = new Date(y, m-1+months, d+days); return `${t.getFullYear()}-${pad2(t.getMonth()+1)}-${pad2(t.getDate())}`; };
 const fmtShort = iso => { const [y,m,d] = iso.split("-").map(Number); return `${MON[m-1]} ${d} ’${String(y).slice(2)}`; };
+const fee$ = v => "$" + (+v || 0).toFixed(2);
 const money = v => v == null || !isFinite(v) ? "—" : (v < 0 ? "−$" : v > 0 ? "+$" : "$") + Math.abs(v).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 const money0 = v => (v < 0 ? "−$" : "$") + Math.abs(Math.round(v)).toLocaleString("en-US");
 const compact = v => { const a = Math.abs(v), s = v < 0 ? "−" : "+"; return a >= 10000 ? `${s}$${(a/1000).toFixed(0)}k` : a >= 1000 ? `${s}$${(a/1000).toFixed(1)}k` : `${s}$${Math.round(a)}`; };
@@ -286,7 +287,7 @@ function fullList(all){
         <td class="r num hide-sm">${t.q}</td>
         <td class="r num">${t.e == null ? "—" : t.e.toFixed(2)}<div class="sub hide-sm">${t.e == null ? "" : (c >= 0 ? "cr " : "db ") + money0(Math.abs(c))}</div></td>
         <td class="r num hide-sm">${t.xp == null ? "—" : t.xp.toFixed(2)}${t.c ? `<div class="sub">${fmtShort(t.c)}</div>` : ""}</td>
-        <td class="r num hide-sm muted">${money0(t.f || 0)}</td>
+        <td class="r num hide-sm muted">${fee$(t.f)}</td>
         <td class="r num ${cls(t.p ?? 0)}" style="font-weight:700;white-space:nowrap">${t.p == null ? "—" : money(t.p)}</td>
         <td class="hide-sm">${statusPill(t)}</td></tr>
         ${openRow === i ? `<tr class="drow"><td colspan="8">${detail(t)}</td></tr>` : ""}`; }).join("") || '<tr><td colspan="8" class="muted">No trades in this view.</td></tr>'}
@@ -304,7 +305,7 @@ function detail(t){
         <div><span class="label">Entry</span><span class="v">${t.e == null ? "—" : t.e.toFixed(2)}</span></div>
         <div><span class="label">Exit</span><span class="v">${t.xp == null ? "—" : t.xp.toFixed(2)}</span></div>
         <div><span class="label">${t.xk === "expired" ? "Settled at" : "Closed"}</span><span class="v">${t.sv != null ? fmtK(t.sv) : t.c ? fmtShort(t.c) : "—"}</span></div>
-        <div><span class="label">Fees</span><span class="v">${money0(t.f || 0)}</span></div>
+        <div><span class="label">Fees</span><span class="v">${fee$(t.f)}</span></div>
         <div><span class="label">Max profit</span><span class="v gain">${rp ? (isFinite(rp.maxP) ? money(rp.maxP) : "Unlimited") : "—"}</span></div>
         <div><span class="label">Max loss</span><span class="v loss">${rp ? (isFinite(rp.maxL) ? money(rp.maxL) : "Unlimited") : "—"}</span></div>
         <div><span class="label">Breakeven</span><span class="v">${rp && rp.be.length ? rp.be.map(v => fmtK(v)).join(" / ") : "—"}</span></div>
