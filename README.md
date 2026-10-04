@@ -53,6 +53,9 @@ with a connection.
 ## Sign-up alerts
 - **In the app (no setup):** while you have the site or app open, a new sign-up shows a banner with
   **Review**, a count on the browser tab, and a notification if you click **Turn on sign-up alerts**.
+- **Phone push (no account):** install the free **ntfy** app (iPhone/Android), tap **+**, and subscribe
+  to the topic in `config.js` (`SIGNUP_ALERT_NTFY_TOPIC`). Each sign-up sends one push that says someone
+  is waiting (no names or emails, since `config.js` is public). Tapping it opens the site.
 - **By email (2-minute setup):** create a free form at https://formspree.io using the email that
   should receive alerts, then put its ID (the part after `/f/`) in `config.js` as
   `SIGNUP_ALERT_FORMSPREE`. Each new sign-up then emails you once. Free plan: 50 emails a month.

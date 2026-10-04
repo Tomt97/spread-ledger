@@ -17,3 +17,8 @@ export const OWNER_UID = "owe2stqvSHZFvSqISvgwsh7tLUg2";
 //    (sign in with the email that should receive alerts), then paste the form ID here,
 //    e.g. "xpzgkqjw" from https://formspree.io/f/xpzgkqjw. Leave "" to turn email alerts off.
 export const SIGNUP_ALERT_FORMSPREE = "";
+
+// 4) Phone push alerts for new sign-ups (no account needed): install the free "ntfy" app
+//    (iPhone / Android), tap +, and subscribe to this topic. Pushes say only that someone signed up
+//    (no names or emails), because this file is public. Change the name to start a new private channel.
+export const SIGNUP_ALERT_NTFY_TOPIC = "spreadledger-r1cxhnst2eh4c5";

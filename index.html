@@ -148,6 +148,7 @@ tbody tr:last-child td{border-bottom:none}
 @media (max-width:640px){.mktrow{grid-template-columns:60px 1fr 1fr}.mktrow .hint{grid-column:1/-1}}
 .ro .rw{display:none!important}
 .signupalert{background:var(--accent-soft);border-color:var(--accent)}
+.invite{display:flex;gap:10px 16px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 16px 12px;padding:12px 14px;border:1px dashed var(--accent);border-radius:var(--r);background:var(--accent-soft)}
 .rangebar{display:flex;gap:10px 14px;align-items:flex-end;flex-wrap:wrap}
 .rangecustom{display:flex;gap:8px;flex-wrap:wrap}
 .rangecustom .field{width:160px}
@@ -781,10 +782,18 @@ async function loadMembers(){
   } catch { members = []; }
   membersLoading = false; render();
 }
+/* invite link for the Members page */
+const inviteUrl = () => `${location.origin}${location.pathname}`;
+function inviteBox(){
+  return `<div class="invite"><div style="display:grid;gap:2px;min-width:0"><span class="label">Invite link</span>
+      <span class="mono" id="inviteUrl" style="overflow-wrap:anywhere">${esc(inviteUrl())}</span>
+      <span class="hint">Send this to someone you want to add. They create an account, then you approve them here.</span></div>
+    <span class="actions"><button class="btn small" type="button" data-act="copyInvite">Copy link</button>${navigator.share ? '<button class="btn small primary" type="button" data-act="shareInvite">Share</button>' : ""}</span></div>`;
+}
 function renderMembers(){
   const el = $("#membersBody");
   if (membersLoading){ el.innerHTML = `<div class="empty">Loading members…</div>`; return; }
-  if (!members.length){ el.innerHTML = `<div class="empty"><b>No members yet</b>People appear here after they open the tracker while signed in.</div>`; return; }
+  if (!members.length){ el.innerHTML = inviteBox() + `<div class="empty"><b>No members yet</b>People appear here after they open the tracker while signed in.</div>`; return; }
   const A = !!window.LEDGER_APPROVAL;
   const pill = m => m.isMe ? "" : statusOf(m) === "approved" ? '<span class="pill win">Approved</span>' : statusOf(m) === "declined" ? '<span class="pill lossp">Declined</span>' : '<span class="pill due">Pending</span>';
   const acts = m => {
@@ -793,7 +802,7 @@ function renderMembers(){
     const st = statusOf(m);
     return `<div class="rowacts">${st !== "approved" ? `<button class="btn small" type="button" data-approve="${esc(m.uid)}" ${busy}>Approve</button>` : ""}${st === "pending" ? `<button class="btn small danger" type="button" data-decline="${esc(m.uid)}" ${busy}>Decline</button>` : ""}${st === "approved" ? `<button class="btn small danger" type="button" data-decline="${esc(m.uid)}" ${busy}>Remove access</button>` : ""}</div>`;
   };
-  el.innerHTML = `<table><thead><tr><th>Member</th>${A?"<th>Status</th>":""}<th>Joined</th><th class="r">Accounts</th><th class="r">Trades</th><th class="r">Open</th><th class="r">Win %</th><th class="r">Max DD</th><th>Top strategy</th><th class="r">Net P&amp;L</th>${A?'<th><span class="sr">Approve</span></th>':""}</tr></thead><tbody>
+  el.innerHTML = inviteBox() + `<table><thead><tr><th>Member</th>${A?"<th>Status</th>":""}<th>Joined</th><th class="r">Accounts</th><th class="r">Trades</th><th class="r">Open</th><th class="r">Win %</th><th class="r">Max DD</th><th>Top strategy</th><th class="r">Net P&amp;L</th>${A?'<th><span class="sr">Approve</span></th>':""}</tr></thead><tbody>
     ${members.map(m => { const S = computeStats(m.trades);
       return `<tr class="click" data-member="${esc(m.uid)}" tabindex="0">
         <td><span class="strat">${esc(m.name)}</span>${m.isMe ? ' <span class="pill open">Owner</span>' : ""}${m.info && m.info.email ? `<div class="sub">${esc(m.info.email)}</div>` : ""}</td>${A?`<td>${pill(m)}</td>`:""}
@@ -2305,6 +2314,12 @@ document.addEventListener("click", async ev => {
   const a = ev.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "refreshMembers") return loadMembers();
+  if (act === "copyInvite"){
+    try { await navigator.clipboard.writeText(inviteUrl()); a.textContent = "Copied"; }
+    catch { const r = document.createRange(); r.selectNodeContents($("#inviteUrl")); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); a.textContent = "Selected, press Copy"; }
+    setTimeout(() => { a.textContent = "Copy link"; }, 1800); return;
+  }
+  if (act === "shareInvite"){ try { await navigator.share({title: "Spread Ledger", text: "Join my Spread Ledger options tracker:", url: inviteUrl()}); } catch {} return; }
   if (act === "ackSignups"){ markSignupsSeen(); render(); return; }
   if (act === "enableAlerts"){ try { await Notification.requestPermission(); } catch {} render(); return; }
   if (act === "exportXlsx"){

@@ -143,7 +143,16 @@ getRedirectResult(auth).catch(e => alertBox(nice(e)));
 $("#signOutBtn").addEventListener("click", async () => { await signOut(auth); });
 
 /* ---- email the owner when someone signs up (optional: set SIGNUP_ALERT_FORMSPREE in config.js) ---- */
+function pushOwnerAboutSignup(){
+  const topic = String(CFG.SIGNUP_ALERT_NTFY_TOPIC || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(topic)) return;
+  const site = `${location.origin}${location.pathname}`;
+  const q = new URLSearchParams({ title: "New Spread Ledger sign-up", tags: "bell", click: site, priority: "high" });
+  // Simple POST (text body + query parameters) so the browser doesn't need a CORS preflight.
+  fetch(`https://ntfy.sh/${topic}?${q}`, { method: "POST", body: "Someone signed up and is waiting for your approval. Tap to review." }).catch(() => {});
+}
 function emailOwnerAboutSignup(){
+  pushOwnerAboutSignup();
   const id = String(CFG.SIGNUP_ALERT_FORMSPREE || "").trim();
   if (!id) return;
   const info = user.memberInfo();
