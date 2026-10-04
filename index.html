@@ -2221,6 +2221,10 @@ function planTosImport(parsed, existing, opts = {}){
   }
   const seenCloses = new Set(existing.flatMap(t => t.tosCloseKeys || []));
   const orders = [...parsed.orders].sort((a,b) => a.time.key.localeCompare(b.time.key));
+  // Cash Balance fees are matched by time to the second; when several orders fill in the same second,
+  // split that second's fees across them by contract count instead of charging each order the total.
+  const keyContracts = {};
+  for (const o of orders) keyContracts[o.time.key] = (keyContracts[o.time.key] || 0) + o.legs.reduce((s,l) => s + Math.abs(l.qty || 0), 0);
   const seenKey = new Map(), everOpened = new Set(existing.flatMap(t => (t.tosLegs || []).map(l => l.key)));
   for (const o of orders){
     const bad = o.legs.find(l => (l.type !== "CALL" && l.type !== "PUT") || l.qty == null || l.k == null || !l.exp || l.price == null);
@@ -2232,7 +2236,7 @@ function planTosImport(parsed, existing, opts = {}){
     const desc = (parsed.descs && parsed.descs[o.time.key] || []).find(d => d.includes(" " + sym + " ")) || "";
     const tags = (desc.match(/\((WEEKLYS|QUARTERLYS|EOM|AM|PM)[^)]*\)/) || [""])[0];
     const contracts = o.legs.reduce((s,l) => s + Math.abs(l.qty), 0);
-    const feePer = !useSchedule && parsed.fees[o.time.key] != null ? (contracts ? parsed.fees[o.time.key] / contracts : 0) : feeRate(o.legs[0].sym);
+    const feePer = !useSchedule && parsed.fees[o.time.key] != null ? (keyContracts[o.time.key] ? parsed.fees[o.time.key] / keyContracts[o.time.key] : 0) : feeRate(o.legs[0].sym);
     const L = o.legs.map(l => ({t: l.type[0], k: l.k, exp: l.exp, qty: l.qty, price: l.price, pos: l.pos}));
     const findOpen = l => pool.find(ps => ps.legs.some(x => x.key === legKey(l) && Math.sign(x.rem) === -Math.sign(l.qty)));
     const closing = L.filter(l => l.pos === "TO CLOSE" || (l.pos !== "TO OPEN" && findOpen(l)));
