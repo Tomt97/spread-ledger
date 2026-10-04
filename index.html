@@ -2019,9 +2019,10 @@ function renderShareSheet(){
 async function saveShare(){
   const cfg = {id: shareCfg ? shareCfg.id : newShareId(), title: $("#shareTitle").value.trim() || "Trading progress", acct: $("#shareAcct").value, detail: $("#shareDetail").value};
   try {
-    await col("settings").doc("share").set(cfg);
-    shareCfg = cfg; lastShareJson = "";
+    // Public record first: if Firebase refuses it, no link is saved or shown.
     await DB.doc(`shares/${cfg.id}`).set({...buildShareDoc(cfg), updatedAt: Date.now()});
+    await col("settings").doc("share").set(cfg);
+    shareCfg = cfg;
     lastShareJson = JSON.stringify(buildShareDoc(cfg));
     shareSheet = {msg: "", armed: false};
   } catch(e){ shareSheet.msg = e && e.code === "invalid_argument" ? "The database refused the share. Publish the latest firestore.rules in Firebase, then try again." : "Couldn't save. Check your connection and try again."; }

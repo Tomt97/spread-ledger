@@ -136,7 +136,10 @@ async function load(){
       trades: raw.trades ? raw.trades.map(o => [o.o || "", o.c, o.s, o.u, o.q, o.p]) : null,
       full: raw.full || null};
     render();
-  } catch (e) { showMsg("Couldn't load this page", "Check your connection and press Refresh."); }
+  } catch (e) {
+    if (e && e.code === "permission-denied") showMsg("This share link isn't available", "The owner needs to publish the latest Firebase rules, or sharing was turned off.");
+    else showMsg("Couldn't load this page", "Check your connection and press Refresh.");
+  }
 }
 function showMsg(t, s){ $("#sub").textContent = ""; $("#main").innerHTML = `<div class="panel empty"><b>${esc(t)}</b>${esc(s)}</div>`; }
 $("#refresh").addEventListener("click", () => { $("#sub").textContent = "Refreshing…"; load(); });
