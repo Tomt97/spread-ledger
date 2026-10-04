@@ -31,6 +31,19 @@ service cloud.firestore {
       }
     }
 
+    // Read-only share pages: anyone with the link can read one summary; only its creator can change it.
+    match /shares/{shareId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid
+        && (isOwner() || isApproved(request.auth.uid));
+      allow update: if request.auth != null
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
+    }
+
     // Everything else is closed.
     match /{document=**} {
       allow read, write: if false;

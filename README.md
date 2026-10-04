@@ -60,6 +60,15 @@ with a connection.
   should receive alerts, then put its ID (the part after `/f/`) in `config.js` as
   `SIGNUP_ALERT_FORMSPREE`. Each new sign-up then emails you once. Free plan: 50 emails a month.
 
+## Share your progress (read-only link)
+**Share progress** (next to Export to Excel) creates a link like
+`https://<you>.github.io/spread-ledger/view.html?s=<random code>` for one account (or all combined).
+Anyone with the link sees P&L, win rate, drawdown, the cumulative and monthly charts, the calendar,
+strategy results and (optionally) a closed-trade list with date, strategy, symbol, lots and P&L.
+They can't change anything and never see strikes, prices, orders, fees or other accounts. The page
+refreshes itself whenever you open the app; **Stop sharing** turns the link off.
+Requires the `shares` rule in `firestore.rules` to be published in Firebase.
+
 ## Who can do what
 | | Member | Master (you) |
 |---|---|---|

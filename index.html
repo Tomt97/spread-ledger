@@ -342,6 +342,7 @@ body:not(.admin) .adm{display:none!important}
     </div>
     <span class="hint" id="rangeHint"></span>
     <span class="spacer" style="flex:1"></span>
+    <button class="btn small rw" type="button" data-act="shareOpen">Share progress</button>
     <button class="btn small" type="button" id="exportBtn" data-act="exportXlsx">Export to Excel</button>
   </section>
 
@@ -688,11 +689,12 @@ function subscribeTo(uid){
   loadError = null; clearTimeout(loadTimer);
   loadTimer = setTimeout(() => { if (!loaded){ loadError = {code: "slow"}; render(); } }, 15000);
   const failed = e => { loadError = e || {code: "unavailable"}; loaded = true; render(); };
-  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; loadError = null; clearTimeout(loadTimer); scheduleRender(); autoSettle(); }, failed));
-  unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); scheduleRender(); }, failed));
+  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; loadError = null; clearTimeout(loadTimer); scheduleRender(); autoSettle(); scheduleShareSync(); }, failed));
+  unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); scheduleRender(); scheduleShareSync(); }, failed));
   feeCfg = JSON.parse(JSON.stringify(FEE_DEFAULTS));
   priceBook = {};
   unsubs.push(col("settings").onSnapshot(snap => { const pb = snap.docs.find(x => x.id === "prices"); priceBook = pb ? (pb.data().books || {}) : {}; if (settleSheet) renderSettleSheet(); autoSettle();
+    const sh = snap.docs.find(x => x.id === "share"); shareCfg = sh && viewUid === me ? sh.data() : null; if (shareSheet) renderShareSheet(); scheduleShareSync();
     const d = snap.docs.find(x => x.id === "fees"); feeCfg = d ? {rates: {}, other: 0, ...d.data()} : JSON.parse(JSON.stringify(FEE_DEFAULTS)); updatePreview(); render(); }, () => {}));
   unsubs.push(col("market").onSnapshot(snap => { market = {}; snap.docs.forEach(d => { const v = d.data(); market[v.symbol || d.id] = v; }); scheduleRender(); }, () => {}));
   render();
@@ -1938,6 +1940,81 @@ async function exportExcel(btn){
   return name;
 }
 
+/* ---------- read-only share link ----------
+   A small summary (daily P&L, strategy totals, optionally a closed-trade list without prices or
+   strikes) is copied to shares/<random id>, which anyone with the link can read via view.html.
+   It refreshes automatically while the sharer has the app open. */
+let shareCfg = null, shareSheet = null, lastShareJson = "", shareTimer = null;
+const shareUrl = cfg => `${location.origin}${location.pathname.replace(/[^/]*$/, "")}view.html?s=${cfg.id}`;
+function newShareId(){ const a = new Uint8Array(18); crypto.getRandomValues(a); return Array.from(a, b => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join(""); }
+function buildShareDoc(cfg){
+  const rows = trades.filter(t => t.p && (cfg.acct === ALL || acctOf(t) === cfg.acct)).map(t => ({t, e: evalTrade(t)}));
+  const closed = rows.filter(r => r.e.pnl != null && r.e.closeDate).sort((a, b) => a.e.closeDate.localeCompare(b.e.closeDate));
+  const r2 = v => Math.round(v * 100) / 100, daily = {}, strat = {};
+  closed.forEach(({e}) => {
+    const d = (daily[e.closeDate] ||= {d: e.closeDate, p: 0, n: 0, w: 0}); d.p += e.pnl; d.n++; if (e.pnl > 0) d.w++;
+    const s = (strat[e.label] ||= {s: e.label, n: 0, w: 0, p: 0}); s.n++; s.p += e.pnl; if (e.pnl > 0) s.w++;
+  });
+  return {
+    ownerUid: me, title: (cfg.title || "Trading progress").slice(0, 80),
+    acctLabel: cfg.acct === ALL ? "All accounts" : acctName(cfg.acct),
+    openCount: rows.length - closed.length,
+    daily: Object.values(daily).map(d => ({...d, p: r2(d.p)})),
+    strategies: Object.values(strat).map(x => ({...x, p: r2(x.p)})).sort((a, b) => b.p - a.p),
+    trades: cfg.trades ? closed.slice(-2000).map(({t, e}) => ({o: t.openDate || "", c: e.closeDate, s: e.label, u: t.p.symbol, q: t.p.qty, p: r2(e.pnl)})) : null,
+  };
+}
+async function syncShare(force){
+  if (!shareCfg || mode !== "db" || viewUid !== me || !loaded || readOnly()) return;
+  const body = buildShareDoc(shareCfg), json = JSON.stringify(body);
+  if (!force && json === lastShareJson) return;
+  try { await DB.doc(`shares/${shareCfg.id}`).set({...body, updatedAt: Date.now()}); lastShareJson = json; } catch(e){ console.warn("share sync failed", e); }
+}
+function scheduleShareSync(){ clearTimeout(shareTimer); shareTimer = setTimeout(() => syncShare(false), 2500); }
+function openShareSheet(){ closeSheet(); shareSheet = {msg: "", armed: false}; renderShareSheet(); }
+function closeShareSheet(){ shareSheet = null; $("#sheetRoot").innerHTML = ""; document.body.style.overflow = ""; }
+function renderShareSheet(){
+  if (!shareSheet) return;
+  document.body.style.overflow = "hidden";
+  const c = shareCfg || {title: "Trading progress", acct: curAcct, trades: true};
+  const opts = [...accounts().map(a => [a.id, a.name]), ...(accounts().length > 1 ? [[ALL, "All accounts combined"]] : [])];
+  $("#sheetRoot").innerHTML = `<div class="overlay" data-act="shareBackdrop"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shTitle2" style="max-width:600px">
+    <div class="sheet-head"><div style="display:grid;gap:4px"><h2 id="shTitle2">Share your progress</h2>
+      <span class="hint">Anyone with the link sees a read-only page: P&amp;L, win rate, drawdown, charts, calendar and strategy results. They can't change anything and never see strikes, prices, orders, fees or your other accounts.</span></div>
+      <button class="x" type="button" data-act="shareClose" aria-label="Close">×</button></div>
+    ${shareCfg ? `<div class="invite" style="margin:0"><div style="display:grid;gap:2px;min-width:0"><span class="label">Your share link</span>
+        <span class="mono" id="shareUrl" style="overflow-wrap:anywhere">${esc(shareUrl(shareCfg))}</span>
+        <span class="hint">Updates by itself whenever you open the app.</span></div>
+        <span class="actions"><button class="btn small" type="button" data-act="shareCopy">Copy link</button>${navigator.share ? '<button class="btn small primary" type="button" data-act="shareNative">Share</button>' : ""}<a class="btn small" href="${esc(shareUrl(shareCfg))}" target="_blank" rel="noopener">Open</a></span></div>` : ""}
+    <div class="grid2">
+      <label class="field"><span class="label">Page title</span><input type="text" id="shareTitle" maxlength="80" value="${esc(c.title)}"></label>
+      <label class="field"><span class="label">Account to show</span><select id="shareAcct">${opts.map(([id, n]) => `<option value="${esc(id)}" ${id === c.acct ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
+    </div>
+    <label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="shareTrades" ${c.trades ? "checked" : ""} style="margin-top:4px">
+      <span>Include a list of closed trades<br><span class="hint">Close date, strategy, symbol, lots and P&amp;L only.</span></span></label>
+    <div class="actions"><span class="err">${esc(shareSheet.msg)}</span><span class="spacer"></span>
+      ${shareCfg ? `<button class="btn small danger ${shareSheet.armed ? "armed" : ""}" type="button" data-act="shareStop">${shareSheet.armed ? "Confirm: turn off link" : "Stop sharing"}</button>` : ""}
+      <button class="btn primary" type="button" data-act="shareSave">${shareCfg ? "Save changes" : "Create share link"}</button></div>
+  </div></div>`;
+}
+async function saveShare(){
+  const cfg = {id: shareCfg ? shareCfg.id : newShareId(), title: $("#shareTitle").value.trim() || "Trading progress", acct: $("#shareAcct").value, trades: $("#shareTrades").checked};
+  try {
+    await col("settings").doc("share").set(cfg);
+    shareCfg = cfg; lastShareJson = "";
+    await DB.doc(`shares/${cfg.id}`).set({...buildShareDoc(cfg), updatedAt: Date.now()});
+    lastShareJson = JSON.stringify(buildShareDoc(cfg));
+    shareSheet = {msg: "", armed: false};
+  } catch(e){ shareSheet.msg = e && e.code === "invalid_argument" ? "The database refused the share. Publish the latest firestore.rules in Firebase, then try again." : "Couldn't save. Check your connection and try again."; }
+  renderShareSheet();
+}
+async function stopShare(){
+  if (!shareCfg) return;
+  try { await DB.doc(`shares/${shareCfg.id}`).delete(); await col("settings").doc("share").delete(); shareCfg = null; lastShareJson = ""; shareSheet = {msg: "Sharing is off. The old link no longer works.", armed: false}; }
+  catch(e){ shareSheet.msg = "Couldn't turn it off. Check your connection and try again."; }
+  renderShareSheet();
+}
+
 /* ---------- thinkorswim CSV import ----------
    Reads the "Account Trade History" section of a thinkorswim Account Statement export,
    rebuilds each order from its legs (side, qty, strike, type, expiration, price), matches
@@ -2320,6 +2397,13 @@ document.addEventListener("click", async ev => {
     setTimeout(() => { a.textContent = "Copy link"; }, 1800); return;
   }
   if (act === "shareInvite"){ try { await navigator.share({title: "Spread Ledger", text: "Join my Spread Ledger options tracker:", url: inviteUrl()}); } catch {} return; }
+  if (act === "shareOpen"){ if (mode === "db" && !readOnly()) openShareSheet(); return; }
+  if (act === "shareBackdrop" && ev.target !== a) return;
+  if (act === "shareClose" || act === "shareBackdrop") return closeShareSheet();
+  if (act === "shareSave") return saveShare();
+  if (act === "shareStop"){ if (!shareSheet.armed){ shareSheet.armed = true; renderShareSheet(); return; } return stopShare(); }
+  if (act === "shareCopy"){ try { await navigator.clipboard.writeText(shareUrl(shareCfg)); a.textContent = "Copied"; } catch { const r = document.createRange(); r.selectNodeContents($("#shareUrl")); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); a.textContent = "Selected"; } setTimeout(() => { a.textContent = "Copy link"; }, 1800); return; }
+  if (act === "shareNative"){ try { await navigator.share({title: shareCfg.title, text: "My trading progress:", url: shareUrl(shareCfg)}); } catch {} return; }
   if (act === "ackSignups"){ markSignupsSeen(); render(); return; }
   if (act === "enableAlerts"){ try { await Notification.requestPermission(); } catch {} render(); return; }
   if (act === "exportXlsx"){
@@ -2405,6 +2489,7 @@ document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && importPlan) closeImportSheet();
   if (ev.key === "Escape" && feeSheet) closeFeeSheet();
   if (ev.key === "Escape" && settleSheet) closeSettleSheet();
+  if (ev.key === "Escape" && shareSheet) closeShareSheet();
   if (ev.key === "Enter" && ev.target.matches("tr[data-id], .tcard[data-id]")) openSheet(ev.target.dataset.id);
   if (ev.key === "Enter" && ev.target.matches("tr[data-member]")) viewMember(ev.target.dataset.member);
 });
