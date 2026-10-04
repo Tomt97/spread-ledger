@@ -696,7 +696,7 @@ function subscribeTo(uid){
   feeCfg = JSON.parse(JSON.stringify(FEE_DEFAULTS));
   priceBook = {};
   unsubs.push(col("settings").onSnapshot(snap => { const pb = snap.docs.find(x => x.id === "prices"); priceBook = pb ? (pb.data().books || {}) : {}; if (settleSheet) renderSettleSheet(); autoSettle();
-    const sh = snap.docs.find(x => x.id === "share"); shareCfg = sh && viewUid === me ? sh.data() : null; if (shareSheet) renderShareSheet(); scheduleShareSync();
+    const sh = snap.docs.find(x => x.id === "share"); shareLinks = sh && viewUid === me ? shareLinksOf(sh.data()) : []; if (shareSheet && shareSheet.edit == null) renderShareSheet(); scheduleShareSync();
     const d = snap.docs.find(x => x.id === "fees"); feeCfg = d ? {rates: {}, other: 0, ...d.data()} : JSON.parse(JSON.stringify(FEE_DEFAULTS)); updatePreview(); render(); }, () => {}));
   unsubs.push(col("market").onSnapshot(snap => { market = {}; snap.docs.forEach(d => { const v = d.data(); market[v.symbol || d.id] = v; }); scheduleRender(); }, () => {}));
   render();
@@ -1973,7 +1973,11 @@ async function exportExcel(btn){
    A small summary (daily P&L, strategy totals, optionally a closed-trade list without prices or
    strikes) is copied to shares/<random id>, which anyone with the link can read via view.html.
    It refreshes automatically while the sharer has the app open. */
-let shareCfg = null, shareSheet = null, lastShareJson = "", shareTimer = null;
+// Several links, each showing one account (or all combined); stored as {links: [...]} in settings/share.
+let shareLinks = [], shareSheet = null, lastShareJson = {}, shareTimer = null;
+const shareLinksOf = d => !d ? [] : Array.isArray(d.links) ? d.links : d.id ? [{id: d.id, title: d.title, acct: d.acct, detail: d.detail}] : [];
+const shareAcctLabel = cfg => cfg.acct === ALL ? "All accounts combined" : acctName(cfg.acct);
+const detailLabel = d => ({full: "Full trade details", summary: "Summary list", none: "Totals and charts only"})[d] || "";
 const shareUrl = cfg => `${location.origin}${location.pathname.replace(/[^/]*$/, "")}view.html?s=${cfg.id}`;
 function newShareId(){ const a = new Uint8Array(18); crypto.getRandomValues(a); return Array.from(a, b => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join(""); }
 function buildShareDoc(cfg){
@@ -2010,28 +2014,36 @@ function fullTrades(rows){
   return out;
 }
 async function syncShare(force){
-  if (!shareCfg || mode !== "db" || viewUid !== me || !loaded || readOnly()) return;
-  const body = buildShareDoc(shareCfg), json = JSON.stringify(body);
-  if (!force && json === lastShareJson) return;
-  try { await DB.doc(`shares/${shareCfg.id}`).set({...body, updatedAt: Date.now()}); lastShareJson = json; } catch(e){ console.warn("share sync failed", e); }
+  if (!shareLinks.length || mode !== "db" || viewUid !== me || !loaded || readOnly()) return;
+  for (const cfg of shareLinks){
+    const body = buildShareDoc(cfg), json = JSON.stringify(body);
+    if (!force && json === lastShareJson[cfg.id]) continue;
+    try { await DB.doc(`shares/${cfg.id}`).set({...body, updatedAt: Date.now()}); lastShareJson[cfg.id] = json; } catch(e){ console.warn("share sync failed", e); }
+  }
 }
 function scheduleShareSync(){ clearTimeout(shareTimer); shareTimer = setTimeout(() => syncShare(false), 2500); }
-function openShareSheet(){ closeSheet(); shareSheet = {msg: "", armed: false}; renderShareSheet(); }
+function openShareSheet(){ closeSheet(); shareSheet = {msg: "", armed: null, edit: shareLinks.length ? null : ""}; renderShareSheet(); }
 function closeShareSheet(){ shareSheet = null; $("#sheetRoot").innerHTML = ""; document.body.style.overflow = ""; }
 function renderShareSheet(){
   if (!shareSheet) return;
   document.body.style.overflow = "hidden";
-  const c = shareCfg || {title: "Trading progress", acct: curAcct, detail: "full"};
+  const S = shareSheet, editing = S.edit != null, cur = editing && S.edit ? shareLinks.find(x => x.id === S.edit) : null;
+  const c = cur || {title: "Trading progress", acct: curAcct, detail: "full"};
   const det = detailOf(c);
   const opts = [...accounts().map(a => [a.id, a.name]), ...(accounts().length > 1 ? [[ALL, "All accounts combined"]] : [])];
+  const linkRow = cfg => `<div class="invite" style="margin:0"><div style="display:grid;gap:2px;min-width:0">
+        <span class="label">${esc(cfg.title || "Trading progress")} · ${esc(shareAcctLabel(cfg))}</span>
+        <span class="mono" data-url="${esc(cfg.id)}" style="overflow-wrap:anywhere">${esc(shareUrl(cfg))}</span>
+        <span class="hint">${esc(detailLabel(detailOf(cfg)))} · updates by itself whenever you open the app</span></div>
+        <span class="actions"><button class="btn small" type="button" data-act="shareCopy" data-id="${esc(cfg.id)}">Copy link</button>${navigator.share ? `<button class="btn small primary" type="button" data-act="shareNative" data-id="${esc(cfg.id)}">Share</button>` : ""}<a class="btn small" href="${esc(shareUrl(cfg))}" target="_blank" rel="noopener">Open</a>
+        <button class="btn small" type="button" data-act="shareEdit" data-id="${esc(cfg.id)}">Edit</button>
+        <button class="btn small danger ${S.armed === cfg.id ? "armed" : ""}" type="button" data-act="shareStop" data-id="${esc(cfg.id)}">${S.armed === cfg.id ? "Confirm: turn off" : "Stop sharing"}</button></span></div>`;
   $("#sheetRoot").innerHTML = `<div class="overlay" data-act="shareBackdrop"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shTitle2" style="max-width:600px">
     <div class="sheet-head"><div style="display:grid;gap:4px"><h2 id="shTitle2">Share your progress</h2>
-      <span class="hint">Anyone with the link sees a read-only page with your P&amp;L, win rate, drawdown, charts, calendar and strategy results for the account you pick. They can't add, change or delete anything, and opening it never affects their own account. Your other accounts and your email stay private.</span></div>
+      <span class="hint">Each link shows one account (or all of them combined) on a read-only page: P&amp;L, win rate, drawdown, charts, calendar and strategy results. Make a separate link for each account you want to share, and send each person only the link you want them to see. Viewers can't add, change or delete anything, and opening a link never affects their own account. Your email stays private.</span></div>
       <button class="x" type="button" data-act="shareClose" aria-label="Close">×</button></div>
-    ${shareCfg ? `<div class="invite" style="margin:0"><div style="display:grid;gap:2px;min-width:0"><span class="label">Your share link</span>
-        <span class="mono" id="shareUrl" style="overflow-wrap:anywhere">${esc(shareUrl(shareCfg))}</span>
-        <span class="hint">Updates by itself whenever you open the app.</span></div>
-        <span class="actions"><button class="btn small" type="button" data-act="shareCopy">Copy link</button>${navigator.share ? '<button class="btn small primary" type="button" data-act="shareNative">Share</button>' : ""}<a class="btn small" href="${esc(shareUrl(shareCfg))}" target="_blank" rel="noopener">Open</a></span></div>` : ""}
+    ${shareLinks.length ? `<div style="display:grid;gap:10px"><span class="label">Your share links (${shareLinks.length})</span>${shareLinks.map(linkRow).join("")}</div>` : ""}
+    ${editing ? `<div class="exitbox"><span class="label">${cur ? `Edit link: ${esc(cur.title || "Trading progress")}` : "New share link"}</span>
     <div class="grid2">
       <label class="field"><span class="label">Page title</span><input type="text" id="shareTitle" maxlength="80" value="${esc(c.title)}"></label>
       <label class="field"><span class="label">Account to show</span><select id="shareAcct">${opts.map(([id, n]) => `<option value="${esc(id)}" ${id === c.acct ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
@@ -2040,27 +2052,34 @@ function renderShareSheet(){
       <option value="full" ${det === "full" ? "selected" : ""}>Full details: strikes, entry and exit prices, fees, order text, payoff graph (open and closed trades)</option>
       <option value="summary" ${det === "summary" ? "selected" : ""}>Summary: date, strategy, symbol, lots and P&amp;L of closed trades</option>
       <option value="none" ${det === "none" ? "selected" : ""}>No trade list, only totals and charts</option></select></label>
-    <div class="actions"><span class="err">${esc(shareSheet.msg)}</span><span class="spacer"></span>
-      ${shareCfg ? `<button class="btn small danger ${shareSheet.armed ? "armed" : ""}" type="button" data-act="shareStop">${shareSheet.armed ? "Confirm: turn off link" : "Stop sharing"}</button>` : ""}
-      <button class="btn primary" type="button" data-act="shareSave">${shareCfg ? "Save changes" : "Create share link"}</button></div>
+    <div class="actions"><span class="err">${esc(S.msg)}</span><span class="spacer"></span>
+      ${shareLinks.length ? `<button class="btn small" type="button" data-act="shareCancel">Cancel</button>` : ""}
+      <button class="btn primary" type="button" data-act="shareSave">${cur ? "Save changes" : "Create share link"}</button></div></div>`
+    : `<div class="actions"><span class="err">${esc(S.msg)}</span><span class="spacer"></span><button class="btn primary" type="button" data-act="shareNew">New share link</button></div>`}
   </div></div>`;
 }
 async function saveShare(){
-  const cfg = {id: shareCfg ? shareCfg.id : newShareId(), title: $("#shareTitle").value.trim() || "Trading progress", acct: $("#shareAcct").value, detail: $("#shareDetail").value};
+  const S = shareSheet, old = S.edit ? shareLinks.find(x => x.id === S.edit) : null;
+  const cfg = {id: old ? old.id : newShareId(), title: $("#shareTitle").value.trim() || "Trading progress", acct: $("#shareAcct").value, detail: $("#shareDetail").value};
+  const links = old ? shareLinks.map(x => x.id === old.id ? cfg : x) : [...shareLinks, cfg];
   try {
     // Public record first: if Firebase refuses it, no link is saved or shown.
     await DB.doc(`shares/${cfg.id}`).set({...buildShareDoc(cfg), updatedAt: Date.now()});
-    await col("settings").doc("share").set(cfg);
-    shareCfg = cfg;
-    lastShareJson = JSON.stringify(buildShareDoc(cfg));
-    shareSheet = {msg: "", armed: false};
-  } catch(e){ shareSheet.msg = e && e.code === "invalid_argument" ? "The database refused the share. Publish the latest firestore.rules in Firebase, then try again." : "Couldn't save. Check your connection and try again."; }
+    await col("settings").doc("share").set({links});
+    shareLinks = links;
+    lastShareJson[cfg.id] = JSON.stringify(buildShareDoc(cfg));
+    shareSheet = {msg: "", armed: null, edit: null};
+  } catch(e){ S.msg = e && e.code === "invalid_argument" ? "The database refused the share. Publish the latest firestore.rules in Firebase, then try again." : "Couldn't save. Check your connection and try again."; }
   renderShareSheet();
 }
-async function stopShare(){
-  if (!shareCfg) return;
-  try { await DB.doc(`shares/${shareCfg.id}`).delete(); await col("settings").doc("share").delete(); shareCfg = null; lastShareJson = ""; shareSheet = {msg: "Sharing is off. The old link no longer works.", armed: false}; }
-  catch(e){ shareSheet.msg = "Couldn't turn it off. Check your connection and try again."; }
+async function stopShare(id){
+  const links = shareLinks.filter(x => x.id !== id);
+  try {
+    await DB.doc(`shares/${id}`).delete();
+    if (links.length) await col("settings").doc("share").set({links}); else await col("settings").doc("share").delete();
+    shareLinks = links; delete lastShareJson[id];
+    shareSheet = {msg: "That link is off and no longer works.", armed: null, edit: null};
+  } catch(e){ shareSheet.msg = "Couldn't turn it off. Check your connection and try again."; }
   renderShareSheet();
 }
 
@@ -2454,9 +2473,13 @@ document.addEventListener("click", async ev => {
   if (act === "shareBackdrop" && ev.target !== a) return;
   if (act === "shareClose" || act === "shareBackdrop") return closeShareSheet();
   if (act === "shareSave") return saveShare();
-  if (act === "shareStop"){ if (!shareSheet.armed){ shareSheet.armed = true; renderShareSheet(); return; } return stopShare(); }
-  if (act === "shareCopy"){ try { await navigator.clipboard.writeText(shareUrl(shareCfg)); a.textContent = "Copied"; } catch { const r = document.createRange(); r.selectNodeContents($("#shareUrl")); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); a.textContent = "Selected"; } setTimeout(() => { a.textContent = "Copy link"; }, 1800); return; }
-  if (act === "shareNative"){ try { await navigator.share({title: shareCfg.title, text: "My trading progress:", url: shareUrl(shareCfg)}); } catch {} return; }
+  if (act === "shareStop"){ if (shareSheet.armed !== a.dataset.id){ shareSheet.armed = a.dataset.id; renderShareSheet(); return; } return stopShare(a.dataset.id); }
+  if (act === "shareNew" || act === "shareEdit"){ shareSheet = {msg: "", armed: null, edit: act === "shareEdit" ? a.dataset.id : ""}; renderShareSheet(); return; }
+  if (act === "shareCancel"){ shareSheet = {msg: "", armed: null, edit: null}; renderShareSheet(); return; }
+  if (act === "shareCopy" || act === "shareNative"){ const cfg = shareLinks.find(x => x.id === a.dataset.id); if (!cfg) return;
+    if (act === "shareNative"){ try { await navigator.share({title: cfg.title, text: "My trading progress:", url: shareUrl(cfg)}); } catch {} return; }
+    try { await navigator.clipboard.writeText(shareUrl(cfg)); a.textContent = "Copied"; } catch { const el = document.querySelector(`[data-url="${cfg.id}"]`), r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); a.textContent = "Selected"; }
+    setTimeout(() => { a.textContent = "Copy link"; }, 1800); return; }
   if (act === "ackSignups"){ markSignupsSeen(); render(); return; }
   if (act === "enableAlerts"){ try { await Notification.requestPermission(); } catch {} render(); return; }
   if (act === "exportXlsx"){
