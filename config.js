@@ -12,3 +12,8 @@ export const firebaseConfig = {
 // 2) After you sign up on the site the first time, it shows "Your user ID". Paste it here
 //    AND in firestore.rules so your account becomes the master account.
 export const OWNER_UID = "owe2stqvSHZFvSqISvgwsh7tLUg2";
+
+// 3) Optional: get an email when someone signs up. Create a free form at https://formspree.io
+//    (sign in with the email that should receive alerts), then paste the form ID here,
+//    e.g. "xpzgkqjw" from https://formspree.io/f/xpzgkqjw. Leave "" to turn email alerts off.
+export const SIGNUP_ALERT_FORMSPREE = "";

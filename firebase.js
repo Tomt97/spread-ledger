@@ -8,6 +8,7 @@ import {
   initializeFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig, OWNER_UID } from "./config.js";
+import * as CFG from "./config.js";
 
 const $ = s => document.querySelector(s);
 const configured = !String(firebaseConfig.apiKey).startsWith("PASTE");
@@ -141,6 +142,18 @@ $("#forgotBtn").addEventListener("click", async () => {
 getRedirectResult(auth).catch(e => alertBox(nice(e)));
 $("#signOutBtn").addEventListener("click", async () => { await signOut(auth); });
 
+/* ---- email the owner when someone signs up (optional: set SIGNUP_ALERT_FORMSPREE in config.js) ---- */
+function emailOwnerAboutSignup(){
+  const id = String(CFG.SIGNUP_ALERT_FORMSPREE || "").trim();
+  if (!id) return;
+  const info = user.memberInfo();
+  fetch(`https://formspree.io/f/${encodeURIComponent(id)}`, {
+    method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify({ _subject: `New Spread Ledger sign-up: ${info.name}`, name: info.name, email: info.email,
+      message: `${info.name} (${info.email}) signed up and is waiting for approval. Review: ${location.origin}${location.pathname}` }),
+  }).catch(() => {});
+}
+
 /* ---- approval gate: new members wait until the owner approves them ---- */
 const ownerSet = !OWNER_UID.startsWith("PASTE");
 function gate(kind, u) {
@@ -174,7 +187,10 @@ async function checkAccess(u) {
   const ref = doc(fs, `members/${u.uid}`);
   try {
     const snap = await getDoc(ref);
-    if (!snap.exists()) await setDoc(ref, { joinedAt: Date.now(), ...user.memberInfo(), status: "pending" });
+    if (!snap.exists()){
+      await setDoc(ref, { joinedAt: Date.now(), ...user.memberInfo(), status: "pending" });
+      emailOwnerAboutSignup();
+    }
   } catch (e) { return gate("error", u); }
   stopWatch = onSnapshot(ref, s => {
     if (!s.exists()) return;                       // membership deleted

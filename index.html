@@ -147,6 +147,7 @@ tbody tr:last-child td{border-bottom:none}
 .mktrow .sym{font-family:var(--mono);font-weight:600;padding-bottom:8px}
 @media (max-width:640px){.mktrow{grid-template-columns:60px 1fr 1fr}.mktrow .hint{grid-column:1/-1}}
 .ro .rw{display:none!important}
+.signupalert{background:var(--accent-soft);border-color:var(--accent)}
 .rangebar{display:flex;gap:10px 14px;align-items:flex-end;flex-wrap:wrap}
 .rangecustom{display:flex;gap:8px;flex-wrap:wrap}
 .rangecustom .field{width:160px}
@@ -739,7 +740,7 @@ async function boot(){
   if (DB && me){
     mode = "db"; viewUid = me;
     await registerMember();
-    if (isOwnerView){ await migrateLegacy(); if (window.LEDGER_APPROVAL) loadMembers(); }
+    if (isOwnerView){ await migrateLegacy(); if (window.LEDGER_APPROVAL){ loadMembers(); watchSignups(); } }
     subscribeTo(me);
   } else {
     mode = "local"; trades = lsRead(LS_KEY); accountsDb = lsRead(LS_ACCT);
@@ -1004,6 +1005,45 @@ function render(){
   if (openId) { const t = trades.find(x => x.id === openId); if (t && sheetMode === "view" && !sheetDirty) renderSheet(); else if (!t) closeSheet(); }
 }
 
+/* ---------- owner: live sign-up alerts ----------
+   While the owner has the app open, new sign-ups show a banner, a count on the browser tab and,
+   if allowed, a system notification. ("Later" hides the banner until someone else signs up.) */
+let pendingList = [], signupWatch = null;
+const SEEN_KEY = "spread-ledger-seen-signups";
+const seenSignups = () => { try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); } catch { return []; } };
+function markSignupsSeen(){ try { localStorage.setItem(SEEN_KEY, JSON.stringify(pendingList.map(p => p.uid))); } catch {} }
+function watchSignups(){
+  if (signupWatch || !DB || !isOwnerView) return;
+  signupWatch = DB.collection("members").onSnapshot(snap => {
+    const before = new Set(pendingList.map(p => p.uid));
+    pendingList = snap.docs.filter(d => d.id !== me && (d.data().status || "pending") === "pending")
+      .map(d => ({uid: d.id, ...d.data()})).sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+    pendingCount = pendingList.length;
+    const seen = seenSignups();
+    const fresh = pendingList.filter(p => !before.has(p.uid) && !seen.includes(p.uid));
+    if (fresh.length) notifySignups(fresh);
+    document.title = pendingCount ? `(${pendingCount}) Spread Ledger` : "Spread Ledger";
+    if (page === "members") loadMembers(); else render();
+  }, () => {});
+}
+async function notifySignups(fresh){
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const who = fresh.map(p => p.name || p.email || "Someone").join(", ");
+  const title = fresh.length === 1 ? "New sign-up waiting for approval" : `${fresh.length} new sign-ups waiting for approval`;
+  const opts = {body: who, icon: "icons/icon-192.png", badge: "icons/icon-192.png", tag: "signup"};
+  try {
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if (reg) await reg.showNotification(title, opts); else new Notification(title, opts);
+  } catch {}
+}
+function signupBanner(){
+  const seen = seenSignups(), unseen = pendingList.filter(p => !seen.includes(p.uid));
+  if (!unseen.length) return "";
+  const names = unseen.slice(0, 3).map(p => `<b>${esc(p.name || "Someone")}</b>${p.email ? ` (${esc(p.email)})` : ""}`).join(", ") + (unseen.length > 3 ? ` and ${unseen.length - 3} more` : "");
+  return `<div class="alert signupalert" role="status"><span>New sign-up${unseen.length > 1 ? "s" : ""} waiting for approval: ${names}</span>
+    <span class="actions"><button class="btn small primary" type="button" data-page="members">Review</button><button class="btn small" type="button" data-act="ackSignups">Later</button></span></div>`;
+}
+
 function renderOwnerBar(){
   const el = $("#ownerBar");
   if (mode !== "db"){
@@ -1016,8 +1056,9 @@ function renderOwnerBar(){
     html += `<div class="ownerbar"><div class="tabs" role="group" aria-label="Owner view">
       <button type="button" data-page="mine" aria-pressed="${page==="mine" && viewUid===me}">My dashboard</button>
       <button type="button" data-page="members" aria-pressed="${page==="members"}">Members${pendingCount ? ` <span class="pill due" style="margin-left:4px">${pendingCount} pending</span>` : ""}</button></div>
-      <span class="actions"><span class="hint">${adminMode ? "Edit and Remove are on" : "Owner"}</span><button class="btn small adminbtn" type="button" data-act="toggleAdmin" aria-pressed="${adminMode}">Admin mode: ${adminMode ? "On" : "Off"}</button></span></div>`;
+      <span class="actions">${"Notification" in window && Notification.permission === "default" ? '<button class="btn small" type="button" data-act="enableAlerts">Turn on sign-up alerts</button>' : ""}<span class="hint">${adminMode ? "Edit and Remove are on" : "Owner"}</span><button class="btn small adminbtn" type="button" data-act="toggleAdmin" aria-pressed="${adminMode}">Admin mode: ${adminMode ? "On" : "Off"}</button></span></div>`;
   }
+  if (isOwnerView) html += signupBanner();
   if (viewUid !== me && page === "mine"){
     html += `<div class="viewing"><span>Viewing <b>${esc(viewingName || "member")}</b>’s dashboard · ${adminOK() ? "admin mode, changes save to their dashboard" : "read-only"}</span>
       <span class="actions"><button class="btn small" type="button" data-page="members">All members</button><button class="btn small" type="button" data-page="mine">My dashboard</button></span></div>`;
@@ -2234,7 +2275,7 @@ document.addEventListener("click", async ev => {
   const f = ev.target.closest("[data-filter]");
   if (f){ filter = f.dataset.filter; try { localStorage.setItem("spread-ledger-filter", filter); } catch {} render(); if (f.closest(".alert")) $("#blotter").scrollIntoView({behavior:"smooth",block:"start"}); return; }
   const pg = ev.target.closest("[data-page]");
-  if (pg){ closeSheet(); if (pg.dataset.page === "members"){ if (viewUid !== me) subscribeTo(me); viewingName = ""; page = "members"; loadMembers(); } else backToMine(); return; }
+  if (pg){ closeSheet(); if (pg.dataset.page === "members"){ markSignupsSeen(); if (viewUid !== me) subscribeTo(me); viewingName = ""; page = "members"; loadMembers(); } else backToMine(); return; }
   const ap = ev.target.closest("[data-approve]"), dc = ev.target.closest("[data-decline]");
   if (ap){ if (isOwnerView) setMemberStatus(ap.dataset.approve, "approved"); return; }
   if (dc){ if (isOwnerView) setMemberStatus(dc.dataset.decline, "declined"); return; }
@@ -2264,6 +2305,8 @@ document.addEventListener("click", async ev => {
   const a = ev.target.closest("[data-act]"); if (!a) return;
   const act = a.dataset.act;
   if (act === "refreshMembers") return loadMembers();
+  if (act === "ackSignups"){ markSignupsSeen(); render(); return; }
+  if (act === "enableAlerts"){ try { await Notification.requestPermission(); } catch {} render(); return; }
   if (act === "exportXlsx"){
     a.disabled = true; const label = a.textContent; a.textContent = "Building report…";
     try { await exportExcel(); a.textContent = "Downloaded"; }
