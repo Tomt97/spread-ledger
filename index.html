@@ -1000,6 +1000,10 @@ let filter = "all";
 try { filter = localStorage.getItem("spread-ledger-filter") || "all"; } catch {}
 
 function render(){
+  if (loaded && typeof isMarkable === "function"){
+    if (!quotesStarted) startQuotes();
+    else if (!quotes && Date.now() - quotesTriedAt > 20000 && trades.some(isMarkable)) loadQuotes();   // first open trade just added
+  }
   if (leftTracker){
     document.querySelector(".wrap").innerHTML = `<div class="panel empty" style="margin-top:40px"><b>Your membership was deleted</b>All your accounts and trades have been erased. If you open this tracker again, you'll start with a new, empty dashboard.</div>`;
     return;
@@ -1132,7 +1136,10 @@ function renderKpis(S){
   const top = S.strats[0];
   const most = (() => { const c = {}; S.rows.forEach(r => c[r.e.label] = (c[r.e.label]||0)+1); return Object.entries(c).sort((a,b)=>b[1]-a[1])[0]; })();
   $("#kpis").innerHTML = `
-    <div class="kpi"><span class="label">Net P&amp;L</span><span class="v ${pnlClass(S.total)}">${n ? money(S.total) : "$0.00"}</span><span class="s">${n} closed · ${S.open.length + S.due.length} open · after ${money(S.rows.reduce((a,r)=>a+(r.e.pnl!=null?(r.t.fees||0):0),0),false)} fees</span></div>
+    <div class="kpi"><span class="label">Net P&amp;L</span><span class="v ${pnlClass(S.total)}">${n ? money(S.total) : "$0.00"}</span><span class="s">${n} closed · ${S.open.length + S.due.length} open · after ${money(S.rows.reduce((a,r)=>a+(r.e.pnl!=null?(r.t.fees||0):0),0),false)} fees</span>${(() => {
+      const ms = S.open.map(r => markOf(r.t)).filter(Boolean); if (!ms.length) return "";
+      const v = ms.reduce((a, m) => a + m.pnl, 0);
+      return `<span class="s">Open trades now <b class="${pnlClass(v)}">${money(v)}</b>${ms.length < S.open.length ? ` (${ms.length} of ${S.open.length})` : ""} · 15-min delayed, ${quoteTime(ms[0].at)}</span>`; })()}</div>
     <div class="kpi"><span class="label">Win rate</span><span class="v">${S.winRate == null ? "—" : (S.winRate*100).toFixed(1)+"%"}</span><span class="s">${S.wins.length}W · ${S.losses.length}L${n - S.wins.length - S.losses.length ? " · "+(n - S.wins.length - S.losses.length)+" flat" : ""}</span></div>
     <div class="kpi"><span class="label">Avg per trade</span><span class="v ${pnlClass(S.avg)}">${money(S.avg)}</span><span class="s">win <span class="gain">${money(S.avgWin)}</span> · loss <span class="loss">${money(S.avgLoss)}</span></span></div>
     <div class="kpi"><span class="label">Max drawdown</span><span class="v ${S.dd > 0 ? "loss" : ""}">${S.dd > 0 ? money(-S.dd) : "$0.00"}</span><span class="s">${S.dd > 0 ? `peak ${money0(S.curve[S.ddPeakI].v)} → ${money0(S.curve[S.ddTroughI].v)}` : "from peak cumulative P&amp;L"}</span></div>
@@ -1244,7 +1251,9 @@ function renderBlotter(S){
         <div><span class="label">Entry</span><span class="num">${t.p.price==null?"—":t.p.price.toFixed(2)} <span class="muted">${t.p.price==null?"":(cash>=0?"cr ":"db ")+money0(Math.abs(cash))}</span></span></div>
         <div><span class="label">Expires</span><span class="num">${fmtShort(e.exp)}</span></div>
         <div><span class="label">${cop ? "Chance" : "Breakeven"}</span><span class="num">${cop ? fmtPct(cop.prob) : rp && rp.be.length ? rp.be.map(b => fmtK(+b.toFixed(2))).join(" / ") : "—"}</span></div>
-        <div><span class="label">P&amp;L</span><span class="num ${pnlClass(e.pnl)}" style="font-weight:700">${e.pnl==null?"—":money(e.pnl)}</span></div>
+        ${(() => { const m = e.status === "open" ? markOf(t) : null;
+          return m ? `<div><span class="label">P&amp;L now</span><span class="num ${pnlClass(m.pnl)}" style="font-weight:700">${money(m.pnl)} <span class="muted" style="font-weight:400">@ ${fmtMark(m.V)}</span></span></div>`
+            : `<div><span class="label">P&amp;L</span><span class="num ${pnlClass(e.pnl)}" style="font-weight:700">${e.pnl==null?"—":money(e.pnl)}</span></div>`; })()}
       </div>
       <div class="rowacts adm"><button class="btn small" type="button" data-rowact="edit" data-id="${esc(t.id)}">Edit</button><button class="btn small danger ${rowArmed===t.id?"armed":""}" type="button" data-rowact="del" data-id="${esc(t.id)}">${rowArmed===t.id?"Confirm":"Remove"}</button></div>
     </div>`; }).join("")}</div>`;
@@ -1263,7 +1272,9 @@ function renderBlotter(S){
       <td>${statusPill(e)}</td>
       <td class="r num">${e.exitPrice==null?"—":e.exitPrice.toFixed(2)}</td>
       <td class="r num muted">${t.fees>0?money(t.fees,false):"$0.00"}</td>
-      <td class="r num ${pnlClass(e.pnl)}" style="font-weight:600">${e.pnl==null?"—":money(e.pnl)}</td>
+      ${(() => { const m = e.status === "open" ? markOf(t) : null;
+        return m ? `<td class="r num ${pnlClass(m.pnl)}" style="font-weight:600" title="If closed at the mid now (15-min delayed quotes, ${esc(quoteTime(m.at))})">${money(m.pnl)}<div class="sub">now @ ${fmtMark(m.V)}</div></td>`
+          : `<td class="r num ${pnlClass(e.pnl)}" style="font-weight:600">${e.pnl==null?"—":money(e.pnl)}</td>`; })()}
       <td class="adm"><div class="rowacts"><button class="btn small" type="button" data-rowact="edit" data-id="${esc(t.id)}" aria-label="Edit trade">Edit</button><button class="btn small danger ${rowArmed===t.id?"armed":""}" type="button" data-rowact="del" data-id="${esc(t.id)}">${rowArmed===t.id?"Confirm":"Remove"}</button></div></td></tr>`;
   }).join("")}</tbody></table>`;
 }
@@ -1377,7 +1388,7 @@ function renderSheet(){
         </div></div>
       ${exitTab==="close" ? `
         <div class="grid2">
-          <label class="field"><span class="label">Close price (per spread)</span><input type="number" step="0.01" id="exPrice" placeholder="${p.action==="SELL"?"debit paid to close, e.g. 0.10":"credit received, e.g. 1.20"}"></label>
+          <label class="field"><span class="label">Close price (per spread)</span><input type="number" step="0.01" id="exPrice" placeholder="${(() => { const m = markOf(t); return m ? `now about ${fmtMark(m.V)} (mid)` : p.action==="SELL"?"debit paid to close, e.g. 0.10":"credit received, e.g. 1.20"; })()}"></label>
           <label class="field"><span class="label">Close date</span><input type="date" id="exDate" value="${todayISO() < e.exp ? todayISO() : e.exp}"></label>
         </div>` : `
         <div class="grid2">
@@ -1399,6 +1410,7 @@ function renderSheet(){
       <div><span class="label">Max loss</span><span class="v loss">${rp?(isFinite(rp.maxL)?money(rp.maxL):"Unlimited"):"—"}</span></div>
       <div><span class="label">Breakeven</span><span class="v">${rp&&rp.be.length?rp.be.map(b=>fmtK(+b.toFixed(2))).join(" / "):"—"}</span></div>
       <div><span class="label">Expires</span><span class="v">${fmtShort(e.exp)}</span></div>
+      ${e.status === "open" ? (() => { const m = markOf(t); return m ? `<div><span class="label">P&amp;L now</span><span class="v ${pnlClass(m.pnl)}">${money(m.pnl)}</span><span class="hint">mark ${fmtMark(m.V)} (mid) · 15-min delayed, ${esc(quoteTime(m.at))}</span></div>` : ""; })() : ""}
       ${e.status === "open" ? (() => { const c = chanceOfProfit(t); return `<div><span class="label">Chance of profit</span><span class="v">${c ? fmtPct(c.prob) : "—"}</span><span class="hint">${c ? `${esc(p.symbol)} ${c.S0} · IV ${c.iv}% · ${c.days < 1 ? (c.days*24).toFixed(1)+" h" : c.days.toFixed(1)+" d"} left` : "add price + IV under Market inputs"}</span></div>`; })() : ""}
     </div>
     ${chart ? `<div><div class="card-head" style="margin-bottom:6px"><span class="label">P&amp;L at expiration</span><span class="hint">${(t.fees||0)?`includes ${money(t.fees,false)} fees · `:""}tap or hover to read</span></div><div class="chartwrap">${chart.html}<div class="readout" id="readout" hidden></div></div></div>`
@@ -1542,6 +1554,55 @@ function optionStratUrl(p){
   });
   return `https://optionstrat.com/build/custom/${encodeURIComponent(sym)}/${legs.join(",")}`;
 }
+
+/* ---------- delayed quotes for open trades ----------
+   A GitHub Action (.github/workflows/quotes.yml) copies CBOE's 15-minute-delayed SPX/XSP/RUT/NDX option
+   quotes into quotes.json on this site's "quotes" branch every few minutes while the market is open.
+   Open trades are marked at the mid of each leg's bid and ask. */
+var QUOTES_URL = /\.github\.io$/.test(location.hostname) && location.pathname.split("/")[1]
+  ? `https://raw.githubusercontent.com/${location.hostname.split(".")[0]}/${location.pathname.split("/")[1]}/quotes/quotes.json` : "quotes.json";
+var quotes = null, quotesTimer = null, quotesStarted = false, quotesTriedAt = 0;   // var: render() can run before this line is reached
+var isMarkable = t => t.p && t.p.legs && t.p.price != null && !t.exit && todayISO() <= expiryOf(t.p);
+async function loadQuotes(){
+  if (document.visibilityState === "hidden" || !trades.some(isMarkable)) return;
+  quotesTriedAt = Date.now();
+  try {
+    const r = await fetch(QUOTES_URL, {cache: "no-cache"}); if (!r.ok) return;
+    const q = await r.json(); if (!q || !q.u) return;
+    const changed = !quotes || q.updated !== quotes.updated; quotes = q; if (changed) scheduleRender();
+  } catch {}
+}
+function startQuotes(){
+  if (quotesStarted) return; quotesStarted = true;
+  loadQuotes(); quotesTimer = setInterval(loadQuotes, 3 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadQuotes(); });
+}
+var quoteSym = s => String(s || "").toUpperCase().replace(/^\$/, "").replace(/^SPXW$/, "SPX");
+function legQuote(p, exp, type, k){
+  const sym = quoteSym(p.symbol), book = quotes && quotes.u && quotes.u[sym]; if (!book) return null;
+  const ymd = exp.slice(2).replace(/-/g, ""), alt = WEEKLY_ROOT[sym] || sym + "W";
+  const roots = WEEKLY_ROOT[sym] && !(/WEEKLY|QUARTERLY|EOM/.test(p.tags || "") || !thirdFriday(exp)) ? [sym, alt] : [alt, sym];
+  for (const r of roots){ const q = book.o[`${r}${ymd}${type}${k}`]; if (q) return q; }
+  return null;
+}
+var midOf = q => q[1] > 0 ? (q[0] + q[1]) / 2 : q[0];
+/* value per unit of the structure now (same orientation as the fill price), or null if any leg has no quote */
+function markOf(t){
+  if (!quotes || !isMarkable(t)) return null;
+  const p = t.p, book = quotes.u[quoteSym(p.symbol)]; if (!book) return null;
+  let V = 0;
+  if (t.tosPartial){
+    for (const l of t.tosPartial.rem){ const [exp, ty, k] = l.key.split("|"), q = legQuote(p, exp, ty, +k); if (!q) return null; V += l.q * midOf(q); }
+    V = (t.tosPartial.closeCash + V) / p.qty / dirOf(p);
+  } else {
+    for (const l of p.legs){ const q = legQuote(p, l.exp, l.t, l.k); if (!q) return null; V += l.q * midOf(q); }
+  }
+  return {V, pnl: pnlAt(t, V), at: book.t};
+}
+var quoteTime = at => { if (!at) return ""; const d = new Date(at.replace(" ", "T") + "Z"); if (isNaN(d)) return "";
+  const same = d.toDateString() === new Date().toDateString();
+  return (same ? "" : d.toLocaleDateString([], {month: "short", day: "numeric"}) + " ") + d.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}); };
+var fmtMark = V => (Math.abs(V) < 10 ? V.toFixed(2) : V.toFixed(1));
 
 /* ---------- fee settings sheet ---------- */
 let feeSheet = null;   // {acct ("" = default rates), own, rows:[{sym, rate}], other, msg}

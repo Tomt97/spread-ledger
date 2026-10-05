@@ -1,0 +1,40 @@
+name: Update option quotes
+
+on:
+  schedule:
+    # Every 5 minutes, weekdays, wide enough to cover 9:30 am - 4:15 pm New York in daylight and standard time.
+    # GitHub may run scheduled jobs late or skip some when busy; the app shows the quote time.
+    - cron: "*/5 13-21 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: quotes
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Fetch delayed quotes
+        run: node .github/scripts/update-quotes.mjs
+        env:
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+      - name: Publish to the quotes branch
+        run: |
+          if [ ! -f quotes.json ]; then exit 0; fi
+          # One commit, replaced each time, so the repository history doesn't grow.
+          mkdir pub && mv quotes.json pub/ && cd pub
+          git init -q -b quotes
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add quotes.json && git commit -q -m "Delayed option quotes"
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" quotes
