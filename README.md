@@ -60,15 +60,25 @@ with a connection.
   should receive alerts, then put its ID (the part after `/f/`) in `config.js` as
   `SIGNUP_ALERT_FORMSPREE`. Each new sign-up then emails you once. Free plan: 50 emails a month.
 
-## Share your progress (read-only link)
-**Share progress** (next to Export to Excel) creates a link like
-`https://<you>.github.io/spread-ledger/view.html?s=<random code>` for one account (or all combined).
+## P&L now on open trades (15-minute delayed)
+Open SPX, XSP, RUT and NDX trades show **P&L now**: each leg priced at the mid of its bid and ask.
+The GitHub Action **Update option quotes** (`.github/workflows/quotes.yml`) runs every 5 minutes on
+weekdays during market hours. It copies CBOE's free delayed quotes (near-term strikes only) into `quotes.json` on the
+`quotes` branch, replacing the one commit there each time so the history doesn't grow. The app reads
+that file, so there's nothing to set up. GitHub sometimes runs scheduled jobs late, and the app shows
+the time of the quotes. GitHub stops schedules in a public repository after 60 days without a commit.
+If that happens, re-enable it under **Actions → Update option quotes**.
+
+## Share your progress (read-only links)
+**Share progress** (next to Export to Excel) creates links like
+`https://<you>.github.io/spread-ledger/view.html?s=<random code>`, each for one account (or all combined).
+Make as many as you like and send each person the one you want them to see.
 Anyone with the link sees P&L, win rate, drawdown, the cumulative and monthly charts, the calendar,
 strategy results and, by default, every trade in that account with strikes, entry and exit prices,
 fees, order text and a payoff graph (or choose a summary list, or no list). They can't add or change
 anything, and opening the link while signed in to their own account doesn't affect it. Your email and
 other accounts are never included. The page
-refreshes itself whenever you open the app; **Stop sharing** turns the link off.
+refreshes itself whenever you open the app; **Stop sharing** turns that link off.
 Requires the `shares` rule in `firestore.rules` to be published in Firebase.
 
 ## Who can do what
