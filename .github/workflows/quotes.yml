@@ -2,9 +2,10 @@ name: Update option quotes
 
 on:
   schedule:
-    # Every 5 minutes, weekdays, wide enough to cover 9:30 am - 4:15 pm New York in daylight and standard time.
-    # GitHub may run scheduled jobs late or skip some when busy; the app shows the quote time.
-    - cron: "*/5 13-21 * * 1-5"
+    # Every 15 minutes (off the top of the hour, when GitHub is busiest), weekdays, wide enough to cover
+    # 9:30 am - 4:15 pm New York in daylight and standard time. GitHub may run scheduled jobs late or
+    # skip some; the app shows the quote time.
+    - cron: "7,22,37,52 13-21 * * 1-5"
   workflow_dispatch:
 
 permissions:

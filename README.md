@@ -62,7 +62,7 @@ with a connection.
 
 ## P&L now on open trades (15-minute delayed)
 Open SPX, XSP, RUT and NDX trades show **P&L now**: each leg priced at the mid of its bid and ask.
-The GitHub Action **Update option quotes** (`.github/workflows/quotes.yml`) runs every 5 minutes on
+The GitHub Action **Update option quotes** (`.github/workflows/quotes.yml`) runs every 15 minutes on
 weekdays during market hours. It copies CBOE's free delayed quotes (near-term strikes only) into `quotes.json` on the
 `quotes` branch, replacing the one commit there each time so the history doesn't grow. The app reads
 that file, so there's nothing to set up. GitHub sometimes runs scheduled jobs late, and the app shows
