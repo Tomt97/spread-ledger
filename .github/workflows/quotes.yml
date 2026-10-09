@@ -1,4 +1,5 @@
 name: Update option quotes
+# Also builds market.json (ES charts in SPX points, GEX, levels, 1DTE/2DTE ranges) and keeps the prediction log.
 
 on:
   schedule:
@@ -20,7 +21,7 @@ permissions:
 
 concurrency:
   group: quotes
-  cancel-in-progress: true
+  cancel-in-progress: false     # never cut a run off mid-publish; the prediction log lives on the quotes branch
 
 jobs:
   update:
@@ -35,17 +36,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Get the files already published
+        run: |
+          mkdir prev
+          if git fetch -q --depth=1 origin quotes; then git --work-tree=prev checkout FETCH_HEAD -- . ; fi
+          ls -l prev
       - name: Fetch delayed quotes
+        continue-on-error: true
         run: node .github/scripts/update-quotes.mjs
         env:
           FORCE: ${{ inputs.force == true && 'true' || 'false' }}
+      - name: Build market data and score predictions
+        continue-on-error: true
+        run: node .github/scripts/update-market.mjs
+        env:
+          PRED_FILE: prev/predictions.json
       - name: Publish to the quotes branch
         run: |
-          if [ ! -f quotes.json ]; then exit 0; fi
-          # One commit, replaced each time, so the repository history doesn't grow.
-          mkdir pub && mv quotes.json pub/ && cd pub
+          # One commit, replaced each time, so the repository history doesn't grow. Files not rebuilt this run are kept.
+          mkdir pub && cp prev/*.json pub/ 2>/dev/null || true
+          for f in quotes.json market.json predictions.json; do if [ -f "$f" ]; then mv "$f" pub/; fi; done
+          cd pub && ls -l
           git init -q -b quotes
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add quotes.json && git commit -q -m "Delayed option quotes"
+          git add -A && git commit -q -m "Delayed quotes and market data"
           git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" quotes

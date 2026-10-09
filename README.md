@@ -93,6 +93,28 @@ The app shows the time of the quotes next to each number. On GitHub, **Actions �
 also refreshes them on demand. GitHub stops schedules in a public repository after 60 days without a commit, but the
 cron-job.org trigger keeps working.
 
+## SPX outlook (top of the dashboard)
+A collapsible section with ES futures charts (15 min, 1 h, 2 h, 4 h, daily) converted to SPX points,
+EMA 20/50/200, VWAP, RSI, support/resistance from swing highs and lows, prior-day and overnight levels,
+pivots, SPX gamma exposure by strike (call wall, put wall, zero-gamma flip) and 1DTE/2DTE ranges for SPX.
+**Show prices in ES points** adds the spread back.
+
+- **ES to SPX:** each day's ES − SPX spread is measured at the 4:00 pm close (ES's 3–4 pm bar against the SPX
+  close), and during the session from matching 15-minute bars. Each ES bar has its own day's spread subtracted, which
+  also takes care of quarterly contract rolls.
+- **Ranges:** the at-the-money straddle for each expiration gives the implied move. The widths are calibrated by
+  how big moves really were, compared with VIX1D (1 day) and VIX9D (2 days), over the last two years.
+- **Prediction log:** every range is saved to `predictions.json` on the `quotes` branch. It keeps updating until it locks:
+  1DTE at the target day's 9:30 am open, 2DTE at the open the day before. After the target day's close it is
+  scored: points missed and whether the close landed inside the 68% and 90% ranges. After 8 scored days the model
+  learns how far closes move toward the biggest nearby gamma strike, and any steady bias. After 15 it also re-fits
+  the range widths. The section shows the average miss next to a "last price" guess, so you can see whether the
+  model is earning its keep.
+
+It is built by the same **Update option quotes** Action, so the hourly cron-job.org trigger keeps it fresh. ES trades
+nearly around the clock, so you can also run that job overnight (Sunday 6 pm to Friday 5 pm New York time).
+Delayed data, for study only.
+
 ## Share your progress (read-only links)
 **Share progress** (next to Export to Excel) creates links like
 `https://<you>.github.io/spread-ledger/view.html?s=<random code>`, each for one account (or all combined).
