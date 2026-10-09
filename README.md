@@ -94,7 +94,7 @@ also refreshes them on demand. GitHub stops schedules in a public repository aft
 cron-job.org trigger keeps working.
 
 ## SPX outlook (top of the dashboard)
-A collapsible section with ES futures charts (15 min, 1 h, 2 h, 4 h, daily) converted to SPX points,
+Always visible: the 1DTE and 2DTE likely (68%) SPX close range, high and low, with the 2–3 nearest resistance and support levels for each. **Show charts & details** opens ES futures charts (15 min, 1 h, 2 h, 4 h, daily) converted to SPX points,
 EMA 20/50/200, VWAP, RSI, support/resistance from swing highs and lows, prior-day and overnight levels,
 pivots, SPX gamma exposure by strike (call wall, put wall, zero-gamma flip) and 1DTE/2DTE ranges for SPX.
 **Show prices in ES points** adds the spread back.

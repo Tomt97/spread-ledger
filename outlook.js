@@ -11,11 +11,21 @@
 
   const css = `
 #outlook{display:grid;gap:0}
-#outlook > details > summary{list-style:none;cursor:pointer;display:flex;gap:10px 16px;align-items:center;flex-wrap:wrap;padding:12px 16px}
+#outlook > details > summary{list-style:none;cursor:pointer;display:flex;align-items:center;padding:8px 16px 12px}
 #outlook > details > summary::-webkit-details-marker{display:none}
-#outlook > details > summary .chev{margin-left:auto;color:var(--muted);font-size:13px;font-weight:600;white-space:nowrap}
+#outlook > details > summary .chev{color:var(--accent);font-size:13px;font-weight:600;white-space:nowrap}
 #outlook > details[open] > summary .chev .more{display:none}
 #outlook > details:not([open]) > summary .chev .less{display:none}
+#outlook .ol-top{display:grid;gap:10px;padding:12px 16px 4px}
+#outlook .ol-top-h{display:flex;gap:6px 12px;flex-wrap:wrap;align-items:baseline;font-size:13px}
+#outlook .ol-minis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#outlook .ol-mini{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:grid;gap:6px;min-width:0}
+#outlook .ol-mini-h{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px}
+#outlook .ol-hl{display:flex;gap:6px 16px;flex-wrap:wrap;align-items:baseline;font-size:14px}
+#outlook .ol-hl b{font-family:var(--mono);font-size:17px;font-weight:600}
+#outlook .ol-lv{display:grid;grid-template-columns:86px minmax(0,1fr);gap:8px;align-items:baseline;font-size:13px}
+#outlook .ol-lv b{font-family:var(--mono);font-weight:600}
+@media (max-width:760px){#outlook .ol-minis{grid-template-columns:1fr}}
 #outlook .ol-sum{display:flex;gap:6px 16px;flex-wrap:wrap;align-items:baseline;font-size:14px;min-width:0}
 #outlook .ol-sum b{font-family:var(--mono);font-weight:600}
 #outlook .ol-body{display:grid;gap:16px;padding:4px 16px 16px;min-width:0}
@@ -51,7 +61,7 @@
 .ol-root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--pos:#2a78d6;--neg:#e34948;--band:rgba(42,120,214,.13);--band2:rgba(42,120,214,.07)}
 @media (prefers-color-scheme: dark){:root:where(:not([data-theme="light"])) .ol-root{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--pos:#3987e5;--neg:#e66767;--band:rgba(57,135,229,.2);--band2:rgba(57,135,229,.1)}}
 :root[data-theme="dark"] .ol-root{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--pos:#3987e5;--neg:#e66767;--band:rgba(57,135,229,.2);--band2:rgba(57,135,229,.1)}
-@media (max-width:760px){#outlook .ol-stats{grid-template-columns:repeat(2,minmax(0,1fr))} #outlook .ol-ranges,#outlook .ol-split{grid-template-columns:1fr}}
+@media (max-width:760px){#outlook .ol-stats{grid-template-columns:repeat(2,minmax(0,1fr))} #outlook .ol-stat:last-child{grid-column:span 2} #outlook .ol-ranges,#outlook .ol-split{grid-template-columns:1fr}}
 `;
   const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style);
 
@@ -121,11 +131,25 @@
       wire(el); return;
     }
     const R = M.ranges || [], g = M.gex, P = M.predictions || {models: [], recent: []};
-    const sum = R.map(r => `<span>${esc(r.label)} ${esc(dayLabel(r.exp))} <b>${px0(r.r68[0])}–${px0(r.r68[1])}</b></span>`).join("");
-    el.innerHTML = `<details ${open ? "open" : ""}>
-      <summary><span class="label">SPX outlook</span>
-        <span class="ol-sum"><span>${inES ? "ES" : "SPX"} ≈ <b>${px(M.spot)}</b></span>${sum}<span class="muted">${esc(timeLabel(Date.parse(M.updated) / 1000))}</span></span>
-        <span class="chev"><span class="more">Show charts &amp; levels</span><span class="less">Hide</span></span></summary>
+    const lv = levelList();
+    // The 2-3 nearest levels above and below each range's center (swing levels, GEX walls/flip, prior day, pivots).
+    // Levels within 5 points of one already picked are the same zone: keep the stronger kind (GEX, swing, day, pivot).
+    const rank = l => ({gex: 0, res: 1, sup: 1, day: 2, overnight: 2, pivot: 3})[l.kind] ?? 4;
+    const pick = list => { const out = []; for (const l of list){ const j = out.findIndex(o => Math.abs(o.p - l.p) <= 5);
+      if (j < 0){ if (out.length < 3) out.push(l); } else if (rank(l) < rank(out[j])) out[j] = l; } return out; };
+    const keys = r => ({res: pick(lv.filter(l => l.p > r.center + 2).sort((a, b) => a.p - b.p)), sup: pick(lv.filter(l => l.p < r.center - 2).sort((a, b) => b.p - a.p))});
+    const short = l => l.kind === "res" ? "swing high" : l.kind === "sup" ? "swing low" : l.kind === "pivot" ? l.name : l.name.replace(" (GEX)", "").replace(/ \(.*\)/, "").toLowerCase();
+    const lvl = l => `<b>${px0(l.p)}</b> <span class="muted">${esc(short(l))}</span>`;
+    const compact = R.map(r => { const k = keys(r); return `<div class="ol-mini">
+        <div class="ol-mini-h"><span class="label">${esc(r.label)} · ${esc(dayLabel(r.exp))}</span><span class="muted">90%: ${px0(r.r90[0])}–${px0(r.r90[1])}</span></div>
+        <div class="ol-hl"><span>High <b>${px0(r.r68[1])}</b></span><span>Low <b>${px0(r.r68[0])}</b></span><span class="muted">center ${px0(r.center)}</span></div>
+        <div class="ol-lv"><span class="label" style="color:var(--loss)">Resistance</span><span>${k.res.map(lvl).join(" · ") || "—"}</span></div>
+        <div class="ol-lv"><span class="label" style="color:var(--gain)">Support</span><span>${k.sup.map(lvl).join(" · ") || "—"}</span></div></div>`; }).join("");
+    el.innerHTML = `<div class="ol-top">
+        <div class="ol-top-h"><span class="label">SPX outlook</span><span class="muted">${inES ? "ES" : "SPX"} ≈ <b style="color:var(--ink);font-family:var(--mono)">${px(M.spot)}</b> · likely (68%) close range · ${esc(timeLabel(Date.parse(M.updated) / 1000))}</span></div>
+        <div class="ol-minis">${compact || `<span class="ol-note">No upcoming SPX expirations in the data right now.</span>`}</div></div>
+      <details ${open ? "open" : ""}>
+      <summary><span class="chev"><span class="more">Show charts &amp; details</span><span class="less">Hide charts &amp; details</span></span></summary>
       <div class="ol-body">
         <div class="ol-ctl">
           <span class="ol-note">Delayed data. ES is converted to SPX points by subtracting the ES − SPX spread (now ${pts(M.basis.now)}${M.basis.live ? ", live" : ", at the last close"}). For study, not advice.</span>
