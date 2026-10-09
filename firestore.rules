@@ -44,6 +44,17 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.ownerUid == request.auth.uid;
     }
 
+    // Ticker symbols that have open trades (symbols only, nothing about who holds them), so the
+    // "Update option quotes" GitHub Action knows which option chains to fetch.
+    match /tickers/{sym} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && (isOwner() || isApproved(request.auth.uid))
+        && sym.matches('[A-Z0-9.]{1,8}')
+        && request.resource.data.keys().hasOnly(["at"])
+        && request.resource.data.at is int;
+    }
+
     // Everything else is closed.
     match /{document=**} {
       allow read, write: if false;

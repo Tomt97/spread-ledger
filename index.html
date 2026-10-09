@@ -844,8 +844,18 @@ function yearsToExpiry(iso){
   const expMs = Date.UTC(y,m-1,d,16 - nyOffsetHours(y,m,d)); // 4:00 pm New York
   return (expMs - Date.now()) / (365*24*3600*1000);
 }
+/* Price and IV for chance of profit: the delayed quote when it's newer than what was typed in Market inputs. */
+function mktOf(sym){
+  const m = market[sym], q = quotes && quotes.u && quotes.u[quoteSym(sym)];
+  const qt = q && q.t ? Date.parse(q.t.replace(" ", "T") + "Z") : 0;
+  if (q && q.px > 0 && qt && (!m || !m.updatedAt || qt > m.updatedAt)){
+    const iv = q.iv > 0 ? +(q.iv < 3 ? q.iv * 100 : q.iv).toFixed(1) : m && m.iv;
+    return {spot: +(+q.px).toFixed(2), iv, updatedAt: qt, source: "CBOE quote, 15-min delayed", auto: true};
+  }
+  return m;
+}
 function chanceOfProfit(t){
-  const p = t.p, mk = market[p.symbol];
+  const p = t.p, mk = mktOf(p.symbol);
   if (!mk || !(mk.spot > 0) || !(mk.iv > 0) || !modeled(p) || p.price == null) return null;
   const T = yearsToExpiry(expiryOf(p)); if (T <= 0) return null;
   const S0 = mk.spot, sd = (mk.iv/100)*Math.sqrt(T);
@@ -870,13 +880,13 @@ function renderMarket(S){
   const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest("#mktRows");
   if (focused && !readOnly()) return; // don't wipe what the viewer is typing
   $("#mktRows").innerHTML = syms.map(sym => {
-    const m = market[sym] || {}, id = sym.replace(/[^A-Za-z0-9]/g,"_");
+    const m = mktOf(sym) || {}, id = sym.replace(/[^A-Za-z0-9]/g,"_");
     return `<div class="mktrow">
       <span class="sym">${esc(sym)}</span>
       <label class="field"><span class="label">Price now</span><input type="number" step="0.01" id="ms-${id}" value="${m.spot ?? ""}" ${readOnly()?"readonly":""} placeholder="${sym === "SPX" ? "e.g. 7790.50" : "current price"}"></label>
       <label class="field"><span class="label">Implied vol %</span><input type="number" step="0.1" id="mi-${id}" value="${m.iv ?? ""}" ${readOnly()?"readonly":""} placeholder="${sym === "SPX" || sym === "SPY" || sym === "XSP" ? "e.g. VIX 15.2" : "e.g. 22"}"></label>
       <button class="btn small rw" type="button" data-act="saveMkt" data-sym="${esc(sym)}">Update</button>
-      <span class="hint">${m.updatedAt ? `Updated ${fmtAgo(m.updatedAt)}${m.source && m.source !== "manual" ? " · " + esc(m.source) : ""}` : "Enter price and IV to see chance of profit"}</span>
+      <span class="hint">${m.updatedAt ? `Updated ${fmtAgo(m.updatedAt)}${m.source && m.source !== "manual" ? " · " + esc(m.source) : ""}${m.auto ? " · type to override" : ""}` : "Enter price and IV to see chance of profit"}</span>
     </div>`;
   }).join("");
 }
@@ -1003,6 +1013,7 @@ function render(){
   if (loaded && typeof isMarkable === "function"){
     if (!quotesStarted) startQuotes();
     else if (!quotes && Date.now() - quotesTriedAt > 20000 && trades.some(isMarkable)) loadQuotes();   // first open trade just added
+    syncTickers();
   }
   if (leftTracker){
     document.querySelector(".wrap").innerHTML = `<div class="panel empty" style="margin-top:40px"><b>Your membership was deleted</b>All your accounts and trades have been erased. If you open this tracker again, you'll start with a new, empty dashboard.</div>`;
@@ -1572,12 +1583,26 @@ async function loadQuotes(){
     const changed = !quotes || q.updated !== quotes.updated; quotes = q; if (changed) scheduleRender();
   } catch {}
 }
+/* List each ticker with open trades in the public "tickers" collection (symbol and a timestamp only),
+   at most once a day per ticker, so the quotes Action fetches its options. */
+var tickersSent = null;
+function syncTickers(){
+  if (mode !== "db" || !DB || viewUid !== me || readOnly()) return;
+  if (!tickersSent){ try { tickersSent = JSON.parse(localStorage.getItem("spread-ledger-tickers") || "{}") || {}; } catch { tickersSent = {}; } }
+  const syms = [...new Set(trades.filter(isMarkable).map(t => quoteSym(t.p.symbol)))].filter(x => /^[A-Z0-9.]{1,8}$/.test(x));
+  syms.forEach(sym => {
+    if (Date.now() - (tickersSent[sym] || 0) < 20 * 3600e3) return;
+    tickersSent[sym] = Date.now();
+    DB.doc(`tickers/${sym}`).set({at: Date.now()}).then(() => { try { localStorage.setItem("spread-ledger-tickers", JSON.stringify(tickersSent)); } catch {} })
+      .catch(() => { delete tickersSent[sym]; });
+  });
+}
 function startQuotes(){
   if (quotesStarted) return; quotesStarted = true;
   loadQuotes(); quotesTimer = setInterval(loadQuotes, 3 * 60 * 1000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadQuotes(); });
 }
-var quoteSym = s => String(s || "").toUpperCase().replace(/^\$/, "").replace(/^SPXW$/, "SPX");
+var quoteSym = s => String(s || "").toUpperCase().replace(/^\$/, "").replace(/^SPXW$/, "SPX").replace(/\//g, ".");
 function legQuote(p, exp, type, k){
   const sym = quoteSym(p.symbol), book = quotes && quotes.u && quotes.u[sym]; if (!book) return null;
   const ymd = exp.slice(2).replace(/-/g, ""), alt = WEEKLY_ROOT[sym] || sym + "W";

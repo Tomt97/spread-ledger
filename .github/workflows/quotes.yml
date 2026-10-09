@@ -6,7 +6,14 @@ on:
     # 9:30 am - 4:15 pm New York in daylight and standard time. GitHub may run scheduled jobs late or
     # skip some; the app shows the quote time.
     - cron: "7,22,37,52 13-21 * * 1-5"
+  # Also started every hour by a free cron-job.org job (see README), because GitHub's own schedule
+  # often runs only once or twice a day on small repositories.
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Fetch even when the market is closed"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -21,14 +28,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            config.js
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       - name: Fetch delayed quotes
         run: node .github/scripts/update-quotes.mjs
         env:
-          FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+          FORCE: ${{ inputs.force == true && 'true' || 'false' }}
       - name: Publish to the quotes branch
         run: |
           if [ ! -f quotes.json ]; then exit 0; fi

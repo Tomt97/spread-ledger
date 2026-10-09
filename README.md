@@ -61,13 +61,37 @@ with a connection.
   `SIGNUP_ALERT_FORMSPREE`. Each new sign-up then emails you once. Free plan: 50 emails a month.
 
 ## P&L now on open trades (15-minute delayed)
-Open SPX, XSP, RUT and NDX trades show **P&L now**: each leg priced at the mid of its bid and ask.
-The GitHub Action **Update option quotes** (`.github/workflows/quotes.yml`) runs every 15 minutes on
-weekdays during market hours. It copies CBOE's free delayed quotes (near-term strikes only) into `quotes.json` on the
-`quotes` branch, replacing the one commit there each time so the history doesn't grow. The app reads
-that file, so there's nothing to set up. GitHub sometimes runs scheduled jobs late, and the app shows
-the time of the quotes. GitHub stops schedules in a public repository after 60 days without a commit.
-If that happens, re-enable it under **Actions → Update option quotes**.
+Open trades in **any optionable ticker** (SPX, XSP, RUT, NDX, QQQ, SPY, stocks and so on) show **P&L now**: each leg
+priced at the mid of its bid and ask. **Market inputs** fill in each ticker's price and 30-day implied volatility
+automatically, so chance of profit works without typing (anything you type wins until newer quotes arrive).
+
+How it works: the app lists the ticker symbols that have open trades in the public `tickers` collection
+(symbols only, nothing about who holds them). The GitHub Action **Update option quotes**
+(`.github/workflows/quotes.yml`) fetches CBOE's free delayed quotes for those tickers and SPX/XSP/RUT/NDX. It saves
+near-term strikes to `quotes.json` on the `quotes` branch, replacing the one commit there each time, and the app reads that file.
+
+**One-time setup:**
+1. **Publish the rules again.** `firestore.rules` now includes `tickers`. In Firebase, go to **Firestore Database → Rules**,
+   paste the file, then click **Publish**.
+2. **Make it run every hour.** GitHub's own schedule often runs only once or twice a day on small repositories,
+   so a free [cron-job.org](https://cron-job.org) job starts the Action instead:
+   - On GitHub: profile picture → **Settings → Developer settings → Personal access tokens → Fine-grained tokens →
+     Generate new token**. Set the name to `spread-ledger quotes`. Under **Repository access**, choose **Only select repositories** → `spread-ledger`.
+     Under **Permissions → Repository permissions**, set **Actions: Read and write** and leave everything else as is. Generate it and copy it.
+   - On cron-job.org (free account): **Create cronjob**.
+     - URL: `https://api.github.com/repos/Tomt97/spread-ledger/actions/workflows/quotes.yml/dispatches`.
+     - Schedule: every hour, Monday–Friday, from 9 to 16, time zone America/New_York.
+     - Under **Advanced**, set the request method to **POST** and the request body to `{"ref":"main"}`.
+     - Add these headers:
+       - `Authorization: Bearer <your token>`
+       - `Accept: application/vnd.github+json`
+       - `Content-Type: application/json`
+     - Click **Test run**. It should answer **204**, and a new run shows under **Actions** on GitHub.
+   The token can only start Actions in this one repository. Delete it on GitHub to stop the job at any time.
+
+The app shows the time of the quotes next to each number. On GitHub, **Actions → Update option quotes → Run workflow**
+also refreshes them on demand. GitHub stops schedules in a public repository after 60 days without a commit, but the
+cron-job.org trigger keeps working.
 
 ## Share your progress (read-only links)
 **Share progress** (next to Export to Excel) creates links like
