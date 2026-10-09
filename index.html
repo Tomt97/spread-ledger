@@ -39,7 +39,8 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
-.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 60px;display:grid;gap:18px}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 60px;display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+.wrap > *, #dash > *, header.top > *{min-width:0}
 h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
 .num,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)}
@@ -224,6 +225,7 @@ body:not(.admin) .adm{display:none!important}
 .rowacts .btn{padding:4px 9px;font-size:12.5px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .ownerbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.ownerbar .actions{flex-wrap:wrap}
 .viewing{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--r);padding:10px 14px}
 .viewing b{color:var(--accent)}
 .acctbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
@@ -294,7 +296,7 @@ body:not(.admin) .adm{display:none!important}
     <div class="scroll" id="membersBody"></div>
   </section>
 
-  <div id="dash" style="display:grid;gap:18px">
+  <div id="dash" style="display:grid;grid-template-columns:minmax(0,1fr);gap:18px">
   <nav class="acctbar" aria-label="Accounts">
     <div class="tabs acct-tabs" id="acctTabs" role="group" aria-label="Choose account"></div>
     <span class="actions"><button class="btn small ex" type="button" data-act="feeSettings">Fees</button><button class="btn small rw" type="button" data-act="manageAccts">Manage accounts</button></span>
