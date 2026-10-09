@@ -286,7 +286,7 @@ const out = {
           "4h": pack(a4h.filter(b => b.t > since(300))), "1d": pack(aD.filter(b => b.t > since(730))) },
   spxDaily: spxD.slice(-260).map(b => [ny(b.t).date, r2(b.o), r2(b.h), r2(b.l), r2(b.c)]),
   atr14: atrDaily, gex, expirations: expirations.slice(0, 6).map(({ T, ...e }) => e), ranges, calibration: { oneDay: cal1, twoDay: cal2 },
-  predictions: { models, recent: records.slice(-30) },
+  predictions: { models, recent: records.slice(-60) },
   levels: { resistance: pickSide(1), support: pickSide(-1), refs },
 };
 writeFileSync("market.json", JSON.stringify(out));

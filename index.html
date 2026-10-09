@@ -104,7 +104,7 @@ table{border-collapse:collapse;width:100%;font-size:14px}
 th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
 td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
 td.r,th.r{text-align:right}
-.scroll{overflow-x:auto}
+.scroll{overflow-x:auto;position:relative}
 tbody tr.click{cursor:pointer}
 tbody tr.click:hover{background:var(--sunk)}
 tbody tr:last-child td{border-bottom:none}
@@ -223,7 +223,7 @@ body:not(.admin) .adm{display:none!important}
 .adminbtn[aria-pressed="true"]{background:var(--loss);border-color:var(--loss);color:#fff}
 .rowacts{display:flex;gap:6px;justify-content:flex-end}
 .rowacts .btn{padding:4px 9px;font-size:12.5px}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.sr{position:absolute;left:0;top:0;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .ownerbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .ownerbar .actions{flex-wrap:wrap}
 .viewing{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--r);padding:10px 14px}

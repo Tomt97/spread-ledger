@@ -57,6 +57,22 @@
 #outlook td,#outlook th{padding:7px 8px;font-size:13px}
 #outlook td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
 #outlook .tag{font-size:11px;font-weight:700;padding:1px 6px;border-radius:99px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+#outlook .ol-trs{display:grid;border-top:1px solid var(--line)}
+#outlook .ol-tr{display:grid;grid-template-columns:minmax(110px,.8fr) minmax(0,1.6fr) minmax(0,1.6fr) minmax(90px,.7fr);gap:4px 14px;padding:9px 0;border-bottom:1px solid var(--line);align-items:baseline;font-size:13.5px}
+#outlook .ol-tr b{font-family:var(--mono);font-weight:600}
+#outlook .ol-tr .ol-note{display:block}
+#outlook .ol-tr .d b{font-family:var(--body)}
+#outlook .ol-tr .o{text-align:right}
+#outlook .ol-tr .lab{display:none}
+@media (max-width:640px){
+  #outlook .ol-trh{display:none}
+  #outlook .ol-tr{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px}
+  #outlook .ol-tr .d{grid-column:1} #outlook .ol-tr .o{grid-column:2;grid-row:1}
+  #outlook .ol-tr .p,#outlook .ol-tr .m{grid-column:1 / -1}
+  #outlook .ol-tr .lab{display:inline-block;width:76px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+  #outlook .ol-tr .p .ol-note,#outlook .ol-tr .m .ol-note{padding-left:76px}
+  #outlook .ol-tr .d .ol-note,#outlook .ol-tr .o .ol-note{display:inline}
+}
 #outlook .ol-err{color:var(--loss);font-size:13px}
 .ol-root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--pos:#2a78d6;--neg:#e34948;--band:rgba(42,120,214,.13);--band2:rgba(42,120,214,.07)}
 @media (prefers-color-scheme: dark){:root:where(:not([data-theme="light"])) .ol-root{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--pos:#3987e5;--neg:#e66767;--band:rgba(57,135,229,.2);--band2:rgba(57,135,229,.1)}}
@@ -180,8 +196,8 @@
             ${levelList().map(l => `<tr><td class="num r">${px(l.p)}</td><td><b>${esc(l.name)}</b><div class="ol-note">${esc(l.detail)}</div></td><td class="num r">${pts(l.p - M.spot)}</td></tr>`).join("")}
             </tbody></table></div></div>
         </div>
-        ${trackRecord(P)}
-      </div></details>`;
+      </div></details>
+      ${trackRecord(P)}`;
     wire(el);
     if (open) drawCharts();
   }
@@ -199,18 +215,35 @@
       <div class="ol-note">${esc(scored + tuned)}</div></div>`;
   }
 
+  /* Its own dropdown: every prediction next to what the market did that day (close, high, low). */
   function trackRecord(P){
-    const done = (P.recent || []).filter(r => r.actual).slice(-12).reverse(), pending = (P.recent || []).filter(r => !r.actual);
-    return `<div style="display:grid;gap:8px"><div class="card-head"><h3>Prediction track record</h3><span class="ol-note">Each range keeps updating until it locks (1DTE at the target day's open, 2DTE at the open the day before), then it's scored at the close.</span></div>
-      ${done.length ? `<div class="scroll"><table><thead><tr><th>Target close</th><th>Horizon</th><th class="r">Predicted</th><th class="r">68% range</th><th class="r">Actual</th><th class="r">Miss</th><th>Inside</th></tr></thead><tbody>
-        ${done.map(r => `<tr><td>${esc(dayLabel(r.target))}</td><td>${r.h}DTE</td><td class="num r">${px(r.center)}</td><td class="num r">${px0(r.r68[0])}–${px0(r.r68[1])}</td><td class="num r">${px(r.actual.c)}</td><td class="num r">${pts(r.err)}</td><td>${r.in68 ? "68% ✓" : r.in90 ? "90% ✓" : "outside ✗"}</td></tr>`).join("")}
-        </tbody></table></div>` : `<span class="ol-note">Nothing scored yet.</span>`}
-      ${pending.length ? `<span class="ol-note">Waiting: ${pending.map(r => `${r.h}DTE ${esc(dayLabel(r.target))} → ${px(r.center)}`).join(" · ")}</span>` : ""}</div>`;
+    const all = (P.recent || []), done = all.filter(r => r.actual).slice().reverse(), pending = all.filter(r => !r.actual);
+    const models = (P.models || []).filter(m => m.n);
+    const head = models.length ? models.map(m => `${m.h}DTE: ${m.n} scored · avg miss ${m.mae.toFixed(1)} pts (last-price guess ${m.maeRaw.toFixed(1)}) · close inside 68% range ${m.hit68}% · inside 90% ${m.hit90}%`).join("<br>")
+      : "Nothing scored yet. The first prediction is scored after its target day closes.";
+    const row = r => {
+      const day = `<div class="d"><b>${esc(dayLabel(r.target))}</b> <span class="ol-note">${r.h}DTE${r.actual ? "" : " · " + (Date.now() < Date.parse(r.lockAt || 0) ? "still updating" : "locked")}</span></div>`;
+      const pred = `<div class="p"><span class="lab">Predicted</span><b>${px(r.center)}</b> <span class="ol-note">68% ${px0(r.r68[0])}–${px0(r.r68[1])} · 90% ${px0(r.r90[0])}–${px0(r.r90[1])}</span></div>`;
+      if (!r.actual) return `<div class="ol-tr">${day}${pred}<div class="m"><span class="lab">Market</span><span class="ol-note" style="display:inline;padding-left:0">waiting for the close</span></div><div class="o"></div></div>`;
+      const held = r.actual.h <= r.r90[1] && r.actual.l >= r.r90[0];
+      const mkt = `<div class="m"><span class="lab">Market</span><b>Close ${px(r.actual.c)}</b> <span class="ol-note">High ${px0(r.actual.h)} · Low ${px0(r.actual.l)} · ${held ? "day stayed inside 90%" : "day traded outside 90%"}</span></div>`;
+      const res = `<div class="o"><b>${pts(r.err)}</b> <span class="ol-note">${r.in68 ? "✓ inside 68%" : r.in90 ? "✓ inside 90%" : "✗ outside"}</span></div>`;
+      return `<div class="ol-tr">${day}${pred}${mkt}${res}</div>`;
+    };
+    const open = LS("track") === "1", n = done.length;
+    return `<details class="ol-track" ${open ? "open" : ""}><summary><span class="chev"><span class="more">Prediction track record${n ? ` (${n} scored)` : ""}</span><span class="less">Hide prediction track record</span></span></summary>
+      <div class="ol-body">
+        <div class="ol-note" style="font-size:13px">${head}</div>
+        <div class="ol-note">Each range keeps updating until it locks (1DTE at the target day's 9:30 am open, 2DTE at the open the day before), then it's scored against that day's SPX close. Miss = actual close − predicted center.</div>
+        ${all.length ? `<div class="ol-trs"><div class="ol-tr ol-trh"><div class="d label">Day</div><div class="p label">Predicted</div><div class="m label">Market</div><div class="o label">Off by</div></div>
+          ${pending.slice().reverse().map(row).join("")}${done.map(row).join("")}</div>` : ""}
+      </div></details>`;
   }
 
   function wire(el){
     const det = el.querySelector("details");
     det.addEventListener("toggle", () => { LSset("open", det.open ? "1" : "0"); if (det.open && M) drawCharts(); });
+    const tr = el.querySelector("details.ol-track"); if (tr) tr.addEventListener("toggle", () => LSset("track", tr.open ? "1" : "0"));
     el.querySelectorAll("[data-oltf]").forEach(b => b.addEventListener("click", () => { tf = b.dataset.oltf; zoom = 1; LSset("tf", tf); el.querySelectorAll("[data-oltf]").forEach(x => x.setAttribute("aria-pressed", x === b)); drawCharts(); }));
     el.querySelectorAll("[data-olzoom]").forEach(b => b.addEventListener("click", () => { zoom = Math.max(0.35, Math.min(3, zoom * (b.dataset.olzoom === "in" ? 0.7 : 1.4))); drawCharts(); }));
     const es = el.querySelector("#olES"); if (es) es.addEventListener("change", () => { inES = es.checked; LSset("es", inES ? "1" : "0"); render(); });

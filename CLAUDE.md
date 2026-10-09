@@ -15,6 +15,9 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   `.github/scripts/update-market.mjs`). Keep the track record and its comparison with a "last price" guess visible.
 - The owner wants the default view compact: only the 1DTE and 2DTE high–low range plus 2–3 resistance and support levels
   each. Charts, indicators and GEX sit behind "Show charts & details".
+- The prediction track record lives in its own dropdown ("Prediction track record"), separate from the charts. Every
+  1DTE/2DTE prediction (center, 68%/90% range) sits next to that day's actual SPX close, high and low, with the miss,
+  so the owner can judge how well the predictions work.
 - The owner aims for misses within 10–20 SPX points. Report the real average miss honestly against the ~44-point
   last-price baseline; never overstate accuracy.
 
@@ -27,6 +30,9 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   branch that commits its output, then ask the owner to delete the branch (branch deletion isn't allowed from here).
 
 ## Conventions
+- Must work on any phone or iPad (360–1366 px wide, portrait and landscape) with no sideways page scrolling. Grids use
+  `minmax(0,1fr)`, wide tables scroll inside their own box or become cards on phones. Check with the responsive audit
+  (every screen at 360/375/390/430/744/820/1024/1180/1366 px) before shipping UI changes.
 - Commits as Claude <noreply@anthropic.com>; never put model names in commits or code.
 - Bump `CACHE` in `sw.js` whenever app files change; new app files go in its `SHELL` list.
 - ntfy/config values are public: never put names, emails or other personal data in them.
