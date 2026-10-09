@@ -1164,9 +1164,18 @@ function renderKpis(S){
 function renderAlert(S){
   if ($("#alert").querySelector('[role="alert"]')) return;
   const note = autoNote ? `<div class="alert" style="background:var(--gain-soft);border-color:var(--gain)"><span>${esc(autoNote)}</span><button class="btn small" type="button" data-act="dismissAuto">OK</button></div>` : "";
-  if (!S.due.length){ $("#alert").innerHTML = note; return; }
+  let today = "";
+  const C = canRecordExit() ? closeTodayCandidates().filter(t => curAcct === ALL || acctOf(t) === curAcct) : [];
+  if (C.length){
+    const ready = C.filter(t => todayCloseFor(t)), px = [...new Map(ready.map(t => { const s = todayCloseFor(t); return [quoteSym(t.p.symbol), s.S]; })).entries()];
+    today = ready.length
+      ? `<div class="alert"><span><b>${C.length} trade${C.length > 1 ? "s" : ""} expire${C.length > 1 ? "" : "s"} today.</b> Close ${ready.length === C.length ? (ready.length > 1 ? "them" : "it") : `${ready.length} of them`} at today's close (${px.map(([k, v]) => `${esc(k)} ${v.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2})}`).join(", ")}).</span>
+         <span class="actions"><button class="btn small" type="button" data-filter="open">Show open</button><button class="btn small primary ${closeArmed ? "armed" : ""}" type="button" data-act="closeToday">${closeArmed ? `Confirm: close ${ready.length}` : "Close at today's close"}</button></span></div>`
+      : `<div class="alert"><span><b>${C.length} trade${C.length > 1 ? "s" : ""} expire${C.length > 1 ? "" : "s"} today.</b> The closing price arrives with the next quotes update after 4:15 pm ET. Or open a trade and enter the settlement under Held to expiration.</span></div>`;
+  }
+  if (!S.due.length){ $("#alert").innerHTML = note + today; return; }
   const n = S.due.length;
-  $("#alert").innerHTML = note + `<div class="alert"><span><b>${n} trade${n>1?"s":""} expired</b> and need${n>1?"":"s"} the settlement price to book the P&amp;L.</span><span class="actions"><button class="btn small" type="button" data-filter="due">Show ${n>1?"them":"it"}</button>${canRecordExit() ? '<button class="btn small primary" type="button" data-act="settleOpen">Settle with price file</button>' : ""}</span></div>`;
+  $("#alert").innerHTML = note + today + `<div class="alert"><span><b>${n} trade${n>1?"s":""} expired</b> and need${n>1?"":"s"} the settlement price to book the P&amp;L.</span><span class="actions"><button class="btn small" type="button" data-filter="due">Show ${n>1?"them":"it"}</button>${canRecordExit() ? '<button class="btn small primary" type="button" data-act="settleOpen">Settle with price file</button>' : ""}</span></div>`;
 }
 
 function niceTicks(lo, hi, count=5){
@@ -1394,6 +1403,9 @@ function renderSheet(){
       <div class="actions ex"><button class="btn small" type="button" data-act="reopen">Reopen trade</button></div>
     </div>` : `
     <div class="exitbox ex">
+      ${(() => { if (!closeTodayCandidates().some(x => x.id === t.id)) return ""; const s = todayCloseFor(t);
+        return s ? `<div class="actions" style="background:var(--accent-soft);border-radius:8px;padding:8px 10px"><span>Expires today. ${esc(String(p.symbol).toUpperCase())} closed at <b class="num">${s.S.toLocaleString("en-US", {minimumFractionDigits: 2})}</b> <span class="muted">(${esc(s.src)})</span> → P&amp;L <b class="${pnlClass(pnlAt(t, settledValue(t, s.S)))}">${money(pnlAt(t, settledValue(t, s.S)))}</b></span><span class="spacer"></span><button class="btn small primary" type="button" data-act="closeTodayOne">Close at today's close</button></div>`
+          : `<div class="hint">Expires today. The closing price arrives with the next quotes update after 4:15 pm ET, or enter it under Held to expiration.</div>`; })()}
       <div class="card-head"><span class="label">Record exit</span>
         <div class="tabs" role="group" aria-label="Exit type">
           <button type="button" data-tab="close" aria-pressed="${exitTab==="close"}">Closed early</button>
@@ -1750,6 +1762,44 @@ async function autoSettle(){
   }
   autoBusy = false;
   if (n){ autoNote = `Closed ${n} expired trade${n === 1 ? "" : "s"} automatically at the expiration-day close. Open a trade and use Reopen if one needs a different exit.`; render(); }
+}
+/* Same-day close: from 4:15 pm New York on expiration day, trades still open can be closed at that day's
+   closing price. Uses prices.json (or an uploaded price file) when it already has the day, otherwise the
+   delayed quote feed's last price stamped after the close. AM-settled monthly index options settle at the
+   open, so they're left to the next-day automatic close. */
+function nyClock(ms){
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false})
+    .formatToParts(new Date(ms ?? Date.now())).map(x => [x.type, x.value]));
+  return {date: `${p.year}-${p.month}-${p.day}`, mins: (+p.hour % 24) * 60 + +p.minute};
+}
+const CLOSE_READY = 16 * 60 + 15;                // the quote feed runs ~15 minutes behind the 4:00 pm close
+function closeTodayCandidates(){
+  const n = nyClock(); if (n.mins < 16 * 60) return [];
+  return trades.filter(t => t.p && t.p.price != null && t.p.legs && !t.exit && (modeled(t.p) || t.tosPartial)
+    && expiryOf(t.p) === n.date && !isIndexAM(quoteSym(t.p.symbol), t));
+}
+function todayCloseFor(t){
+  const sym = quoteSym(t.p.symbol), exp = expiryOf(t.p);
+  const s = settlementFor(t); if (s && !s.am) return s;          // the official close is already on file
+  let q = quotes && quotes.u && quotes.u[sym], scale = 1, src = sym;
+  if (!q && sym === "XSP" && quotes && quotes.u && quotes.u.SPX){ q = quotes.u.SPX; scale = 0.1; src = "SPX ÷ 10"; }
+  if (!q || !(q.px > 0) || !q.t) return null;
+  const at = Date.parse(q.t.replace(" ", "T") + "Z"), c = nyClock(at);
+  if (c.date !== exp || c.mins < CLOSE_READY) return null;
+  return {S: +(q.px * scale).toFixed(4), src: `${src} close, delayed quote at ${new Date(at).toLocaleTimeString("en-US", {timeZone: "America/New_York", hour: "numeric", minute: "2-digit"})} ET`, am: false};
+}
+let closeArmed = false;
+async function closeAtTodaysClose(list){
+  let n = 0;
+  for (const t of list){
+    const s = todayCloseFor(t); if (!s) continue;
+    const exit = {kind: "expired", settle: s.S, price: +settledValue(t, s.S).toFixed(4), date: expiryOf(t.p), source: "same-day close · " + s.src};
+    if (!await saveTrade({...t, exit})) break;
+    n++;
+  }
+  closeArmed = false;
+  if (n){ autoNote = `Closed ${n} trade${n === 1 ? "" : "s"} at today's closing price. Open a trade and use Reopen if one needs a different exit.`; }
+  render(); return n;
 }
 let settleSheet = null;      // {sym, msg}
 function loadXlsxLib(){
@@ -2645,6 +2695,8 @@ document.addEventListener("click", async ev => {
   if (act === "cancelEdit"){ sheetMode = "view"; renderSheet(); return; }
   if (act === "saveEdit") return saveEdit();
   if (act === "saveExit") return saveExit();
+  if (act === "closeToday"){ if (!canRecordExit()) return; if (!closeArmed){ closeArmed = true; render(); return; } return closeAtTodaysClose(closeTodayCandidates().filter(t => curAcct === ALL || acctOf(t) === curAcct)); }
+  if (act === "closeTodayOne"){ const t = trades.find(x => x.id === openId); if (t && canRecordExit() && await closeAtTodaysClose([t])) renderSheet(); return; }
   if (act === "reopen"){ const t = trades.find(x=>x.id===openId); if (t && await saveTrade({...t, exit:null, fees: +Math.max(0, (t.fees || 0) - ((t.exit && t.exit.fee) || 0)).toFixed(2)})){ exitTab = null; renderSheet(); } return; }
   if (act === "delete"){
     if (!delArmed){ delArmed = true; renderSheet(); setTimeout(() => { if (delArmed && openId){ delArmed = false; if (sheetMode==="view") renderSheet(); } }, 4000); return; }
