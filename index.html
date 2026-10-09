@@ -222,6 +222,7 @@ body:not(.admin) .adm{display:none!important}
 .ro:not(.admin) .ex{display:none!important}
 .adminbtn[aria-pressed="true"]{background:var(--loss);border-color:var(--loss);color:#fff}
 .rowacts{display:flex;gap:6px;justify-content:flex-end}
+.closebtn{padding:4px 9px;font-size:12.5px;white-space:nowrap}
 .rowacts .btn{padding:4px 9px;font-size:12.5px}
 .sr{position:absolute;left:0;top:0;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .ownerbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
@@ -1264,6 +1265,7 @@ function renderBlotter(S){
       : `<div class="empty"><b>No trades yet</b>Paste an order in the box above, like <span class="mono">SELL -5 VERTICAL SPX 100 (Weeklys) 1 OCT 26 7800/7820 CALL @.55 LMT</span>, then press Add to tracker.</div>`;
     return;
   }
+  const closeIds = new Set(canRecordExit() ? closeTodayCandidates().map(t => t.id) : []);
   const cards = `<div class="tcards">${rows.map(({t,e}) => { const cash = openCash(t), rp = riskProfile(t);
     const cop = e.status === "open" ? chanceOfProfit(t) : null;
     return `<div class="tcard" data-id="${esc(t.id)}" tabindex="0" role="button">
@@ -1277,6 +1279,7 @@ function renderBlotter(S){
           return m ? `<div><span class="label">P&amp;L now</span><span class="num ${pnlClass(m.pnl)}" style="font-weight:700">${money(m.pnl)} <span class="muted" style="font-weight:400">@ ${fmtMark(m.V)}</span></span></div>`
             : `<div><span class="label">P&amp;L</span><span class="num ${pnlClass(e.pnl)}" style="font-weight:700">${e.pnl==null?"—":money(e.pnl)}</span></div>`; })()}
       </div>
+      ${closeRowBtn(t, closeIds) ? `<div class="actions" style="margin-top:4px">${closeRowBtn(t, closeIds)}</div>` : ""}
       <div class="rowacts adm"><button class="btn small" type="button" data-rowact="edit" data-id="${esc(t.id)}">Edit</button><button class="btn small danger ${rowArmed===t.id?"armed":""}" type="button" data-rowact="del" data-id="${esc(t.id)}">${rowArmed===t.id?"Confirm":"Remove"}</button></div>
     </div>`; }).join("")}</div>`;
   const chip = dayFilter ? `<div style="padding:4px 16px 10px"><span class="daychip">Closed ${fmtDate(dayFilter)} · ${rows.length} trade${rows.length === 1 ? "" : "s"} · ${money(rows.reduce((a, r) => a + r.e.pnl, 0))}<button type="button" data-act="clearDay" aria-label="Show all trades">×</button></span></div>` : "";
@@ -1291,12 +1294,12 @@ function renderBlotter(S){
       <td class="num" style="white-space:nowrap">${fmtShort(e.exp)}</td>
       <td class="r num">${(() => { const rp = riskProfile(t); return rp && rp.be.length ? rp.be.map(b => fmtK(+b.toFixed(2))).join("<br>") : "—"; })()}</td>
       <td class="r num">${(() => { if (e.status !== "open") return "—"; const c = chanceOfProfit(t); return c ? `<span style="font-weight:600">${fmtPct(c.prob)}</span>` : '<span class="muted" title="Enter price and IV under Market inputs">—</span>'; })()}</td>
-      <td>${statusPill(e)}</td>
+      <td>${statusPill(e)}${closeRowBtn(t, closeIds) ? `<div style="margin-top:6px">${closeRowBtn(t, closeIds)}</div>` : ""}</td>
       <td class="r num">${e.exitPrice==null?"—":e.exitPrice.toFixed(2)}</td>
       <td class="r num muted">${t.fees>0?money(t.fees,false):"$0.00"}</td>
       ${(() => { const m = e.status === "open" ? markOf(t) : null;
         return m ? `<td class="r num ${pnlClass(m.pnl)}" style="font-weight:600" title="If closed at the mid now (15-min delayed quotes, ${esc(quoteTime(m.at))})">${money(m.pnl)}<div class="sub">now @ ${fmtMark(m.V)}</div></td>`
-          : `<td class="r num ${pnlClass(e.pnl)}" style="font-weight:600">${e.pnl==null?"—":money(e.pnl)}</td>`; })()}
+          : `<td class="r num ${pnlClass(e.pnl)}" style="font-weight:600;white-space:nowrap">${e.pnl==null?"—":money(e.pnl)}</td>`; })()}
       <td class="adm"><div class="rowacts"><button class="btn small" type="button" data-rowact="edit" data-id="${esc(t.id)}" aria-label="Edit trade">Edit</button><button class="btn small danger ${rowArmed===t.id?"armed":""}" type="button" data-rowact="del" data-id="${esc(t.id)}">${rowArmed===t.id?"Confirm":"Remove"}</button></div></td></tr>`;
   }).join("")}</tbody></table>`;
 }
@@ -1789,6 +1792,13 @@ function todayCloseFor(t){
   return {S: +(q.px * scale).toFixed(4), src: `${src} close, delayed quote at ${new Date(at).toLocaleTimeString("en-US", {timeZone: "America/New_York", hour: "numeric", minute: "2-digit"})} ET`, am: false};
 }
 let closeArmed = false;
+// One-click close in the trade list; it disappears once the trade has an exit.
+function closeRowBtn(t, ids){
+  if (!ids.has(t.id)) return "";
+  const s = todayCloseFor(t); if (!s) return "";
+  const pl = pnlAt(t, settledValue(t, s.S));
+  return `<button class="btn small primary closebtn" type="button" data-closerow="${esc(t.id)}" title="Close at today's close (${esc(s.src)}); P&amp;L ${money(pl)}">Close @ ${s.S.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2})}</button>`;
+}
 async function closeAtTodaysClose(list){
   let n = 0;
   for (const t of list){
@@ -2594,6 +2604,8 @@ document.addEventListener("click", async ev => {
     if (rowArmed !== id){ rowArmed = id; render(); setTimeout(() => { if (rowArmed === id){ rowArmed = null; render(); } }, 4000); return; }
     rowArmed = null; await removeTrade(id); render(); return;
   }
+  const cr = ev.target.closest("[data-closerow]");
+  if (cr){ const t = trades.find(x => x.id === cr.dataset.closerow); if (t && canRecordExit()){ cr.disabled = true; cr.textContent = "Closing…"; await closeAtTodaysClose([t]); } return; }
   const row = ev.target.closest("tr[data-id], .tcard[data-id]");
   if (row){ openSheet(row.dataset.id); return; }
   const tb = ev.target.closest("[data-tab]");
