@@ -1,5 +1,0 @@
-arch-cpi.html 200 29848
-arch-empsit.html 200 31090
-arch-ppi.html 200 30076
-census-retail.html 200 10504
-bea-arch-pi.html 200 82365
