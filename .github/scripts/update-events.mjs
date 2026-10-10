@@ -3,6 +3,8 @@
 // NYSE (holidays, early closes). Option expirations are computed. If a source can't be read this run, its
 // events from the previous events.json (PREV_EVENTS) are kept.
 import { readFileSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 const UA = { headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", "Accept-Language": "en-US,en;q=0.9", "Accept": "text/html" } };
 const MONTHS = ["january","february","march","april","may","june","july","august","september","october","november","december"];
@@ -10,10 +12,17 @@ const mIdx = s => MONTHS.findIndex(m => m.startsWith(String(s).toLowerCase().rep
 const iso = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 const addDays = (d, n) => { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 const text = h => h.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "'").replace(/\s+/g, " ");
+// curl is used instead of fetch: some of these government sites refuse Node's built-in client.
+const execFileP = promisify(execFile);
 async function get(url){
   for (let a = 0; a < 3; a++){
-    try { const r = await fetch(url, UA); if (!r.ok) throw new Error(`HTTP ${r.status}`); return await r.text(); }
-    catch (e) { if (a === 2){ console.error(`${url}: ${e.message}`); return null; } await new Promise(r => setTimeout(r, 2000)); }
+    try {
+      const { stdout } = await execFileP("curl", ["-sSL", "--compressed", "--max-time", "40", "-A", UA.headers["User-Agent"], "-H", "Accept-Language: en-US,en;q=0.9",
+        "-H", "Accept: text/html,application/xhtml+xml", "-w", "\n%{http_code}", url], { maxBuffer: 20 * 1024 * 1024 });
+      const i = stdout.lastIndexOf("\n"), code = +stdout.slice(i + 1), body = stdout.slice(0, i);
+      if (code !== 200) throw new Error(`HTTP ${code}`);
+      return body;
+    } catch (e) { if (a === 2){ console.error(`${url}: ${e.message}`); return null; } await new Promise(r => setTimeout(r, 3000)); }
   }
 }
 
