@@ -38,6 +38,13 @@ Share the site link with your members. When someone signs up they see **Waiting 
 You'll see a **pending** badge on **Members**; click **Approve** (or **Decline**). Their dashboard
 opens for them automatically once approved. **Remove access** takes an approved member back out.
 
+## Layout
+The app has five tabs (a bottom bar on phones, tabs under the header on iPad and computer). **Home** shows alerts,
+the SPX 1DTE/2DTE ranges, performance and your trades. **Trades** is for adding and importing trades. **Market**
+has the SPX charts, GEX, levels, News & events and the prediction track record. **Stats** has the timeframe filter,
+P&L chart, strategy table and P&L calendar. **More** has fees, accounts, the share link, Excel export, members,
+admin mode and sign out.
+
 ## Phone app
 The site installs as an app (a Progressive Web App). It uses the same login and data as the website,
 so trades entered on the phone show up on the computer and the other way around.

@@ -110,6 +110,7 @@ tbody tr.click:hover{background:var(--sunk)}
 tbody tr:last-child td{border-bottom:none}
 
 .blotter-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 16px 8px}
+.blotter-head > *{min-width:0;max-width:100%}
 .tabs{display:flex;gap:4px;flex-wrap:wrap;background:var(--sunk);padding:3px;border-radius:9px}
 .tabs button{border:none;background:none;padding:5px 11px;border-radius:7px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer}
 .tabs button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
@@ -298,12 +299,12 @@ body:not(.admin) .adm{display:none!important}
   </section>
 
   <div id="dash" style="display:grid;grid-template-columns:minmax(0,1fr);gap:18px">
-  <nav class="acctbar" aria-label="Accounts">
+  <nav class="acctbar" aria-label="Accounts" data-views="home trades stats">
     <div class="tabs acct-tabs" id="acctTabs" role="group" aria-label="Choose account"></div>
     <span class="actions"><button class="btn small ex" type="button" data-act="feeSettings">Fees</button><button class="btn small rw" type="button" data-act="manageAccts">Manage accounts</button></span>
   </nav>
 
-  <section class="panel desk rw" aria-labelledby="deskTitle">
+  <section class="panel desk rw" aria-labelledby="deskTitle" data-views="trades">
     <div class="desk-head">
       <h2 id="deskTitle">Add trades</h2>
       <span class="actions" style="gap:14px"><button class="linkish" id="sampleBtn" type="button">Paste an example order</button>
@@ -330,14 +331,14 @@ body:not(.admin) .adm{display:none!important}
     </div>
   </section>
 
-  <div id="alert"></div>
+  <div id="alert" data-views="home trades"></div>
 
-  <section class="panel card" id="mktPanel" aria-labelledby="mktTitle" hidden>
+  <section class="panel card" id="mktPanel" aria-labelledby="mktTitle" data-views="market" hidden>
     <div class="card-head"><h2 id="mktTitle">Market inputs</h2><span class="hint">Used for chance of profit on open trades</span></div>
     <div id="mktRows" style="display:grid;gap:8px"></div>
   </section>
 
-  <section class="rangebar" aria-label="Timeframe">
+  <section class="rangebar" aria-label="Timeframe" data-views="stats">
     <div class="tabs" role="group" aria-label="Timeframe" id="rangeTabs"></div>
     <div class="rangecustom" id="rangeCustom" hidden>
       <label class="field"><span class="label">From</span><input type="date" id="rangeFrom"></label>
@@ -349,9 +350,9 @@ body:not(.admin) .adm{display:none!important}
     <button class="btn small" type="button" id="exportBtn" data-act="exportXlsx">Export to Excel</button>
   </section>
 
-  <section class="kpis" id="kpis" aria-label="Performance summary"></section>
+  <section class="kpis" id="kpis" aria-label="Performance summary" data-views="home stats"></section>
 
-  <div class="split">
+  <div class="split" data-views="stats">
     <section class="panel card">
       <div class="card-head"><h2>Cumulative P&amp;L</h2><span class="hint" id="eqHint"></span></div>
       <div id="equity"></div>
@@ -362,7 +363,7 @@ body:not(.admin) .adm{display:none!important}
     </section>
   </div>
 
-  <section class="panel card" aria-labelledby="calTitle">
+  <section class="panel card" aria-labelledby="calTitle" data-views="stats">
     <div class="card-head">
       <h2 id="calTitle">P&amp;L calendar</h2>
       <div class="calnav"><button class="btn small" type="button" data-cal="-1" aria-label="Previous month">‹</button><span id="calMonth" class="calmonth"></span><button class="btn small" type="button" data-cal="1" aria-label="Next month">›</button></div>
@@ -370,7 +371,7 @@ body:not(.admin) .adm{display:none!important}
     <div id="calendar"></div>
   </section>
 
-  <section class="panel">
+  <section class="panel" data-views="home trades">
     <div class="blotter-head">
       <h2 style="font-size:16px;font-weight:700">Trades</h2>
       <div class="tabs" role="group" aria-label="Filter trades" id="tabs"></div>
@@ -828,6 +829,13 @@ function viewMember(uid){
   page = "mine"; subscribeTo(uid); window.scrollTo(0,0);
 }
 function backToMine(){ page = "mine"; viewingName = ""; subscribeTo(me); }
+/* Read-only view of the app state for nav.js (the More menu and tab bar), plus the two actions it needs. */
+window.LedgerApp = {
+  state: () => ({ owner: !!isOwnerView, admin: !!adminMode, db: mode === "db", readOnly: readOnly(), adminOK: adminOK(), pending: pendingCount,
+                  members: page === "members", viewingOther: mode === "db" && viewUid !== me }),
+  backToMine: () => { if (page === "members" || viewUid !== me) backToMine(); },
+  render: () => render(),
+};
 
 /* ---------- chance of profit (lognormal, zero drift, single IV) ---------- */
 function normCdf(x){
@@ -1261,7 +1269,7 @@ function renderBlotter(S){
   if (dayFilter) rows = S.rows.filter(r => r.e.closeDate === dayFilter && r.e.pnl != null);
   rows = [...rows].sort((a,b) => (b.t.openDate||"").localeCompare(a.t.openDate||"") || (b.t.createdAt||0)-(a.t.createdAt||0));
   if (!rows.length){
-    el.innerHTML = S.rows.length ? `<div class="empty">Nothing in this view.</div>` : trades.length && curAcct !== ALL ? `<div class="empty"><b>No trades in ${esc(acctName(curAcct))} yet</b>Paste an order above with this account selected.</div>`
+    el.innerHTML = S.rows.length ? `<div class="empty">Nothing in this view.</div>` : trades.length && curAcct !== ALL ? `<div class="empty"><b>No trades in ${esc(acctName(curAcct))} yet</b>Add one from the Trades tab with this account selected.</div>`
       : `<div class="empty"><b>No trades yet</b>Paste an order in the box above, like <span class="mono">SELL -5 VERTICAL SPX 100 (Weeklys) 1 OCT 26 7800/7820 CALL @.55 LMT</span>, then press Add to tracker.</div>`;
     return;
   }
@@ -2747,6 +2755,7 @@ if (!window.LEDGER_HOSTED) boot();
 </script>
 
 <script src="outlook.js" defer></script>
+<script src="nav.js" defer></script>
 <script type="module" src="firebase.js"></script>
 </body>
 </html>

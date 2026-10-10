@@ -131,7 +131,7 @@
   function mount(){
     const dash = document.getElementById("dash"); if (!dash || document.getElementById("outlook")) return;
     const sec = document.createElement("section");
-    sec.className = "panel ol-root"; sec.id = "outlook"; sec.setAttribute("aria-label", "SPX outlook");
+    sec.className = "panel ol-root"; sec.id = "outlook"; sec.setAttribute("aria-label", "SPX outlook"); sec.dataset.views = "home market";
     const nav = dash.querySelector(".acctbar");
     nav ? nav.after(sec) : dash.prepend(sec);
     render(); load();
@@ -172,7 +172,8 @@
         <div class="ol-lv"><span class="label" style="color:var(--gain)">Support</span><span>${k.sup.map(lvl).join(" · ") || "—"}</span></div></div>`; }).join("");
     el.innerHTML = `<div class="ol-top">
         <div class="ol-top-h"><span class="label">SPX outlook</span><span class="muted">${inES ? "ES" : "SPX"} ≈ <b style="color:var(--ink);font-family:var(--mono)">${px(M.spot)}</b> · likely (68%) close range · ${esc(timeLabel(Date.parse(M.updated) / 1000))}</span></div>
-        <div class="ol-minis">${compact || `<span class="ol-note">No upcoming SPX expirations in the data right now.</span>`}</div></div>
+        <div class="ol-minis">${compact || `<span class="ol-note">No upcoming SPX expirations in the data right now.</span>`}</div>
+        <button class="linkish ol-golink" type="button" data-goview="market">Charts, news &amp; track record →</button></div>
       <details ${open ? "open" : ""}>
       <summary><span class="chev"><span class="more">Show charts &amp; details</span><span class="less">Hide charts &amp; details</span></span></summary>
       <div class="ol-body">

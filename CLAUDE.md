@@ -34,6 +34,14 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
 - This session's proxy blocks CBOE/Yahoo and Actions logs: test scripts on GitHub via a temporary push-triggered
   branch that commits its output, then ask the owner to delete the branch (branch deletion isn't allowed from here).
 
+## Navigation (owner's preference: a clean main page)
+- `nav.js` gives the app tabs like popular trading apps: **Home** (alerts, SPX 1DTE/2DTE ranges, performance, trades),
+  **Trades** (add/import, list), **Market** (outlook charts, GEX, levels, News & events, prediction track record, market
+  inputs), **Stats** (timeframe, cumulative P&L, by strategy, P&L calendar) and **More** (fees, accounts, share, export,
+  members, admin mode, install, sign out). Bottom tab bar on phones, tabs under the header on wider screens.
+- Each `#dash` section carries `data-views="..."`; new sections must declare which tabs they belong to. index.html exposes
+  `window.LedgerApp` (read-only state + backToMine/render) for nav.js.
+
 ## Conventions
 - Must work on any phone or iPad (360–1366 px wide, portrait and landscape) with no sideways page scrolling. Grids use
   `minmax(0,1fr)`, wide tables scroll inside their own box or become cards on phones. Check with the responsive audit
