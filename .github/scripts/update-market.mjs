@@ -193,27 +193,29 @@ function evStats(rows, base){
 }
 const allStats = evStats(days, null), quiet = evStats(days.filter(r => !r.types.some(t => STUDY.includes(t) && t !== "VIXEXP" && t !== "OPEX")), allStats);
 const study = {};
-for (const t of STUDY){ const st = evStats(days.filter(r => r.types.includes(t)), allStats); if (st) study[t] = { name: NAMES[t], ...st }; }
+for (const t of STUDY){ const st = evStats(days.filter(r => r.types.includes(t)), allStats); if (st) study[t] = { name: NAMES[t], ...st, f68: r2(clampR(shrink(st.r68, st.n))), f90: r2(clampR(shrink(st.r90, st.n))) }; }
 // Out-of-sample check: fit each ratio on the older days, apply it to the most recent ~250 days.
 const cut = days.length - 250, older = days.slice(0, Math.max(0, cut)), newer = days.slice(Math.max(0, cut));
 const oldAll = evStats(older, null), newAll = evStats(newer, null);
 for (const t of Object.keys(study)){
   const o = evStats(older.filter(r => r.types.includes(t)), oldAll), test = newer.filter(r => r.types.includes(t));
   if (!o || o.n < 6 || test.length < 3 || !oldAll) continue;
-  const kPlain = oldAll.k68, kAdj = oldAll.k68 * clampR(o.r68);
+  const kPlain = oldAll.k68, kAdj = oldAll.k68 * clampR(shrink(o.r68, o.n));
   study[t].test = { n: test.length, plain68: Math.round(test.filter(r => r.z <= kPlain).length / test.length * 100), adj68: Math.round(test.filter(r => r.z <= kAdj).length / test.length * 100) };
 }
 if (quiet && oldAll){
   const qo = evStats(older.filter(r => !r.types.some(t => STUDY.includes(t) && t !== "VIXEXP" && t !== "OPEX")), oldAll), qt = newer.filter(r => !r.types.some(t => STUDY.includes(t) && t !== "VIXEXP" && t !== "OPEX"));
-  if (qo && qt.length >= 10) quiet.test = { n: qt.length, plain68: Math.round(qt.filter(r => r.z <= oldAll.k68).length / qt.length * 100), adj68: Math.round(qt.filter(r => r.z <= oldAll.k68 * clampR(qo.r68)).length / qt.length * 100) };
+  if (qo && qt.length >= 10) quiet.test = { n: qt.length, plain68: Math.round(qt.filter(r => r.z <= oldAll.k68).length / qt.length * 100), adj68: Math.round(qt.filter(r => r.z <= oldAll.k68 * clampR(shrink(qo.r68, qo.n))).length / qt.length * 100) };
 }
 function clampR(r){ return Math.max(0.8, Math.min(1.6, r || 1)); }
+// Small samples are noisy: pull each event ratio toward 1 (no change) by how few days back it up.
+const shrink = (r, n) => 1 + ((r || 1) - 1) * n / (n + 30);
 // Width factor for a target day: the strongest event type with enough history (8+ days), else the quiet-day factor.
 function eventFactor(dates){
   const evs = dates.flatMap(d => (evOn.get(d) || []).filter(e => e.type !== "HOLIDAY").map(e => ({ ...e, on: d })));
-  let f68 = quiet && quiet.n >= 30 ? clampR(quiet.r68) : 1, f90 = quiet && quiet.n >= 30 ? clampR(quiet.r90) : 1, why = evs.length ? null : "quiet day (no scheduled news)";
+  let f68 = quiet && quiet.n >= 30 ? clampR(shrink(quiet.r68, quiet.n)) : 1, f90 = quiet && quiet.n >= 30 ? clampR(shrink(quiet.r90, quiet.n)) : 1, why = evs.length ? null : "quiet day (no scheduled news)";
   for (const e of evs){ const st = study[e.type]; if (!st || st.n < 8) continue;
-    const g68 = clampR(st.r68), g90 = clampR(st.r90);
+    const g68 = clampR(shrink(st.r68, st.n)), g90 = clampR(shrink(st.r90, st.n));
     if (why == null || g68 > f68){ f68 = g68; f90 = g90; why = `${st.name} days`; } }
   if (why == null) { f68 = 1; f90 = 1; why = "scheduled events with too little history to adjust"; }
   if (dates.length > 1){ f68 = Math.sqrt((f68 * f68 + 1) / 2); f90 = Math.sqrt((f90 * f90 + 1) / 2); }   // one of two days carries the event
