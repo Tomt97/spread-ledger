@@ -172,14 +172,16 @@ const cal1 = calib(z1), cal2 = calib(z2);
 let EV = [];
 for (const f of [process.env.EVENTS_FILE || "events.json", "prev/events.json"]){ try { EV = JSON.parse(readFileSync(f, "utf8")).events || []; if (EV.length) break; } catch {} }
 const evOn = new Map(); EV.forEach(e => (evOn.get(e.d) || evOn.set(e.d, []).get(e.d)).push(e));
-const STUDY = ["FOMC", "MINUTES", "CPI", "NFP", "PPI", "PCE", "GDP", "QUAD", "OPEX", "VIXEXP", "EARLY"];
+// Most important first: a day with two events is filed under the bigger one, so one event isn't credited with another's move.
+const STUDY = ["FOMC", "CPI", "NFP", "MINUTES", "PPI", "PCE", "GDP", "QUAD", "OPEX", "VIXEXP", "EARLY"];
 const NAMES = {FOMC: "FOMC decision", MINUTES: "FOMC minutes", CPI: "CPI", NFP: "Jobs report", PPI: "PPI", PCE: "PCE", GDP: "GDP", QUAD: "Quad witching", OPEX: "Monthly opex", VIXEXP: "VIX expiration", EARLY: "Early close"};
 const days = (() => {
   const fin = spxD.filter(b => ny(b.t).date < ny(nowSec).date || ny(nowSec).mins >= 16 * 60), out = [];
   for (let i = 1; i < fin.length; i++){
     const p = fin[i - 1], b = fin[i], pd = ny(p.t).date, d = ny(b.t).date, iv = v1.get(pd) ?? vx.get(pd); if (!iv) continue;
     const unit = p.c * iv / 100 / Math.sqrt(252);
-    out.push({ d, z: Math.abs(b.c - p.c) / unit, rz: (b.h - b.l) / unit, pts: b.c - p.c, rng: b.h - b.l, types: (evOn.get(d) || []).map(e => e.type) });
+    const types = (evOn.get(d) || []).map(e => e.type);
+    out.push({ d, z: Math.abs(b.c - p.c) / unit, rz: (b.h - b.l) / unit, pts: b.c - p.c, rng: b.h - b.l, types, main: STUDY.find(t => types.includes(t)) || null });
   }
   return out.slice(-750);
 })();
@@ -193,12 +195,12 @@ function evStats(rows, base){
 }
 const allStats = evStats(days, null), quiet = evStats(days.filter(r => !r.types.some(t => STUDY.includes(t) && t !== "VIXEXP" && t !== "OPEX")), allStats);
 const study = {};
-for (const t of STUDY){ const st = evStats(days.filter(r => r.types.includes(t)), allStats); if (st) study[t] = { name: NAMES[t], ...st, f68: r2(clampR(shrink(st.r68, st.n))), f90: r2(clampR(shrink(st.r90, st.n))) }; }
+for (const t of STUDY){ const st = evStats(days.filter(r => r.main === t), allStats); if (st) study[t] = { name: NAMES[t], ...st, f68: r2(clampR(shrink(st.r68, st.n))), f90: r2(clampR(shrink(st.r90, st.n))) }; }
 // Out-of-sample check: fit each ratio on the older days, apply it to the most recent ~250 days.
 const cut = days.length - 250, older = days.slice(0, Math.max(0, cut)), newer = days.slice(Math.max(0, cut));
 const oldAll = evStats(older, null), newAll = evStats(newer, null);
 for (const t of Object.keys(study)){
-  const o = evStats(older.filter(r => r.types.includes(t)), oldAll), test = newer.filter(r => r.types.includes(t));
+  const o = evStats(older.filter(r => r.main === t), oldAll), test = newer.filter(r => r.main === t);
   if (!o || o.n < 6 || test.length < 3 || !oldAll) continue;
   const kPlain = oldAll.k68, kAdj = oldAll.k68 * clampR(shrink(o.r68, o.n));
   study[t].test = { n: test.length, plain68: Math.round(test.filter(r => r.z <= kPlain).length / test.length * 100), adj68: Math.round(test.filter(r => r.z <= kAdj).length / test.length * 100) };
