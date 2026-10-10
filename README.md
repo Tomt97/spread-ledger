@@ -111,6 +111,12 @@ pivots, SPX gamma exposure by strike (call wall, put wall, zero-gamma flip) and 
   the range widths. The section shows the average miss next to a "last price" guess, so you can see whether the
   model is earning its keep.
 
+- **News & events:** the Action also keeps `events.json`, a calendar built from the official sources: FOMC decisions
+  and minutes (Federal Reserve), CPI, the jobs report and PPI (BLS), PCE and GDP (BEA), and holidays and early
+  closes (NYSE), plus option and VIX expirations. Range cards flag events on their day (e.g. ⚑ FOMC 2pm), and each
+  range is scaled by how SPX actually moved on that kind of day over the last three years, compared with what options
+  priced. **News & events** lists the next three weeks and the full history table.
+
 It is built by the same **Update option quotes** Action, so the hourly cron-job.org trigger keeps it fresh. ES trades
 nearly around the clock, so you can also run that job overnight (Sunday 6 pm to Friday 5 pm New York time).
 Delayed data, for study only.

@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 const UA = { headers: { "User-Agent": "Mozilla/5.0 (spread-ledger market)" } };
 const r2 = v => Math.round(v * 100) / 100;
 const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : null; };
+const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 const quantile = (a, q) => { const s = [...a].sort((x, y) => x - y); if (!s.length) return null; const i = (s.length - 1) * q, lo = Math.floor(i); return s[lo] + (s[Math.min(lo + 1, s.length - 1)] - s[lo]) * (i - lo); };
 
 /* ---------- New York time helpers ---------- */
@@ -162,6 +163,67 @@ const z1 = zScores(1, v1, vx), z2 = zScores(2, v9, vx);
 const calib = z => z.length < 60 ? null : { n: z.length, k68: r2(quantile(z, 0.68)), k90: r2(quantile(z, 0.90)), within1: r2(z.filter(x => x <= 1).length / z.length * 100) };
 const cal1 = calib(z1), cal2 = calib(z2);
 
+/* ---------- news & scheduled events: what history says about each kind of day ----------
+   events.json (update-events.mjs): FOMC decisions and minutes, CPI, jobs report, PPI, PCE, GDP, option expirations,
+   holidays and early closes. For every finished SPX day of the last ~3 years: z = |close-to-close move| / the move
+   VIX1D (VIX before 2023) priced the evening before, and the day's high-low range in the same units. Each event type
+   is compared with all days; the ratio of their 68%/90% points says how much wider or narrower that kind of day runs
+   than the options priced it. Fitted on the older days and checked on the most recent year it didn't see. */
+let EV = [];
+for (const f of [process.env.EVENTS_FILE || "events.json", "prev/events.json"]){ try { EV = JSON.parse(readFileSync(f, "utf8")).events || []; if (EV.length) break; } catch {} }
+const evOn = new Map(); EV.forEach(e => (evOn.get(e.d) || evOn.set(e.d, []).get(e.d)).push(e));
+// Most important first: a day with two events is filed under the bigger one, so one event isn't credited with another's move.
+const STUDY = ["FOMC", "CPI", "NFP", "MINUTES", "PPI", "PCE", "GDP", "QUAD", "OPEX", "VIXEXP", "EARLY"];
+const NAMES = {FOMC: "FOMC decision", MINUTES: "FOMC minutes", CPI: "CPI", NFP: "Jobs report", PPI: "PPI", PCE: "PCE", GDP: "GDP", QUAD: "Quad witching", OPEX: "Monthly opex", VIXEXP: "VIX expiration", EARLY: "Early close"};
+const days = (() => {
+  const fin = spxD.filter(b => ny(b.t).date < ny(nowSec).date || ny(nowSec).mins >= 16 * 60), out = [];
+  for (let i = 1; i < fin.length; i++){
+    const p = fin[i - 1], b = fin[i], pd = ny(p.t).date, d = ny(b.t).date, iv = v1.get(pd) ?? vx.get(pd); if (!iv) continue;
+    const unit = p.c * iv / 100 / Math.sqrt(252);
+    const types = (evOn.get(d) || []).map(e => e.type);
+    out.push({ d, z: Math.abs(b.c - p.c) / unit, rz: (b.h - b.l) / unit, pts: b.c - p.c, rng: b.h - b.l, types, main: STUDY.find(t => types.includes(t)) || null });
+  }
+  return out.slice(-750);
+})();
+function evStats(rows, base){
+  if (rows.length < 4) return null;
+  const zs = rows.map(r => r.z), k68 = quantile(zs, 0.68), k90 = quantile(zs, 0.90);
+  return { n: rows.length, k68: r2(k68), k90: r2(k90), r68: base ? r2(k68 / base.k68) : 1, r90: base ? r2(k90 / base.k90) : 1,
+           avgMove: r2(mean(rows.map(r => Math.abs(r.pts)))), avgRange: r2(mean(rows.map(r => r.rng))), rangeX: base ? r2(median(rows.map(r => r.rz)) / base.medRz) : 1,
+           medRz: median(rows.map(r => r.rz)), up: Math.round(rows.filter(r => r.pts > 0).length / rows.length * 100),
+           avgSigned: r2(mean(rows.map(r => r.pts))), inside68: base ? Math.round(rows.filter(r => r.z <= base.k68).length / rows.length * 100) : null };
+}
+const allStats = evStats(days, null), quiet = evStats(days.filter(r => !r.types.some(t => STUDY.includes(t) && t !== "VIXEXP" && t !== "OPEX")), allStats);
+const study = {};
+for (const t of STUDY){ const st = evStats(days.filter(r => r.main === t), allStats); if (st) study[t] = { name: NAMES[t], ...st, f68: r2(clampR(shrink(st.r68, st.n))), f90: r2(clampR(shrink(st.r90, st.n))) }; }
+// Out-of-sample check: fit each ratio on the older days, apply it to the most recent ~250 days.
+const cut = days.length - 250, older = days.slice(0, Math.max(0, cut)), newer = days.slice(Math.max(0, cut));
+const oldAll = evStats(older, null), newAll = evStats(newer, null);
+for (const t of Object.keys(study)){
+  const o = evStats(older.filter(r => r.main === t), oldAll), test = newer.filter(r => r.main === t);
+  if (!o || o.n < 6 || test.length < 3 || !oldAll) continue;
+  const kPlain = oldAll.k68, kAdj = oldAll.k68 * clampR(shrink(o.r68, o.n));
+  study[t].test = { n: test.length, plain68: Math.round(test.filter(r => r.z <= kPlain).length / test.length * 100), adj68: Math.round(test.filter(r => r.z <= kAdj).length / test.length * 100) };
+}
+if (quiet && oldAll){
+  const qo = evStats(older.filter(r => !r.types.some(t => STUDY.includes(t) && t !== "VIXEXP" && t !== "OPEX")), oldAll), qt = newer.filter(r => !r.types.some(t => STUDY.includes(t) && t !== "VIXEXP" && t !== "OPEX"));
+  if (qo && qt.length >= 10) quiet.test = { n: qt.length, plain68: Math.round(qt.filter(r => r.z <= oldAll.k68).length / qt.length * 100), adj68: Math.round(qt.filter(r => r.z <= oldAll.k68 * clampR(shrink(qo.r68, qo.n))).length / qt.length * 100) };
+}
+function clampR(r){ return Math.max(0.8, Math.min(1.6, r || 1)); }
+// Small samples are noisy: pull each event ratio toward 1 (no change) by how few days back it up.
+function shrink(r, n){ return 1 + ((r || 1) - 1) * n / (n + 30); }
+// Width factor for a target day: the strongest event type with enough history (8+ days), else the quiet-day factor.
+function eventFactor(dates){
+  const evs = dates.flatMap(d => (evOn.get(d) || []).filter(e => e.type !== "HOLIDAY").map(e => ({ ...e, on: d })));
+  let f68 = quiet && quiet.n >= 30 ? clampR(shrink(quiet.r68, quiet.n)) : 1, f90 = quiet && quiet.n >= 30 ? clampR(shrink(quiet.r90, quiet.n)) : 1, why = evs.length ? null : "quiet day (no scheduled news)";
+  for (const e of evs){ const st = study[e.type]; if (!st || st.n < 8) continue;
+    const g68 = clampR(shrink(st.r68, st.n)), g90 = clampR(shrink(st.r90, st.n));
+    if (why == null || g68 > f68){ f68 = g68; f90 = g90; why = `${st.name} days`; } }
+  if (why == null) { f68 = 1; f90 = 1; why = "scheduled events with too little history to adjust"; }
+  if (dates.length > 1){ f68 = Math.sqrt((f68 * f68 + 1) / 2); f90 = Math.sqrt((f90 * f90 + 1) / 2); }   // one of two days carries the event
+  return { f68: r2(f68), f90: r2(f90), why, events: evs.map(e => ({ d: e.on, type: e.type, time: e.time, label: e.label })) };
+}
+
 /* ---------- prediction log: every 1DTE/2DTE range is kept and scored against the actual SPX close ----------
    A prediction keeps updating until it locks: 1DTE at the target day's 9:30 am open, 2DTE at the open of
    the day before. Once the target day closes, it's scored. The scores tune the model below. */
@@ -177,7 +239,6 @@ for (const r of records){
   r.err = r2(b.c - r.center); r.errRaw = r2(b.c - r.spotAt);
   r.in68 = b.c >= r.r68[0] && b.c <= r.r68[1]; r.in90 = b.c >= r.r90[0] && b.c <= r.r90[1];
 }
-const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 // Random-walk baseline from history: how far SPX closed from the previous close (or two closes back).
 const baseline = days => r2(mean(dayClose.slice(-251).slice(days).map((d, i) => Math.abs(d.c - dayClose.slice(-251)[i].c))));
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -206,21 +267,22 @@ const future = expirations.filter(e => e.exp > nyNow.date);
 const atrDaily = (() => { const b = spxD.slice(-15); let s = 0; for (let i = 1; i < b.length; i++) s += Math.max(b[i].h - b[i].l, Math.abs(b[i].h - b[i - 1].c), Math.abs(b[i].l - b[i - 1].c)); return r2(s / (b.length - 1)); })();
 const ranges = [future[0], future[1]].map((e, i) => {
   if (!e) return null;
-  const m = models[i], sigma = e.straddle * Math.sqrt(Math.PI / 2);   // an at-the-money straddle is about 0.8 sigma
+  const ev = eventFactor(i === 0 ? [e.exp] : [future[0].exp, e.exp]);
+  const m = { ...models[i], k68: r2(models[i].k68 * ev.f68), k90: r2(models[i].k90 * ev.f90) }, sigma = e.straddle * Math.sqrt(Math.PI / 2);   // an at-the-money straddle is about 0.8 sigma
   // In positive gamma, dealer hedging tends to pull price toward the biggest gamma strike nearby ("pin").
   const near = gex && gex.total > 0 ? gex.byStrike.filter(r => Math.abs(r[0] - spot) <= sigma).sort((a, b) => Math.abs(b[1] + b[2]) - Math.abs(a[1] + a[2]))[0] : null;
   const magnet = near ? near[0] : null, pull = magnet != null ? magnet - spot : 0;
   const center = spot + m.w * pull + m.b;
   return { label: `${i + 1}DTE`, h: i + 1, exp: e.exp, spot: r2(spot), center: r2(center), magnet, pull: r2(pull), straddle: e.straddle, atmIv: e.iv, sigma: r2(sigma),
            r68: [r2(center - m.k68 * sigma), r2(center + m.k68 * sigma)], r90: [r2(center - m.k90 * sigma), r2(center + m.k90 * sigma)],
-           k68: m.k68, k90: m.k90, within1: (i === 0 ? cal1 : cal2)?.within1 ?? null };
+           k68: m.k68, k90: m.k90, within1: (i === 0 ? cal1 : cal2)?.within1 ?? null, events: ev.events, evF: ev.f68, evWhy: ev.why };
 }).filter(Boolean);
 // Save or update the open predictions (locked ones are left as they were).
 for (const r of ranges){
   const lockAt = atNY(r.h === 1 ? r.exp : future[0].exp, 9 * 60 + 30);
   if (nowSec >= lockAt) continue;
   const id = `${r.exp}|${r.h}`, rec = { id, h: r.h, target: r.exp, made: new Date().toISOString(), lockAt: new Date(lockAt * 1000).toISOString(),
-    spotAt: r.spot, center: r.center, magnet: r.magnet, pull: r.pull, sigma: r.sigma, r68: r.r68, r90: r.r90, model: { w: models[r.h - 1].w, b: models[r.h - 1].b } };
+    spotAt: r.spot, center: r.center, magnet: r.magnet, pull: r.pull, sigma: r.sigma, r68: r.r68, r90: r.r90, events: r.events.map(e => e.type), evF: r.evF, model: { w: models[r.h - 1].w, b: models[r.h - 1].b } };
   const i = records.findIndex(x => x.id === id);
   if (i >= 0 && !records[i].actual) records[i] = rec; else if (i < 0) records.push(rec);
 }
@@ -287,6 +349,8 @@ const out = {
   spxDaily: spxD.slice(-260).map(b => [ny(b.t).date, r2(b.o), r2(b.h), r2(b.l), r2(b.c)]),
   atr14: atrDaily, gex, expirations: expirations.slice(0, 6).map(({ T, ...e }) => e), ranges, calibration: { oneDay: cal1, twoDay: cal2 },
   predictions: { models, recent: records.slice(-60) },
+  events: { upcoming: EV.filter(e => e.d > nyNow.date || (e.d === nyNow.date && nyNow.mins < 16 * 60)).slice(0, 40),
+            study: { all: allStats && { n: allStats.n, k68: allStats.k68, k90: allStats.k90, avgMove: allStats.avgMove, avgRange: allStats.avgRange }, quiet, types: study } },
   levels: { resistance: pickSide(1), support: pickSide(-1), refs },
 };
 writeFileSync("market.json", JSON.stringify(out));

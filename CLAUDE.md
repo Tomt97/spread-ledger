@@ -18,12 +18,17 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
 - The prediction track record lives in its own dropdown ("Prediction track record"), separate from the charts. Every
   1DTE/2DTE prediction (center, 68%/90% range) sits next to that day's actual SPX close, high and low, with the miss,
   so the owner can judge how well the predictions work.
+- Scheduled news is part of every prediction: `update-events.mjs` builds `events.json` (FOMC decisions and minutes from
+  federalreserve.gov, CPI/jobs report/PPI from bls.gov via curl, PCE/GDP from bea.gov, NYSE holidays and early closes,
+  computed opex, quad witching and VIX expiration). 1DTE/2DTE cards badge the events on their days, and each range is
+  scaled by that event type's history (days filed under their main event; ratios shrunk toward 1 by sample size;
+  checked out of sample on the most recent year). The owner wants FOMC and FOMC minutes always called out.
 - The owner aims for misses within 10–20 SPX points. Report the real average miss honestly against the ~44-point
   last-price baseline; never overstate accuracy.
 
 ## Data pipeline
 - `.github/workflows/quotes.yml` ("Update option quotes") runs `update-quotes.mjs` (CBOE delayed option quotes for every
-  ticker in the public `tickers` collection + SPX/XSP/RUT/NDX) and `update-market.mjs` (Yahoo ES/SPX/VIX bars, CBOE SPX
+  ticker in the public `tickers` collection + SPX/XSP/RUT/NDX), `update-events.mjs` and `update-market.mjs` (Yahoo ES/SPX/VIX bars, CBOE SPX
   chain → GEX, levels, ranges). It force-pushes a single commit to the `quotes` branch, keeping files not rebuilt in that run.
 - Started hourly by the owner's cron-job.org job (workflow_dispatch); GitHub's own schedule is only a backup (it runs ~2×/day).
 - This session's proxy blocks CBOE/Yahoo and Actions logs: test scripts on GitHub via a temporary push-triggered

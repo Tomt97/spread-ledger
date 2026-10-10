@@ -57,6 +57,9 @@
 #outlook td,#outlook th{padding:7px 8px;font-size:13px}
 #outlook td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
 #outlook .tag{font-size:11px;font-weight:700;padding:1px 6px;border-radius:99px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+#outlook .ol-evs{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12.5px}
+#outlook .ol-ev{display:inline-block;padding:2px 8px;border-radius:99px;background:var(--sunk);color:var(--ink);font-weight:600;font-size:12px;white-space:nowrap}
+#outlook .ol-ev.big{background:var(--warn-soft);color:var(--warn)}
 #outlook .ol-trs{display:grid;border-top:1px solid var(--line)}
 #outlook .ol-tr{display:grid;grid-template-columns:minmax(110px,.8fr) minmax(0,1.6fr) minmax(0,1.6fr) minmax(90px,.7fr);gap:4px 14px;padding:9px 0;border-bottom:1px solid var(--line);align-items:baseline;font-size:13.5px}
 #outlook .ol-tr b{font-family:var(--mono);font-weight:600}
@@ -110,6 +113,11 @@
     return bars.map(b => { const d = sessionOf(b[0]); if (d !== s){ s = d; pv = 0; v = 0; } const tp = (b[2] + b[3] + b[4]) / 3; pv += tp * b[5]; v += b[5]; return v > 0 ? pv / v : tp; });
   }
 
+  /* ---------- scheduled news ---------- */
+  const EV_SHORT = {FOMC: "FOMC", MINUTES: "FOMC minutes", CPI: "CPI", NFP: "Jobs report", PPI: "PPI", PCE: "PCE", GDP: "GDP", QUAD: "Quad witching", OPEX: "Monthly opex", VIXEXP: "VIX expiration", EARLY: "Early close", HOLIDAY: "Market closed"};
+  const BIG = new Set(["FOMC", "MINUTES", "CPI", "NFP"]);
+  const evBadge = (e, withDay) => `<span class="ol-ev${BIG.has(e.type) ? " big" : ""}">⚑ ${esc(EV_SHORT[e.type] || e.type)}${e.time ? " " + esc(e.time.replace(":00 ", " ").replace(" PM", "pm").replace(" AM", "am")) : ""}${withDay ? ` · ${esc(dayLabel(e.d).replace(/^\w+, /, ""))}` : ""}</span>`;
+
   /* ---------- levels ---------- */
   function levelList(){
     const L = [], lv = M.levels || {};
@@ -158,6 +166,7 @@
     const lvl = l => `<b>${px0(l.p)}</b> <span class="muted">${esc(short(l))}</span>`;
     const compact = R.map(r => { const k = keys(r); return `<div class="ol-mini">
         <div class="ol-mini-h"><span class="label">${esc(r.label)} · ${esc(dayLabel(r.exp))}</span><span class="muted">90%: ${px0(r.r90[0])}–${px0(r.r90[1])}</span></div>
+        ${r.events && r.events.length ? `<div class="ol-evs">${r.events.map(e => evBadge(e, r.h > 1)).join("")}<span class="ol-note">${r.evF && Math.abs(r.evF - 1) >= 0.02 ? `range ${r.evF > 1 ? "widened" : "narrowed"} ${Math.round(Math.abs(r.evF - 1) * 100)}% for ${esc(r.evWhy)}` : esc(r.evWhy && r.evWhy.startsWith("scheduled") ? r.evWhy : "options price this news about right")}</span></div>` : ""}
         <div class="ol-hl"><span>High <b>${px0(r.r68[1])}</b></span><span>Low <b>${px0(r.r68[0])}</b></span><span class="muted">center ${px0(r.center)}</span></div>
         <div class="ol-lv"><span class="label" style="color:var(--loss)">Resistance</span><span>${k.res.map(lvl).join(" · ") || "—"}</span></div>
         <div class="ol-lv"><span class="label" style="color:var(--gain)">Support</span><span>${k.sup.map(lvl).join(" · ") || "—"}</span></div></div>`; }).join("");
@@ -197,7 +206,8 @@
             </tbody></table></div></div>
         </div>
       </div></details>
-      ${trackRecord(P)}`;
+      ${trackRecord(P)}
+      ${newsBlock()}`;
     wire(el);
     if (open) drawCharts();
   }
@@ -215,6 +225,32 @@
       <div class="ol-note">${esc(scored + tuned)}</div></div>`;
   }
 
+  /* News & events: what's scheduled in the next three weeks, and how SPX has behaved on each kind of day. */
+  function newsBlock(){
+    const E = M.events; if (!E) return "";
+    const today = new Date().toLocaleDateString("en-CA", {timeZone: "America/New_York"});
+    const soon = (E.upcoming || []).filter(e => e.d <= new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10) && e.d >= today);
+    const byDay = [...new Set(soon.map(e => e.d))].map(d => `<div class="ol-tr ol-news"><div class="d"><b>${esc(dayLabel(d))}</b></div><div class="p" style="grid-column:2 / -1">${soon.filter(e => e.d === d).map(e => `<div>${evBadge(e)} <span class="ol-note" style="display:inline">${esc(e.label)}</span></div>`).join("")}</div></div>`).join("");
+    const st = E.study || {}, T = st.types || {}, q = st.quiet;
+    const vs = r => r == null ? "—" : Math.abs(r - 1) < 0.03 ? "about as priced" : `${Math.round(Math.abs(r - 1) * 100)}% ${r > 1 ? "bigger" : "smaller"}`;
+    const order = ["FOMC", "MINUTES", "CPI", "NFP", "PPI", "PCE", "GDP", "VIXEXP", "OPEX", "QUAD"];
+    const rows = order.filter(t => T[t]).map(t => { const v = T[t];
+      return `<div class="ol-tr ol-st"><div class="d"><b>${esc(v.name)}</b> <span class="ol-note">${v.n} days</span></div>
+        <div class="p"><span class="lab">Moves</span><b>${v.avgMove.toFixed(0)} pts</b> <span class="ol-note">close to close · day range ${v.avgRange.toFixed(0)} pts · closed up ${v.up}%</span></div>
+        <div class="m"><span class="lab">vs. priced</span><b>${esc(vs(v.r68))}</b> <span class="ol-note">tails (90%): ${esc(vs(v.r90))}</span></div>
+        <div class="o"><b>${v.f68 && Math.abs(v.f68 - 1) >= 0.02 ? (v.f68 > 1 ? "+" : "−") + Math.round(Math.abs(v.f68 - 1) * 100) + "%" : "no change"}</b> <span class="ol-note">${v.test ? `last year: ${v.test.plain68}% → ${v.test.adj68}% inside (${v.test.n} days)` : "range applied"}</span></div></div>`; }).join("");
+    const open = LS("news") === "1";
+    return `<details class="ol-news-d" ${open ? "open" : ""}><summary><span class="chev"><span class="more">News &amp; events${soon.length ? ` (${soon.length} in the next 3 weeks)` : ""}</span><span class="less">Hide news &amp; events</span></span></summary>
+      <div class="ol-body">
+        <h3>Coming up (next 3 weeks)</h3>
+        ${byDay ? `<div class="ol-trs">${byDay}</div>` : `<span class="ol-note">No scheduled market-moving news in the next 3 weeks.</span>`}
+        <h3>How SPX moved on news days (last ${st.all ? Math.round(st.all.n / 250) : 3} years)</h3>
+        <div class="ol-note">An average day: SPX closed ${st.all ? st.all.avgMove.toFixed(0) : "—"} pts from the day before, with a ${st.all ? st.all.avgRange.toFixed(0) : "—"}-pt high–low range${q ? `; quiet days (no scheduled news): ${q.avgMove.toFixed(0)} pts and ${q.avgRange.toFixed(0)} pts` : ""}. "vs. priced" compares the actual close-to-close move with what options (VIX1D) priced the evening before. "Range applied" is how much the 1DTE/2DTE ranges change on that kind of day, after shrinking small samples toward no change; "last year" checks that against the most recent year, which the fit didn't use.</div>
+        <div class="ol-trs"><div class="ol-tr ol-trh"><div class="d label">Day type</div><div class="p label">Moves</div><div class="m label">vs. priced</div><div class="o label">Range applied</div></div>${rows}</div>
+        <div class="ol-note">Unscheduled news (geopolitics, surprise Fed speeches, big company news) can't be in this calendar and is the main reason closes land outside the ranges.</div>
+      </div></details>`;
+  }
+
   /* Its own dropdown: every prediction next to what the market did that day (close, high, low). */
   function trackRecord(P){
     const all = (P.recent || []), done = all.filter(r => r.actual).slice().reverse(), pending = all.filter(r => !r.actual);
@@ -222,7 +258,7 @@
     const head = models.length ? models.map(m => `${m.h}DTE: ${m.n} scored · avg miss ${m.mae.toFixed(1)} pts (last-price guess ${m.maeRaw.toFixed(1)}) · close inside 68% range ${m.hit68}% · inside 90% ${m.hit90}%`).join("<br>")
       : "Nothing scored yet. The first prediction is scored after its target day closes.";
     const row = r => {
-      const day = `<div class="d"><b>${esc(dayLabel(r.target))}</b> <span class="ol-note">${r.h}DTE${r.actual ? "" : " · " + (Date.now() < Date.parse(r.lockAt || 0) ? "still updating" : "locked")}</span></div>`;
+      const day = `<div class="d"><b>${esc(dayLabel(r.target))}</b> <span class="ol-note">${r.h}DTE${r.actual ? "" : " · " + (Date.now() < Date.parse(r.lockAt || 0) ? "still updating" : "locked")}</span>${(r.events || []).length ? `<div class="ol-evs" style="margin-top:3px">${r.events.map(t => evBadge({type: t, time: ""})).join("")}</div>` : ""}</div>`;
       const pred = `<div class="p"><span class="lab">Predicted</span><b>${px(r.center)}</b> <span class="ol-note">68% ${px0(r.r68[0])}–${px0(r.r68[1])} · 90% ${px0(r.r90[0])}–${px0(r.r90[1])}</span></div>`;
       if (!r.actual) return `<div class="ol-tr">${day}${pred}<div class="m"><span class="lab">Market</span><span class="ol-note" style="display:inline;padding-left:0">waiting for the close</span></div><div class="o"></div></div>`;
       const held = r.actual.h <= r.r90[1] && r.actual.l >= r.r90[0];
@@ -244,6 +280,7 @@
     const det = el.querySelector("details");
     det.addEventListener("toggle", () => { LSset("open", det.open ? "1" : "0"); if (det.open && M) drawCharts(); });
     const tr = el.querySelector("details.ol-track"); if (tr) tr.addEventListener("toggle", () => LSset("track", tr.open ? "1" : "0"));
+    const nw = el.querySelector("details.ol-news-d"); if (nw) nw.addEventListener("toggle", () => LSset("news", nw.open ? "1" : "0"));
     el.querySelectorAll("[data-oltf]").forEach(b => b.addEventListener("click", () => { tf = b.dataset.oltf; zoom = 1; LSset("tf", tf); el.querySelectorAll("[data-oltf]").forEach(x => x.setAttribute("aria-pressed", x === b)); drawCharts(); }));
     el.querySelectorAll("[data-olzoom]").forEach(b => b.addEventListener("click", () => { zoom = Math.max(0.35, Math.min(3, zoom * (b.dataset.olzoom === "in" ? 0.7 : 1.4))); drawCharts(); }));
     const es = el.querySelector("#olES"); if (es) es.addEventListener("change", () => { inES = es.checked; LSset("es", inES ? "1" : "0"); render(); });

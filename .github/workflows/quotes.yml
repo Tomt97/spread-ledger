@@ -46,6 +46,11 @@ jobs:
         run: node .github/scripts/update-quotes.mjs
         env:
           FORCE: ${{ inputs.force == true && 'true' || 'false' }}
+      - name: Update the economic event calendar
+        continue-on-error: true
+        run: node .github/scripts/update-events.mjs
+        env:
+          PREV_EVENTS: prev/events.json
       - name: Build market data and score predictions
         continue-on-error: true
         run: node .github/scripts/update-market.mjs
@@ -55,7 +60,7 @@ jobs:
         run: |
           # One commit, replaced each time, so the repository history doesn't grow. Files not rebuilt this run are kept.
           mkdir pub && cp prev/*.json pub/ 2>/dev/null || true
-          for f in quotes.json market.json predictions.json; do if [ -f "$f" ]; then mv "$f" pub/; fi; done
+          for f in quotes.json market.json predictions.json events.json; do if [ -f "$f" ]; then mv "$f" pub/; fi; done
           cd pub && ls -l
           git init -q -b quotes
           git config user.name "github-actions[bot]"
