@@ -209,7 +209,7 @@ if (quiet && oldAll){
 }
 function clampR(r){ return Math.max(0.8, Math.min(1.6, r || 1)); }
 // Small samples are noisy: pull each event ratio toward 1 (no change) by how few days back it up.
-const shrink = (r, n) => 1 + ((r || 1) - 1) * n / (n + 30);
+function shrink(r, n){ return 1 + ((r || 1) - 1) * n / (n + 30); }
 // Width factor for a target day: the strongest event type with enough history (8+ days), else the quiet-day factor.
 function eventFactor(dates){
   const evs = dates.flatMap(d => (evOn.get(d) || []).filter(e => e.type !== "HOLIDAY").map(e => ({ ...e, on: d })));
