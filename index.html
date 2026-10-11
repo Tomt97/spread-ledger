@@ -2140,6 +2140,9 @@ function buildShareDoc(cfg){
   const rows = trades.filter(t => t.p && (cfg.acct === ALL || acctOf(t) === cfg.acct)).map(t => ({t, e: evalTrade(t)}));
   const closed = rows.filter(r => r.e.pnl != null && r.e.closeDate).sort((a, b) => a.e.closeDate.localeCompare(b.e.closeDate));
   const r2 = v => Math.round(v * 100) / 100, daily = {}, strat = {};
+  // Percent mode: account-level P&L becomes % of the owner's starting account size (which is never shared), and each
+  // trade's P&L becomes % return on the capital it risked. Nothing that reveals dollar size goes into the public record.
+  const pct = cfg.unit === "pct" && cfg.base > 0, acc = v => pct ? r2(v / cfg.base * 100) : r2(v);
   closed.forEach(({e}) => {
     const d = (daily[e.closeDate] ||= {d: e.closeDate, p: 0, n: 0, w: 0}); d.p += e.pnl; d.n++; if (e.pnl > 0) d.w++;
     const s = (strat[e.label] ||= {s: e.label, n: 0, w: 0, p: 0}); s.n++; s.p += e.pnl; if (e.pnl > 0) s.w++;
@@ -2148,22 +2151,31 @@ function buildShareDoc(cfg){
     ownerUid: me, title: (cfg.title || "Trading progress").slice(0, 80),
     acctLabel: cfg.acct === ALL ? "All accounts" : acctName(cfg.acct),
     openCount: rows.length - closed.length,
-    daily: Object.values(daily).map(d => ({...d, p: r2(d.p)})),
-    strategies: Object.values(strat).map(x => ({...x, p: r2(x.p)})).sort((a, b) => b.p - a.p),
-    trades: detailOf(cfg) === "summary" ? closed.slice(-2000).map(({t, e}) => ({o: t.openDate || "", c: e.closeDate, s: e.label, u: t.p.symbol, q: t.p.qty, p: r2(e.pnl)})) : null,
+    unit: pct ? "pct" : "usd",
+    daily: Object.values(daily).map(d => ({...d, p: acc(d.p)})),
+    strategies: Object.values(strat).map(x => ({...x, p: acc(x.p)})).sort((a, b) => b.p - a.p),
+    trades: detailOf(cfg) === "summary" ? closed.slice(-2000).map(({t, e}) => ({o: t.openDate || "", c: e.closeDate, s: e.label, u: t.p.symbol, q: pct ? null : t.p.qty, p: pct ? returnOnRisk(t, e.pnl) : r2(e.pnl)})) : null,
     detail: detailOf(cfg),
-    full: detailOf(cfg) === "full" ? fullTrades(rows) : null,
+    full: detailOf(cfg) === "full" ? fullTrades(rows, pct) : null,
   };
 }
 const detailOf = cfg => cfg.detail || (cfg.trades ? "summary" : "none");
+/* % return on risk: P&L over the most the position could lose at expiration, before fees (null when risk is unlimited) */
+function returnOnRisk(t, pnl){
+  if (pnl == null) return null;
+  const rp = riskProfile({...t, fees: 0});
+  return rp && isFinite(rp.maxL) && rp.maxL < 0 ? Math.round(pnl / -rp.maxL * 10000) / 100 : null;
+}
 /* full trade details for studying: strikes, legs, entry/exit, fees, order text (newest kept if the list is very long) */
-function fullTrades(rows){
+function fullTrades(rows, pct){
   const r4 = v => v == null || !isFinite(v) ? null : Math.round(v * 10000) / 10000;
+  // in percent mode: one lot, no fees, no quantity in the order text, no notes (they could mention dollars)
+  const raw = t => pct ? String(t.raw || "").replace(/^\s*(BUY|SELL|BOT|SOLD)\s+[+-]?\d+\s+/i, "$1 ") : (t.raw || "");
   let out = rows.slice().sort((a, b) => (a.t.openDate || "").localeCompare(b.t.openDate || "")).map(({t, e}) => ({
-    o: t.openDate || "", c: e.closeDate || "", s: e.label, st: e.status, u: t.p.symbol, a: t.p.action, q: t.p.qty, m: t.p.mult || 100,
+    o: t.openDate || "", c: e.closeDate || "", s: e.label, st: e.status, u: t.p.symbol, a: t.p.action, q: pct ? 1 : t.p.qty, m: t.p.mult || 100,
     k: t.p.strikes.map(fmtK).join("/"), ty: t.p.types.join("/"), x: e.exp, e: r4(t.p.price), xp: r4(e.exitPrice),
-    xk: t.exit ? t.exit.kind : "", sv: t.exit && t.exit.settle != null ? t.exit.settle : null, f: Math.round((t.fees || 0) * 100) / 100,
-    p: e.pnl == null ? null : Math.round(e.pnl * 100) / 100, r: t.raw || "", n: t.notes && !/^Imported from thinkorswim/.test(t.notes) ? t.notes.slice(0, 300) : "",
+    xk: t.exit ? t.exit.kind : "", sv: t.exit && t.exit.settle != null ? t.exit.settle : null, f: pct ? 0 : Math.round((t.fees || 0) * 100) / 100,
+    p: e.pnl == null ? null : pct ? returnOnRisk(t, e.pnl) : Math.round(e.pnl * 100) / 100, r: raw(t), n: !pct && t.notes && !/^Imported from thinkorswim/.test(t.notes) ? t.notes.slice(0, 300) : "",
     l: t.p.legs ? t.p.legs.map(l => ({q: l.q, t: l.t, k: l.k, x: l.exp})) : [],
   }));
   while (out.length > 50 && JSON.stringify(out).length > 850000) out = out.slice(Math.ceil(out.length * 0.1));   // stay under the 1 MB record limit
@@ -2190,7 +2202,7 @@ function renderShareSheet(){
   const linkRow = cfg => `<div class="invite" style="margin:0"><div style="display:grid;gap:2px;min-width:0">
         <span class="label">${esc(cfg.title || "Trading progress")} · ${esc(shareAcctLabel(cfg))}</span>
         <span class="mono" data-url="${esc(cfg.id)}" style="overflow-wrap:anywhere">${esc(shareUrl(cfg))}</span>
-        <span class="hint">${esc(detailLabel(detailOf(cfg)))} · updates by itself whenever you open the app</span></div>
+        <span class="hint">${esc(detailLabel(detailOf(cfg)))}${cfg.unit === "pct" ? " · shown in %" : ""} · updates by itself whenever you open the app</span></div>
         <span class="actions"><button class="btn small" type="button" data-act="shareCopy" data-id="${esc(cfg.id)}">Copy link</button>${navigator.share ? `<button class="btn small primary" type="button" data-act="shareNative" data-id="${esc(cfg.id)}">Share</button>` : ""}<a class="btn small" href="${esc(shareUrl(cfg))}" target="_blank" rel="noopener">Open</a>
         <button class="btn small" type="button" data-act="shareEdit" data-id="${esc(cfg.id)}">Edit</button>
         <button class="btn small danger ${S.armed === cfg.id ? "armed" : ""}" type="button" data-act="shareStop" data-id="${esc(cfg.id)}">${S.armed === cfg.id ? "Confirm: turn off" : "Stop sharing"}</button></span></div>`;
@@ -2204,6 +2216,13 @@ function renderShareSheet(){
       <label class="field"><span class="label">Page title</span><input type="text" id="shareTitle" maxlength="80" value="${esc(c.title)}"></label>
       <label class="field"><span class="label">Account to show</span><select id="shareAcct">${opts.map(([id, n]) => `<option value="${esc(id)}" ${id === c.acct ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
     </div>
+    <div class="grid2">
+      <label class="field"><span class="label">Show P&amp;L as</span><select id="shareUnit">
+        <option value="usd" ${c.unit !== "pct" ? "selected" : ""}>Dollars ($)</option>
+        <option value="pct" ${c.unit === "pct" ? "selected" : ""}>Percent (%), no dollar amounts</option></select></label>
+      <label class="field" id="shareBaseWrap" ${c.unit === "pct" ? "" : "hidden"}><span class="label">Starting account size ($), not shared</span><input type="number" id="shareBase" min="1" step="1" inputmode="decimal" value="${c.base || ""}" placeholder="e.g. 25000"></label>
+    </div>
+    <div class="hint" id="shareUnitHint" ${c.unit === "pct" ? "" : "hidden"}>Totals, charts and the calendar show % of this starting size. Each trade shows % return on the capital it risked (its max loss). Lots, fees, order quantities and notes are left off the page, and so are dollar amounts.</div>
     <label class="field"><span class="label">Trade details to show</span><select id="shareDetail">
       <option value="full" ${det === "full" ? "selected" : ""}>Full details: strikes, entry and exit prices, fees, order text, payoff graph (open and closed trades)</option>
       <option value="summary" ${det === "summary" ? "selected" : ""}>Summary: date, strategy, symbol, lots and P&amp;L of closed trades</option>
@@ -2216,7 +2235,10 @@ function renderShareSheet(){
 }
 async function saveShare(){
   const S = shareSheet, old = S.edit ? shareLinks.find(x => x.id === S.edit) : null;
-  const cfg = {id: old ? old.id : newShareId(), title: $("#shareTitle").value.trim() || "Trading progress", acct: $("#shareAcct").value, detail: $("#shareDetail").value};
+  const unit = $("#shareUnit").value, base = num($("#shareBase").value);
+  if (unit === "pct" && !(base > 0)){ S.msg = "Enter your starting account size so the page can show % instead of dollars."; renderShareSheet(); setTimeout(() => $("#shareBase")?.focus(), 0); return; }
+  const cfg = {id: old ? old.id : newShareId(), title: $("#shareTitle").value.trim() || "Trading progress", acct: $("#shareAcct").value, detail: $("#shareDetail").value,
+               unit, ...(unit === "pct" ? {base} : {})};
   const links = old ? shareLinks.map(x => x.id === old.id ? cfg : x) : [...shareLinks, cfg];
   try {
     // Public record first: if Firebase refuses it, no link is saved or shown.
@@ -2738,6 +2760,7 @@ $("#addBtn").addEventListener("click", addParsed);
 $("#importBtn").addEventListener("click", () => $("#tosFile").click());
 ["rangeFrom","rangeTo"].forEach(id => $("#" + id).addEventListener("change", ev => { range = {...range, [id === "rangeFrom" ? "from" : "to"]: ev.target.value}; saveRange(); calMonth = ""; dayFilter = ""; render(); }));
 document.addEventListener("change", ev => {
+  if (ev.target.id === "shareUnit"){ const on = ev.target.value === "pct"; $("#shareBaseWrap").hidden = !on; $("#shareUnitHint").hidden = !on; if (on) $("#shareBase").focus(); }
   if ((ev.target.id === "impFees" || ev.target.id === "impAcct") && importParsed && !importBusy){ if (ev.target.id === "impFees") importFeeSource = ev.target.value; const acct = $("#impAcct")?.value; importPlan = planTosImport(importParsed, trades, {feeSource: importFeeSource, acct}); renderImportSheet(); if (acct && $("#impAcct")) $("#impAcct").value = acct; }
   if (ev.target.id === "addAcct") updatePreview();
   if (ev.target.id === "feeAcct" && feeSheet){ openFeeSheet(ev.target.value); return; }

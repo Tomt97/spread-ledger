@@ -112,9 +112,13 @@ const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad2
 const isoAdd = (iso, months, days = 0) => { const [y,m,d] = iso.split("-").map(Number); const t = new Date(y, m-1+months, d+days); return `${t.getFullYear()}-${pad2(t.getMonth()+1)}-${pad2(t.getDate())}`; };
 const fmtShort = iso => { const [y,m,d] = iso.split("-").map(Number); return `${MON[m-1]} ${d} ’${String(y).slice(2)}`; };
 const fee$ = v => "$" + (+v || 0).toFixed(2);
-const money = v => v == null || !isFinite(v) ? "—" : (v < 0 ? "−$" : v > 0 ? "+$" : "$") + Math.abs(v).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
-const money0 = v => (v < 0 ? "−$" : "$") + Math.abs(Math.round(v)).toLocaleString("en-US");
-const compact = v => { const a = Math.abs(v), s = v < 0 ? "−" : "+"; return a >= 10000 ? `${s}$${(a/1000).toFixed(0)}k` : a >= 1000 ? `${s}$${(a/1000).toFixed(1)}k` : `${s}$${Math.round(a)}`; };
+/* Pages shared "in %" carry no dollar amounts: totals are % of the owner's starting account, each trade is % return on risk. */
+const PCT = () => !!(data && data.unit === "pct");
+const pctFmt = (v, d = 2, plus = true) => (v < 0 ? "−" : v > 0 && plus ? "+" : "") + Math.abs(v).toFixed(d) + "%";
+const ZERO = () => PCT() ? "0%" : "$0";
+const money = v => v == null || !isFinite(v) ? "—" : PCT() ? pctFmt(v) : (v < 0 ? "−$" : v > 0 ? "+$" : "$") + Math.abs(v).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const money0 = v => PCT() ? pctFmt(v, Math.abs(v) >= 10 ? 0 : 1, false) : (v < 0 ? "−$" : "$") + Math.abs(Math.round(v)).toLocaleString("en-US");
+const compact = v => { if (PCT()) return pctFmt(v, Math.abs(v) >= 10 ? 0 : 1); const a = Math.abs(v), s = v < 0 ? "−" : "+"; return a >= 10000 ? `${s}$${(a/1000).toFixed(0)}k` : a >= 1000 ? `${s}$${(a/1000).toFixed(1)}k` : `${s}$${Math.round(a)}`; };
 const cls = v => v > 0.005 ? "gain" : v < -0.005 ? "loss" : "";
 
 const id = new URLSearchParams(location.search).get("s") || "";
@@ -165,20 +169,20 @@ function render(){
   $("#main").innerHTML = `
     <div class="tabs" role="group" aria-label="Timeframe" style="justify-self:start">${Object.entries(names).map(([k, v]) => `<button type="button" data-range="${k}" aria-pressed="${range === k}">${v}</button>`).join("")}</div>
     <section class="kpis" aria-label="Summary">
-      <div class="kpi"><span class="label">Net P&amp;L</span><span class="v ${cls(total)}">${n ? money(total) : "$0.00"}</span><span class="s">${n} closed trade${n === 1 ? "" : "s"} · ${D.openCount || 0} open now</span></div>
+      <div class="kpi"><span class="label">${PCT() ? "Return" : "Net P&amp;L"}</span><span class="v ${cls(total)}">${n ? money(total) : money(0)}</span><span class="s">${PCT() ? "of starting account · " : ""}${n} closed trade${n === 1 ? "" : "s"} · ${D.openCount || 0} open now</span></div>
       <div class="kpi"><span class="label">Win rate</span><span class="v">${n ? (w / n * 100).toFixed(1) + "%" : "—"}</span><span class="s">${w} won · ${n - w} lost or flat</span></div>
       <div class="kpi"><span class="label">Avg per trade</span><span class="v ${cls(total / (n || 1))}">${n ? money(total / n) : "—"}</span><span class="s">${best && best[1] > 0 ? `best day ${fmtShort(best[0])} <span class="gain">${compact(best[1])}</span>` : "&nbsp;"}</span></div>
-      <div class="kpi"><span class="label">Max drawdown</span><span class="v ${dd > 0 ? "loss" : ""}">${dd > 0 ? money(-dd) : "$0.00"}</span><span class="s">${worst && worst[1] < 0 ? `worst day ${fmtShort(worst[0])} <span class="loss">${compact(worst[1])}</span>` : "from peak, by day"}</span></div>
+      <div class="kpi"><span class="label">Max drawdown</span><span class="v ${dd > 0 ? "loss" : ""}">${dd > 0 ? money(-dd) : money(0)}</span><span class="s">${worst && worst[1] < 0 ? `worst day ${fmtShort(worst[0])} <span class="loss">${compact(worst[1])}</span>` : "from peak, by day"}</span></div>
     </section>
     <div class="split">
-      <section class="panel card"><div class="card-head"><h2>Cumulative P&amp;L</h2><span class="muted" style="font-size:13px">${days.length} trading day${days.length === 1 ? "" : "s"}</span></div>${lineChart(curve)}</section>
+      <section class="panel card"><div class="card-head"><h2>${PCT() ? "Cumulative return (% of account)" : "Cumulative P&amp;L"}</h2><span class="muted" style="font-size:13px">${days.length} trading day${days.length === 1 ? "" : "s"}</span></div>${lineChart(curve)}</section>
       <section class="panel card"><div class="card-head"><h2>By month</h2></div>${barChart(Object.entries(months).sort())}</section>
     </div>
     <section class="panel card"><div class="card-head"><h2>P&amp;L calendar</h2>
       <div style="display:flex;gap:6px;align-items:center"><button class="btn" type="button" data-cal="-1" aria-label="Previous month">‹</button><b id="calM" style="min-width:96px;text-align:center"></b><button class="btn" type="button" data-cal="1" aria-label="Next month">›</button></div></div>
       <div id="cal"></div></section>
     <section class="panel card"><div class="card-head"><h2>By strategy</h2><span class="muted" style="font-size:13px">all time</span></div>
-      <div class="scroll"><table><thead><tr><th>Strategy</th><th class="r">Trades</th><th class="r">Win %</th><th class="r">P&amp;L</th></tr></thead><tbody>
+      <div class="scroll"><table><thead><tr><th>Strategy</th><th class="r">Trades</th><th class="r">Win %</th><th class="r">${PCT() ? "Return" : "P&amp;L"}</th></tr></thead><tbody>
       ${(D.strategies || []).map(s => `<tr><td><b>${esc(s[0])}</b></td><td class="r num">${s[1]}</td><td class="r num">${Math.round(s[2] / s[1] * 100)}%</td><td class="r num ${cls(s[3])}">${money(s[3])}</td></tr>`).join("") || '<tr><td colspan="4" class="muted">No closed trades yet.</td></tr>'}
       </tbody></table></div></section>
     ${D.full ? fullList(D.full.filter(t => !t.c || !b || (t.c >= b[0] && t.c <= b[1]))) : D.trades ? tradeList(D.trades.filter(t => !b || (t[1] >= b[0] && t[1] <= b[1]))) : ""}`;
@@ -209,7 +213,7 @@ function barChart(rows){
   const bw = (W - ml - mr) / rows.length, gap = Math.min(10, bw * 0.25);
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="P&L by month">
     <line x1="${ml}" x2="${W - mr}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)" stroke-width="1.5"/>
-    ${hasPos ? `<text x="${ml - 6}" y="${Y(top) + 8}" text-anchor="end">${compact(top)}</text>` : ""}${hasNeg ? `<text x="${ml - 6}" y="${Y(bot)}" text-anchor="end">${compact(bot)}</text>` : ""}<text x="${ml - 6}" y="${Y(0) + 4}" text-anchor="end">$0</text>
+    ${hasPos ? `<text x="${ml - 6}" y="${Y(top) + 8}" text-anchor="end">${compact(top)}</text>` : ""}${hasNeg ? `<text x="${ml - 6}" y="${Y(bot)}" text-anchor="end">${compact(bot)}</text>` : ""}<text x="${ml - 6}" y="${Y(0) + 4}" text-anchor="end">${ZERO()}</text>
     ${rows.map((r, i) => { const x = ml + i * bw + gap / 2, h = Math.abs(Y(r[1]) - Y(0)), y = r[1] >= 0 ? Y(r[1]) : Y(0);
       return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw - gap).toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="3" fill="${r[1] >= 0 ? "var(--gain)" : "var(--loss)"}"><title>${MON[+r[0].slice(5) - 1]} ${r[0].slice(0, 4)}: ${money(r[1])}</title></rect>
         ${rows.length <= 12 || i % Math.ceil(rows.length / 12) === 0 ? `<text x="${(x + (bw - gap) / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${MON[+r[0].slice(5) - 1]}</text>` : ""}`; }).join("")}</svg>`;
@@ -251,14 +255,16 @@ function payoff(t, rp){
   const ks = rp.ks, pad = Math.max((ks[ks.length - 1] - ks[0]) * 1.2, ks[ks.length - 1] * 0.006, 1);
   let lo = Math.max(0, ks[0] - pad), hi = ks[ks.length - 1] + pad;
   if (t.sv != null){ lo = Math.max(0, Math.min(lo, t.sv - pad * 0.3)); hi = Math.max(hi, t.sv + pad * 0.3); }
-  const xs = [lo, ...ks.filter(k => k > lo && k < hi), hi], ys = xs.map(S => pnlAt(t, S));
+  const sc = PCT() ? (isFinite(rp.maxL) && rp.maxL < 0 ? 100 / -rp.maxL : null) : 1;
+  if (sc == null) return '<span class="muted">No payoff graph in % for a position with unlimited risk.</span>';
+  const xs = [lo, ...ks.filter(k => k > lo && k < hi), hi], ys = xs.map(S => pnlAt(t, S) * sc);
   const W = 520, H = 200, ml = 58, mr = 10, mt = 10, mb = 24, ymin = Math.min(0, ...ys), ymax = Math.max(0, ...ys), yr = (ymax - ymin) || 1;
   const X = S => ml + (W - ml - mr) * (S - lo) / (hi - lo), Y = v => mt + (H - mt - mb) * (1 - (v - ymin) / yr);
   const line = xs.map((S, i) => `${i ? "L" : "M"}${X(S).toFixed(1)},${Y(ys[i]).toFixed(1)}`).join(""), zy = Y(0), uid = Math.random().toString(36).slice(2, 8);
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Payoff at expiration">
     <defs><clipPath id="u${uid}"><rect x="0" y="0" width="${W}" height="${zy}"/></clipPath><clipPath id="d${uid}"><rect x="0" y="${zy}" width="${W}" height="${H}"/></clipPath></defs>
     <line x1="${ml}" x2="${W - mr}" y1="${zy}" y2="${zy}" stroke="var(--line)" stroke-width="1.5"/>
-    ${Math.abs(Y(ymax) - zy) > 14 ? `<text x="${ml - 6}" y="${Y(ymax) + 9}" text-anchor="end">${compact(ymax)}</text>` : ""}${Math.abs(Y(ymin) - zy) > 14 ? `<text x="${ml - 6}" y="${Y(ymin)}" text-anchor="end">${compact(ymin)}</text>` : ""}<text x="${ml - 6}" y="${zy + 4}" text-anchor="end">$0</text>
+    ${Math.abs(Y(ymax) - zy) > 14 ? `<text x="${ml - 6}" y="${Y(ymax) + 9}" text-anchor="end">${compact(ymax)}</text>` : ""}${Math.abs(Y(ymin) - zy) > 14 ? `<text x="${ml - 6}" y="${Y(ymin)}" text-anchor="end">${compact(ymin)}</text>` : ""}<text x="${ml - 6}" y="${zy + 4}" text-anchor="end">${ZERO()}</text>
     ${ks.map(k => `<line x1="${X(k)}" x2="${X(k)}" y1="${mt}" y2="${H - mb}" stroke="var(--line)" stroke-dasharray="2 4"/>`).join("")}
     ${(() => { let last = -1e9; return ks.map(k => { const x = X(k); if (x - last < 38) return ""; last = x; return `<text x="${x}" y="${H - 7}" text-anchor="middle">${fmtK(k)}</text>`; }).join(""); })()}
     <path d="${line}L${X(hi)},${zy}L${X(lo)},${zy}Z" fill="var(--gain)" opacity=".16" clip-path="url(#u${uid})"/><path d="${line}L${X(hi)},${zy}L${X(lo)},${zy}Z" fill="var(--loss)" opacity=".16" clip-path="url(#d${uid})"/>
@@ -279,25 +285,27 @@ function fullList(all){
   const counts = {all: all.length, open: all.filter(t => t.p == null).length, closed: all.filter(t => t.p != null).length};
   return `<section class="panel card"><div class="card-head"><h2>Trades</h2>
       <div class="tabs" role="group" aria-label="Which trades">${[["all","All"],["open","Open"],["closed","Closed"]].map(([k, n]) => `<button type="button" data-ff="${k}" aria-pressed="${fullFilter === k}">${n} <span class="muted">${counts[k]}</span></button>`).join("")}</div></div>
-    <div class="scroll"><table><thead><tr><th class="hide-sm">Opened</th><th>Strategy</th><th class="r hide-sm">Lots</th><th class="r">Entry</th><th class="r hide-sm">Exit</th><th class="r hide-sm">Fees</th><th class="r">P&amp;L</th><th class="hide-sm">Status</th></tr></thead><tbody>
+    <div class="scroll"><table><thead><tr><th class="hide-sm">Opened</th><th>Strategy</th>${PCT() ? "" : '<th class="r hide-sm">Lots</th>'}<th class="r">Entry</th><th class="r hide-sm">Exit</th>${PCT() ? "" : '<th class="r hide-sm">Fees</th>'}<th class="r">${PCT() ? "Return on risk" : "P&amp;L"}</th><th class="hide-sm">Status</th></tr></thead><tbody>
     ${shown.map((t, i) => { const c = cash(t);
       return `<tr class="trow" data-row="${i}" tabindex="0" aria-expanded="${openRow === i}">
         <td class="num hide-sm" style="white-space:nowrap">${t.o ? fmtShort(t.o) : "—"}</td>
-        <td><b>${esc(t.s)}</b><div class="sub">${esc(t.u)} ${t.x ? fmtShort(t.x) : ""} · ${esc(t.k)} ${esc(t.ty)}<span class="show-sm"> · ${t.q} lot${t.q === 1 ? "" : "s"}</span></div></td>
-        <td class="r num hide-sm">${t.q}</td>
-        <td class="r num">${t.e == null ? "—" : t.e.toFixed(2)}<div class="sub hide-sm">${t.e == null ? "" : (c >= 0 ? "cr " : "db ") + money0(Math.abs(c))}</div></td>
+        <td><b>${esc(t.s)}</b><div class="sub">${esc(t.u)} ${t.x ? fmtShort(t.x) : ""} · ${esc(t.k)} ${esc(t.ty)}${PCT() ? "" : `<span class="show-sm"> · ${t.q} lot${t.q === 1 ? "" : "s"}</span>`}</div></td>
+        ${PCT() ? "" : `<td class="r num hide-sm">${t.q}</td>`}
+        <td class="r num">${t.e == null ? "—" : t.e.toFixed(2)}${PCT() ? "" : `<div class="sub hide-sm">${t.e == null ? "" : (c >= 0 ? "cr " : "db ") + money0(Math.abs(c))}</div>`}</td>
         <td class="r num hide-sm">${t.xp == null ? "—" : t.xp.toFixed(2)}${t.c ? `<div class="sub">${fmtShort(t.c)}</div>` : ""}</td>
-        <td class="r num hide-sm muted">${fee$(t.f)}</td>
+        ${PCT() ? "" : `<td class="r num hide-sm muted">${fee$(t.f)}</td>`}
         <td class="r num ${cls(t.p ?? 0)}" style="font-weight:700;white-space:nowrap">${t.p == null ? "—" : money(t.p)}</td>
         <td class="hide-sm">${statusPill(t)}</td></tr>
-        ${openRow === i ? `<tr class="drow"><td colspan="8">${detail(t)}</td></tr>` : ""}`; }).join("") || '<tr><td colspan="8" class="muted">No trades in this view.</td></tr>'}
+        ${openRow === i ? `<tr class="drow"><td colspan="${PCT() ? 6 : 8}">${detail(t)}</td></tr>` : ""}`; }).join("") || '<tr><td colspan="${PCT() ? 6 : 8}" class="muted">No trades in this view.</td></tr>'}
     </tbody></table></div>
     ${rows.length > shown.length ? `<button class="btn" type="button" data-more="1" style="justify-self:center">Show more (${rows.length - shown.length} left)</button>` : ""}
     <span class="muted" style="font-size:12.5px">Tap a trade to see its order, legs and payoff graph.</span></section>`;
 }
 function detail(t){
   const rp = risk(t), dir = t.a === "BUY" ? 1 : -1;
-  const legs = t.l.map(l => { const n = l.q * dir * t.q; return `<span>${n > 0 ? "Long" : "Short"} ${Math.abs(n)} × ${fmtK(l.k)} ${l.t === "C" ? "call" : "put"} · ${fmtShort(l.x)}</span>`; }).join("");
+  const legs = t.l.map(l => { const n = l.q * dir * t.q; return `<span>${n > 0 ? "Long" : "Short"} ${PCT() ? (Math.abs(l.q) > 1 ? Math.abs(l.q) + " × " : "") : Math.abs(n) + " × "}${fmtK(l.k)} ${l.t === "C" ? "call" : "put"} · ${fmtShort(l.x)}</span>`; }).join("");
+  // in % mode, max profit/loss are shown as % of the capital at risk (max loss = −100%)
+  const onRisk = v => !PCT() ? money(v) : rp && isFinite(rp.maxL) && rp.maxL < 0 ? pctFmt(v / -rp.maxL * 100, 1) : "—";
   return `<div class="det"><div style="display:grid;gap:10px;align-content:start">
       ${t.r ? `<div class="order">${esc(t.r)}</div>` : ""}
       <div class="facts">
@@ -305,24 +313,24 @@ function detail(t){
         <div><span class="label">Entry</span><span class="v">${t.e == null ? "—" : t.e.toFixed(2)}</span></div>
         <div><span class="label">Exit</span><span class="v">${t.xp == null ? "—" : t.xp.toFixed(2)}</span></div>
         <div><span class="label">${t.xk === "expired" ? "Settled at" : "Closed"}</span><span class="v">${t.sv != null ? fmtK(t.sv) : t.c ? fmtShort(t.c) : "—"}</span></div>
-        <div><span class="label">Fees</span><span class="v">${fee$(t.f)}</span></div>
-        <div><span class="label">Max profit</span><span class="v gain">${rp ? (isFinite(rp.maxP) ? money(rp.maxP) : "Unlimited") : "—"}</span></div>
-        <div><span class="label">Max loss</span><span class="v loss">${rp ? (isFinite(rp.maxL) ? money(rp.maxL) : "Unlimited") : "—"}</span></div>
+        ${PCT() ? "" : `<div><span class="label">Fees</span><span class="v">${fee$(t.f)}</span></div>`}
+        <div><span class="label">Max profit</span><span class="v gain">${rp ? (isFinite(rp.maxP) ? onRisk(rp.maxP) : "Unlimited") : "—"}</span></div>
+        <div><span class="label">Max loss</span><span class="v loss">${rp ? (isFinite(rp.maxL) ? onRisk(rp.maxL) : "Unlimited") : "—"}</span></div>
         <div><span class="label">Breakeven</span><span class="v">${rp && rp.be.length ? rp.be.map(v => fmtK(v)).join(" / ") : "—"}</span></div>
-        <div><span class="label">P&amp;L</span><span class="v ${cls(t.p ?? 0)}">${t.p == null ? "open" : money(t.p)}</span></div>
+        <div><span class="label">${PCT() ? "Return on risk" : "P&amp;L"}</span><span class="v ${cls(t.p ?? 0)}">${t.p == null ? "open" : money(t.p)}</span></div>
       </div>
       <div class="legs">${legs}</div>
       ${t.n ? `<div class="muted" style="font-size:13px">Note: ${esc(t.n)}</div>` : ""}
     </div>
-    <div>${rp ? `<div class="label" style="margin-bottom:4px">P&amp;L at expiration</div>${payoff(t, rp)}` : '<span class="muted">No payoff graph for this structure.</span>'}</div></div>`;
+    <div>${rp ? `<div class="label" style="margin-bottom:4px">${PCT() ? "Return on risk at expiration" : "P&amp;L at expiration"}</div>${payoff(t, rp)}` : '<span class="muted">No payoff graph for this structure.</span>'}</div></div>`;
 }
 function tradeList(rows){
   // rows: [opened, closed, strategy, symbol, contracts, pnl]
   rows = rows.slice().sort((a, c) => c[1].localeCompare(a[1]));
   const shown = rows.slice(0, 150);
   return `<section class="panel card"><div class="card-head"><h2>Closed trades</h2><span class="muted" style="font-size:13px">${rows.length}${rows.length > shown.length ? ` · latest ${shown.length} shown` : ""}</span></div>
-    <div class="scroll"><table><thead><tr><th>Closed</th><th>Strategy</th><th>Symbol</th><th class="r">Lots</th><th class="r">P&amp;L</th></tr></thead><tbody>
-    ${shown.map(t => `<tr><td class="num">${fmtShort(t[1])}</td><td>${esc(t[2])}</td><td class="num">${esc(t[3])}</td><td class="r num">${t[4]}</td><td class="r num ${cls(t[5])}" style="font-weight:600">${money(t[5])}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">No closed trades in this timeframe.</td></tr>'}
+    <div class="scroll"><table><thead><tr><th>Closed</th><th>Strategy</th><th>Symbol</th>${PCT() ? "" : '<th class="r">Lots</th>'}<th class="r">${PCT() ? "Return on risk" : "P&amp;L"}</th></tr></thead><tbody>
+    ${shown.map(t => `<tr><td class="num">${fmtShort(t[1])}</td><td>${esc(t[2])}</td><td class="num">${esc(t[3])}</td>${PCT() ? "" : `<td class="r num">${t[4]}</td>`}<td class="r num ${cls(t[5])}" style="font-weight:600">${money(t[5])}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">No closed trades in this timeframe.</td></tr>'}
     </tbody></table></div></section>`;
 }
 document.addEventListener("click", ev => {
