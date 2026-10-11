@@ -228,6 +228,9 @@ body:not(.admin) .adm{display:none!important}
 .sr{position:absolute;left:0;top:0;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .ownerbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .ownerbar .actions{flex-wrap:wrap}
+.unit-toggle{width:max-content;max-width:100%}
+.unit-toggle button{font-size:13px}
+.unit-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
 .viewing{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--r);padding:10px 14px}
 .viewing b{color:var(--accent)}
 .acctbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
@@ -2196,13 +2199,16 @@ function renderShareSheet(){
   if (!shareSheet) return;
   document.body.style.overflow = "hidden";
   const S = shareSheet, editing = S.edit != null, cur = editing && S.edit ? shareLinks.find(x => x.id === S.edit) : null;
-  const c = cur || {title: "Trading progress", acct: curAcct, detail: "full"};
-  const det = detailOf(c);
+  const c0 = cur || {title: "Trading progress", acct: curAcct, detail: "full"}, c = S.unitDraft ? {...c0, unit: S.unitDraft} : c0;
+  const det = detailOf(c), isPct = c.unit === "pct";
+  const unitToggle = (unit, attr) => `<div class="tabs unit-toggle" role="group" aria-label="Show P&amp;L as">
+      <button type="button" ${attr}="usd" aria-pressed="${unit !== "pct"}">$ Dollars</button><button type="button" ${attr}="pct" aria-pressed="${unit === "pct"}">% Percent</button></div>`;
   const opts = [...accounts().map(a => [a.id, a.name]), ...(accounts().length > 1 ? [[ALL, "All accounts combined"]] : [])];
   const linkRow = cfg => `<div class="invite" style="margin:0"><div style="display:grid;gap:2px;min-width:0">
         <span class="label">${esc(cfg.title || "Trading progress")} · ${esc(shareAcctLabel(cfg))}</span>
         <span class="mono" data-url="${esc(cfg.id)}" style="overflow-wrap:anywhere">${esc(shareUrl(cfg))}</span>
-        <span class="hint">${esc(detailLabel(detailOf(cfg)))}${cfg.unit === "pct" ? " · shown in %" : ""} · updates by itself whenever you open the app</span></div>
+        <span class="hint">${esc(detailLabel(detailOf(cfg)))} · updates by itself whenever you open the app</span>
+        <div class="unit-row"><span class="label">P&amp;L on the page</span>${unitToggle(cfg.unit, `data-id="${esc(cfg.id)}" data-linkunit`)}</div></div>
         <span class="actions"><button class="btn small" type="button" data-act="shareCopy" data-id="${esc(cfg.id)}">Copy link</button>${navigator.share ? `<button class="btn small primary" type="button" data-act="shareNative" data-id="${esc(cfg.id)}">Share</button>` : ""}<a class="btn small" href="${esc(shareUrl(cfg))}" target="_blank" rel="noopener">Open</a>
         <button class="btn small" type="button" data-act="shareEdit" data-id="${esc(cfg.id)}">Edit</button>
         <button class="btn small danger ${S.armed === cfg.id ? "armed" : ""}" type="button" data-act="shareStop" data-id="${esc(cfg.id)}">${S.armed === cfg.id ? "Confirm: turn off" : "Stop sharing"}</button></span></div>`;
@@ -2210,19 +2216,17 @@ function renderShareSheet(){
     <div class="sheet-head"><div style="display:grid;gap:4px"><h2 id="shTitle2">Share your progress</h2>
       <span class="hint">Each link shows one account (or all of them combined) on a read-only page: P&amp;L, win rate, drawdown, charts, calendar and strategy results. Make a separate link for each account you want to share, and send each person only the link you want them to see. Viewers can't add, change or delete anything, and opening a link never affects their own account. Your email stays private.</span></div>
       <button class="x" type="button" data-act="shareClose" aria-label="Close">×</button></div>
-    ${shareLinks.length ? `<div style="display:grid;gap:10px"><span class="label">Your share links (${shareLinks.length})</span>${shareLinks.map(linkRow).join("")}</div>` : ""}
+    ${shareLinks.length ? `<div style="display:grid;gap:10px"><span class="label">Your share links (${shareLinks.length})</span>${shareLinks.map(linkRow).join("")}${S.note ? `<span class="hint" style="color:var(--gain)">${esc(S.note)}</span>` : ""}</div>` : ""}
     ${editing ? `<div class="exitbox"><span class="label">${cur ? `Edit link: ${esc(cur.title || "Trading progress")}` : "New share link"}</span>
     <div class="grid2">
       <label class="field"><span class="label">Page title</span><input type="text" id="shareTitle" maxlength="80" value="${esc(c.title)}"></label>
       <label class="field"><span class="label">Account to show</span><select id="shareAcct">${opts.map(([id, n]) => `<option value="${esc(id)}" ${id === c.acct ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
     </div>
     <div class="grid2">
-      <label class="field"><span class="label">Show P&amp;L as</span><select id="shareUnit">
-        <option value="usd" ${c.unit !== "pct" ? "selected" : ""}>Dollars ($)</option>
-        <option value="pct" ${c.unit === "pct" ? "selected" : ""}>Percent (%), no dollar amounts</option></select></label>
-      <label class="field" id="shareBaseWrap" ${c.unit === "pct" ? "" : "hidden"}><span class="label">Starting account size ($), not shared</span><input type="number" id="shareBase" min="1" step="1" inputmode="decimal" value="${c.base || ""}" placeholder="e.g. 25000"></label>
+      <div class="field"><span class="label">Show P&amp;L as</span>${unitToggle(c.unit, "data-shunit")}<input type="hidden" id="shareUnit" value="${isPct ? "pct" : "usd"}"></div>
+      <label class="field" id="shareBaseWrap" ${isPct ? "" : "hidden"}><span class="label">Starting account size ($), not shared</span><input type="number" id="shareBase" min="1" step="1" inputmode="decimal" value="${c.base || ""}" placeholder="e.g. 25000"></label>
     </div>
-    <div class="hint" id="shareUnitHint" ${c.unit === "pct" ? "" : "hidden"}>Totals, charts and the calendar show % of this starting size. Each trade shows % return on the capital it risked (its max loss). Lots, fees, order quantities and notes are left off the page, and so are dollar amounts.</div>
+    <div class="hint" id="shareUnitHint" ${isPct ? "" : "hidden"}>Totals, charts and the calendar show % of this starting size. Each trade shows % return on the capital it risked (its max loss). Lots, fees, order quantities and notes are left off the page, and so are dollar amounts.</div>
     <label class="field"><span class="label">Trade details to show</span><select id="shareDetail">
       <option value="full" ${det === "full" ? "selected" : ""}>Full details: strikes, entry and exit prices, fees, order text, payoff graph (open and closed trades)</option>
       <option value="summary" ${det === "summary" ? "selected" : ""}>Summary: date, strategy, symbol, lots and P&amp;L of closed trades</option>
@@ -2233,12 +2237,28 @@ function renderShareSheet(){
     : `<div class="actions"><span class="err">${esc(S.msg)}</span><span class="spacer"></span><button class="btn primary" type="button" data-act="shareNew">New share link</button></div>`}
   </div></div>`;
 }
+/* The $ | % switch on a link in the list: flips it straight away (asks for the account size the first time). */
+async function setLinkUnit(id, unit){
+  const old = shareLinks.find(x => x.id === id); if (!old || (old.unit || "usd") === unit) return;
+  if (unit === "pct" && !(old.base > 0)){
+    shareSheet = {msg: "Enter your starting account size to show this link in %.", armed: null, edit: id, unitDraft: "pct"};
+    renderShareSheet(); setTimeout(() => $("#shareBase")?.focus(), 0); return;
+  }
+  const cfg = {...old, unit}, links = shareLinks.map(x => x.id === id ? cfg : x);
+  try {
+    await DB.doc(`shares/${id}`).set({...buildShareDoc(cfg), updatedAt: Date.now()});
+    await col("settings").doc("share").set({links});
+    shareLinks = links; lastShareJson[id] = JSON.stringify(buildShareDoc(cfg));
+    shareSheet = {...shareSheet, msg: "", note: `“${cfg.title || "Trading progress"}” now shows ${unit === "pct" ? "% (no dollar amounts)" : "dollars"}.`};
+  } catch(e){ shareSheet.msg = "Couldn't switch. Check your connection and try again."; }
+  renderShareSheet();
+}
 async function saveShare(){
   const S = shareSheet, old = S.edit ? shareLinks.find(x => x.id === S.edit) : null;
   const unit = $("#shareUnit").value, base = num($("#shareBase").value);
   if (unit === "pct" && !(base > 0)){ S.msg = "Enter your starting account size so the page can show % instead of dollars."; renderShareSheet(); setTimeout(() => $("#shareBase")?.focus(), 0); return; }
   const cfg = {id: old ? old.id : newShareId(), title: $("#shareTitle").value.trim() || "Trading progress", acct: $("#shareAcct").value, detail: $("#shareDetail").value,
-               unit, ...(unit === "pct" ? {base} : {})};
+               unit, ...(base > 0 ? {base} : old && old.base ? {base: old.base} : {})};
   const links = old ? shareLinks.map(x => x.id === old.id ? cfg : x) : [...shareLinks, cfg];
   try {
     // Public record first: if Firebase refuses it, no link is saved or shown.
@@ -2610,6 +2630,12 @@ async function handleTosFile(file){
 document.addEventListener("click", async ev => {
   const f = ev.target.closest("[data-filter]");
   if (f){ filter = f.dataset.filter; try { localStorage.setItem("spread-ledger-filter", filter); } catch {} render(); if (f.closest(".alert")) $("#blotter").scrollIntoView({behavior:"smooth",block:"start"}); return; }
+  const su = ev.target.closest("[data-shunit]");
+  if (su){ const on = su.dataset.shunit === "pct"; $("#shareUnit").value = on ? "pct" : "usd";
+    su.parentElement.querySelectorAll("[data-shunit]").forEach(b => b.setAttribute("aria-pressed", b === su));
+    $("#shareBaseWrap").hidden = !on; $("#shareUnitHint").hidden = !on; if (on && !$("#shareBase").value) $("#shareBase").focus(); return; }
+  const lu = ev.target.closest("[data-linkunit]");
+  if (lu){ setLinkUnit(lu.dataset.id, lu.dataset.linkunit); return; }
   const pg = ev.target.closest("[data-page]");
   if (pg){ closeSheet(); if (pg.dataset.page === "members"){ markSignupsSeen(); if (viewUid !== me) subscribeTo(me); viewingName = ""; page = "members"; loadMembers(); } else backToMine(); return; }
   const ap = ev.target.closest("[data-approve]"), dc = ev.target.closest("[data-decline]");
@@ -2760,7 +2786,6 @@ $("#addBtn").addEventListener("click", addParsed);
 $("#importBtn").addEventListener("click", () => $("#tosFile").click());
 ["rangeFrom","rangeTo"].forEach(id => $("#" + id).addEventListener("change", ev => { range = {...range, [id === "rangeFrom" ? "from" : "to"]: ev.target.value}; saveRange(); calMonth = ""; dayFilter = ""; render(); }));
 document.addEventListener("change", ev => {
-  if (ev.target.id === "shareUnit"){ const on = ev.target.value === "pct"; $("#shareBaseWrap").hidden = !on; $("#shareUnitHint").hidden = !on; if (on) $("#shareBase").focus(); }
   if ((ev.target.id === "impFees" || ev.target.id === "impAcct") && importParsed && !importBusy){ if (ev.target.id === "impFees") importFeeSource = ev.target.value; const acct = $("#impAcct")?.value; importPlan = planTosImport(importParsed, trades, {feeSource: importFeeSource, acct}); renderImportSheet(); if (acct && $("#impAcct")) $("#impAcct").value = acct; }
   if (ev.target.id === "addAcct") updatePreview();
   if (ev.target.id === "feeAcct" && feeSheet){ openFeeSheet(ev.target.value); return; }
