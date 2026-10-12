@@ -2223,7 +2223,7 @@ function renderShareSheet(){
       <div class="field"><span class="label">Show P&amp;L as</span>${unitToggle(c.unit, "data-shunit")}<input type="hidden" id="shareUnit" value="${isPct ? "pct" : "usd"}"></div>
       <label class="field" id="shareBaseWrap" ${isPct ? "" : "hidden"}><span class="label">Starting account size ($)</span><input type="number" id="shareBase" min="1" step="1" inputmode="decimal" value="${c.base || ""}" placeholder="e.g. 25000"></label>
     </div>
-    <div class="hint" id="shareUnitHint" ${isPct ? "" : "hidden"}>Net P&amp;L shows as % of this starting size. Everything else (averages, drawdown, charts, calendar, trades) stays in dollars, so a viewer could work out the size from the two.</div>
+    <div class="hint" id="shareUnitHint" ${isPct ? "" : "hidden"}>Net P&amp;L and Max drawdown show as % of this starting size. Everything else (averages, charts, calendar, trades) stays in dollars, so a viewer could work out the size from the two.</div>
     <label class="field"><span class="label">Trade details to show</span><select id="shareDetail">
       <option value="full" ${det === "full" ? "selected" : ""}>Full details: strikes, entry and exit prices, fees, order text, payoff graph (open and closed trades)</option>
       <option value="summary" ${det === "summary" ? "selected" : ""}>Summary: date, strategy, symbol, lots and P&amp;L of closed trades</option>
@@ -2246,7 +2246,7 @@ async function setLinkUnit(id, unit){
     await DB.doc(`shares/${id}`).set({...buildShareDoc(cfg), updatedAt: Date.now()});
     await col("settings").doc("share").set({links});
     shareLinks = links; lastShareJson[id] = JSON.stringify(buildShareDoc(cfg));
-    shareSheet = {...shareSheet, msg: "", note: `“${cfg.title || "Trading progress"}” now shows ${unit === "pct" ? "Net P&L in %" : "dollars"}.`};
+    shareSheet = {...shareSheet, msg: "", note: `“${cfg.title || "Trading progress"}” now shows ${unit === "pct" ? "Net P&L and drawdown in %" : "dollars"}.`};
   } catch(e){ shareSheet.msg = "Couldn't switch. Check your connection and try again."; }
   renderShareSheet();
 }

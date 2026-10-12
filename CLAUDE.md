@@ -46,8 +46,8 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
 
 ## Share links
 - A "%" share link looks exactly like the "$" one (same cards as the app's Stats page: Net P&L, Win rate, Avg per trade
-  with win/loss averages, Max drawdown peak → trough, Top strategy), except Net P&L, which shows as % of the owner's
-  starting account size (owner's request, Oct 2026). The size isn't stored in the share record, but it can be worked out
+  with win/loss averages, Max drawdown peak → trough, Top strategy), except Net P&L and Max drawdown (with its peak → trough), which
+  show as % of the owner's starting account size. Only those two are in % (owner's request, Oct 2026). The size isn't stored in the share record, but it can be worked out
   from the dollar figures; the share settings say so.
 
 ## Conventions
