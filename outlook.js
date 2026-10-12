@@ -76,6 +76,19 @@
   #outlook .ol-tr .p .ol-note,#outlook .ol-tr .m .ol-note{padding-left:76px}
   #outlook .ol-tr .d .ol-note,#outlook .ol-tr .o .ol-note{display:inline}
 }
+/* News rows: day | events on wide screens; day on its own line above its events on phones */
+#outlook .ol-tr.ol-news{grid-template-columns:minmax(120px,.8fr) minmax(0,4fr)}
+#outlook .ol-tr.ol-news .d{grid-column:1;grid-row:1} #outlook .ol-tr.ol-news .p{grid-column:2;grid-row:1;display:grid;gap:6px}
+#outlook .ol-nev{display:flex;gap:8px;align-items:baseline;min-width:0}
+#outlook .ol-nev .ol-ev{flex:none}
+#outlook .ol-tr.ol-news .ol-nev .ol-note{display:block;padding-left:0;min-width:0;overflow-wrap:anywhere}
+@media (max-width:640px){
+  #outlook .ol-tr.ol-news{grid-template-columns:minmax(0,1fr);gap:6px}
+  #outlook .ol-tr.ol-news .d,#outlook .ol-tr.ol-news .p{grid-column:1;grid-row:auto}
+  /* study rows: the "range applied" column gets its own labeled line instead of squeezing the day type */
+  #outlook .ol-tr.ol-st .o{grid-column:1 / -1;grid-row:auto;text-align:left}
+  #outlook .ol-tr.ol-st .o .ol-note{display:block;padding-left:76px}
+}
 #outlook .ol-err{color:var(--loss);font-size:13px}
 .ol-root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--pos:#2a78d6;--neg:#e34948;--band:rgba(42,120,214,.13);--band2:rgba(42,120,214,.07)}
 @media (prefers-color-scheme: dark){:root:where(:not([data-theme="light"])) .ol-root{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--pos:#3987e5;--neg:#e66767;--band:rgba(57,135,229,.2);--band2:rgba(57,135,229,.1)}}
@@ -234,7 +247,7 @@
     const E = M.events; if (!E) return "";
     const today = new Date().toLocaleDateString("en-CA", {timeZone: "America/New_York"});
     const soon = (E.upcoming || []).filter(e => e.d <= new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10) && e.d >= today);
-    const byDay = [...new Set(soon.map(e => e.d))].map(d => `<div class="ol-tr ol-news"><div class="d"><b>${esc(dayLabel(d))}</b></div><div class="p" style="grid-column:2 / -1">${soon.filter(e => e.d === d).map(e => `<div>${evBadge(e)} <span class="ol-note" style="display:inline">${esc(e.label)}</span></div>`).join("")}</div></div>`).join("");
+    const byDay = [...new Set(soon.map(e => e.d))].map(d => `<div class="ol-tr ol-news"><div class="d"><b>${esc(dayLabel(d))}</b></div><div class="p">${soon.filter(e => e.d === d).map(e => `<div class="ol-nev">${evBadge(e)}<span class="ol-note">${esc(e.label)}</span></div>`).join("")}</div></div>`).join("");
     const st = E.study || {}, T = st.types || {}, q = st.quiet;
     const vs = r => r == null ? "—" : Math.abs(r - 1) < 0.03 ? "about as priced" : `${Math.round(Math.abs(r - 1) * 100)}% ${r > 1 ? "bigger" : "smaller"}`;
     const order = ["FOMC", "MINUTES", "CPI", "NFP", "PPI", "PCE", "GDP", "VIXEXP", "OPEX", "QUAD"];
@@ -242,7 +255,7 @@
       return `<div class="ol-tr ol-st"><div class="d"><b>${esc(v.name)}</b> <span class="ol-note">${v.n} days</span></div>
         <div class="p"><span class="lab">Moves</span><b>${v.avgMove.toFixed(0)} pts</b> <span class="ol-note">close to close · day range ${v.avgRange.toFixed(0)} pts · closed up ${v.up}%</span></div>
         <div class="m"><span class="lab">vs. priced</span><b>${esc(vs(v.r68))}</b> <span class="ol-note">tails (${v.r84 != null ? 84 : 90}%): ${esc(vs(v.r84 ?? v.r90))}</span></div>
-        <div class="o"><b>${v.f68 && Math.abs(v.f68 - 1) >= 0.02 ? (v.f68 > 1 ? "+" : "−") + Math.round(Math.abs(v.f68 - 1) * 100) + "%" : "no change"}</b> <span class="ol-note">${v.test ? `last year: ${v.test.plain68}% → ${v.test.adj68}% inside (${v.test.n} days)` : "range applied"}</span></div></div>`; }).join("");
+        <div class="o"><span class="lab">Range</span><b>${v.f68 && Math.abs(v.f68 - 1) >= 0.02 ? (v.f68 > 1 ? "+" : "−") + Math.round(Math.abs(v.f68 - 1) * 100) + "%" : "no change"}</b> <span class="ol-note">${v.test ? `last year: ${v.test.plain68}% → ${v.test.adj68}% inside (${v.test.n} days)` : "range applied"}</span></div></div>`; }).join("");
     const open = LS("news") === "1";
     return `<details class="ol-news-d" ${open ? "open" : ""}><summary><span class="chev"><span class="more">News &amp; events${soon.length ? ` (${soon.length} in the next 3 weeks)` : ""}</span><span class="less">Hide news &amp; events</span></span></summary>
       <div class="ol-body">
