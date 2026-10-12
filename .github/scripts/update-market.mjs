@@ -160,14 +160,14 @@ function zScores(days, volMap, fallback){
   return z.slice(-500);       // about two years
 }
 const z1 = zScores(1, v1, vx), z2 = zScores(2, v9, vx);
-const calib = z => z.length < 60 ? null : { n: z.length, k68: r2(quantile(z, 0.68)), k90: r2(quantile(z, 0.90)), within1: r2(z.filter(x => x <= 1).length / z.length * 100) };
+const calib = z => z.length < 60 ? null : { n: z.length, k68: r2(quantile(z, 0.68)), k84: r2(quantile(z, 0.84)), within1: r2(z.filter(x => x <= 1).length / z.length * 100) };
 const cal1 = calib(z1), cal2 = calib(z2);
 
 /* ---------- news & scheduled events: what history says about each kind of day ----------
    events.json (update-events.mjs): FOMC decisions and minutes, CPI, jobs report, PPI, PCE, GDP, option expirations,
    holidays and early closes. For every finished SPX day of the last ~3 years: z = |close-to-close move| / the move
    VIX1D (VIX before 2023) priced the evening before, and the day's high-low range in the same units. Each event type
-   is compared with all days; the ratio of their 68%/90% points says how much wider or narrower that kind of day runs
+   is compared with all days; the ratio of their 68%/84% points says how much wider or narrower that kind of day runs
    than the options priced it. Fitted on the older days and checked on the most recent year it didn't see. */
 let EV = [];
 for (const f of [process.env.EVENTS_FILE || "events.json", "prev/events.json"]){ try { EV = JSON.parse(readFileSync(f, "utf8")).events || []; if (EV.length) break; } catch {} }
@@ -187,15 +187,15 @@ const days = (() => {
 })();
 function evStats(rows, base){
   if (rows.length < 4) return null;
-  const zs = rows.map(r => r.z), k68 = quantile(zs, 0.68), k90 = quantile(zs, 0.90);
-  return { n: rows.length, k68: r2(k68), k90: r2(k90), r68: base ? r2(k68 / base.k68) : 1, r90: base ? r2(k90 / base.k90) : 1,
+  const zs = rows.map(r => r.z), k68 = quantile(zs, 0.68), k84 = quantile(zs, 0.84);
+  return { n: rows.length, k68: r2(k68), k84: r2(k84), r68: base ? r2(k68 / base.k68) : 1, r84: base ? r2(k84 / base.k84) : 1,
            avgMove: r2(mean(rows.map(r => Math.abs(r.pts)))), avgRange: r2(mean(rows.map(r => r.rng))), rangeX: base ? r2(median(rows.map(r => r.rz)) / base.medRz) : 1,
            medRz: median(rows.map(r => r.rz)), up: Math.round(rows.filter(r => r.pts > 0).length / rows.length * 100),
            avgSigned: r2(mean(rows.map(r => r.pts))), inside68: base ? Math.round(rows.filter(r => r.z <= base.k68).length / rows.length * 100) : null };
 }
 const allStats = evStats(days, null), quiet = evStats(days.filter(r => !r.types.some(t => STUDY.includes(t) && t !== "VIXEXP" && t !== "OPEX")), allStats);
 const study = {};
-for (const t of STUDY){ const st = evStats(days.filter(r => r.main === t), allStats); if (st) study[t] = { name: NAMES[t], ...st, f68: r2(clampR(shrink(st.r68, st.n))), f90: r2(clampR(shrink(st.r90, st.n))) }; }
+for (const t of STUDY){ const st = evStats(days.filter(r => r.main === t), allStats); if (st) study[t] = { name: NAMES[t], ...st, f68: r2(clampR(shrink(st.r68, st.n))), f84: r2(clampR(shrink(st.r84, st.n))) }; }
 // Out-of-sample check: fit each ratio on the older days, apply it to the most recent ~250 days.
 const cut = days.length - 250, older = days.slice(0, Math.max(0, cut)), newer = days.slice(Math.max(0, cut));
 const oldAll = evStats(older, null), newAll = evStats(newer, null);
@@ -215,13 +215,13 @@ function shrink(r, n){ return 1 + ((r || 1) - 1) * n / (n + 30); }
 // Width factor for a target day: the strongest event type with enough history (8+ days), else the quiet-day factor.
 function eventFactor(dates){
   const evs = dates.flatMap(d => (evOn.get(d) || []).filter(e => e.type !== "HOLIDAY").map(e => ({ ...e, on: d })));
-  let f68 = quiet && quiet.n >= 30 ? clampR(shrink(quiet.r68, quiet.n)) : 1, f90 = quiet && quiet.n >= 30 ? clampR(shrink(quiet.r90, quiet.n)) : 1, why = evs.length ? null : "quiet day (no scheduled news)";
+  let f68 = quiet && quiet.n >= 30 ? clampR(shrink(quiet.r68, quiet.n)) : 1, f84 = quiet && quiet.n >= 30 ? clampR(shrink(quiet.r84, quiet.n)) : 1, why = evs.length ? null : "quiet day (no scheduled news)";
   for (const e of evs){ const st = study[e.type]; if (!st || st.n < 8) continue;
-    const g68 = clampR(shrink(st.r68, st.n)), g90 = clampR(shrink(st.r90, st.n));
-    if (why == null || g68 > f68){ f68 = g68; f90 = g90; why = `${st.name} days`; } }
-  if (why == null) { f68 = 1; f90 = 1; why = "scheduled events with too little history to adjust"; }
-  if (dates.length > 1){ f68 = Math.sqrt((f68 * f68 + 1) / 2); f90 = Math.sqrt((f90 * f90 + 1) / 2); }   // one of two days carries the event
-  return { f68: r2(f68), f90: r2(f90), why, events: evs.map(e => ({ d: e.on, type: e.type, time: e.time, label: e.label })) };
+    const g68 = clampR(shrink(st.r68, st.n)), g84 = clampR(shrink(st.r84, st.n));
+    if (why == null || g68 > f68){ f68 = g68; f84 = g84; why = `${st.name} days`; } }
+  if (why == null) { f68 = 1; f84 = 1; why = "scheduled events with too little history to adjust"; }
+  if (dates.length > 1){ f68 = Math.sqrt((f68 * f68 + 1) / 2); f84 = Math.sqrt((f84 * f84 + 1) / 2); }   // one of two days carries the event
+  return { f68: r2(f68), f84: r2(f84), why, events: evs.map(e => ({ d: e.on, type: e.type, time: e.time, label: e.label })) };
 }
 
 /* ---------- prediction log: every 1DTE/2DTE range is kept and scored against the actual SPX close ----------
@@ -237,14 +237,16 @@ for (const r of records){
   const b = finished.get(r.target);
   r.actual = { c: r2(b.c), h: r2(b.h), l: r2(b.l) };
   r.err = r2(b.c - r.center); r.errRaw = r2(b.c - r.spotAt);
-  r.in68 = b.c >= r.r68[0] && b.c <= r.r68[1]; r.in90 = b.c >= r.r90[0] && b.c <= r.r90[1];
+  r.in68 = b.c >= r.r68[0] && b.c <= r.r68[1];
+  if (r.r84) r.in84 = b.c >= r.r84[0] && b.c <= r.r84[1];
+  else if (r.r90) r.in90 = b.c >= r.r90[0] && b.c <= r.r90[1];        // made before the outer band moved from 90% to 84%
 }
 // Random-walk baseline from history: how far SPX closed from the previous close (or two closes back).
 const baseline = days => r2(mean(dayClose.slice(-251).slice(days).map((d, i) => Math.abs(d.c - dayClose.slice(-251)[i].c))));
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 function fitModel(h){
   const hist = h === 1 ? cal1 : cal2, rs = records.filter(r => r.h === h && r.actual).slice(-60), n = rs.length;
-  let w = 0, b = 0, k68 = hist ? hist.k68 : 1, k90 = hist ? hist.k90 : 1.645;
+  let w = 0, b = 0, k68 = hist ? hist.k68 : 1, k84 = hist ? hist.k84 : 1.405;
   if (n >= 8){
     // How much of the gap to the biggest gamma strike the close actually closed (least squares), then any leftover bias.
     const errs = rs.map(r => r.actual.c - r.spotAt), pulls = rs.map(r => r.pull || 0), spp = pulls.reduce((a, p) => a + p * p, 0);
@@ -253,11 +255,11 @@ function fitModel(h){
   }
   if (n >= 15){        // widths: blend history's calibration with our own record as it grows
     const zs = rs.map(r => Math.abs(r.actual.c - r.center) / r.sigma), a = n / (n + 40);
-    k68 = (1 - a) * k68 + a * quantile(zs, 0.68); k90 = (1 - a) * k90 + a * quantile(zs, 0.90);
+    k68 = (1 - a) * k68 + a * quantile(zs, 0.68); k84 = (1 - a) * k84 + a * quantile(zs, 0.84);
   }
-  return { h, n, w: r2(w), b: r2(b), k68: r2(k68), k90: r2(k90),
+  return { h, n, w: r2(w), b: r2(b), k68: r2(k68), k84: r2(k84),
            mae: n ? r2(mean(rs.map(r => Math.abs(r.err)))) : null, maeRaw: n ? r2(mean(rs.map(r => Math.abs(r.errRaw)))) : null,
-           hit68: n ? Math.round(rs.filter(r => r.in68).length / n * 100) : null, hit90: n ? Math.round(rs.filter(r => r.in90).length / n * 100) : null,
+           hit68: n ? Math.round(rs.filter(r => r.in68).length / n * 100) : null, hit84: rs.some(r => r.r84) ? Math.round(rs.filter(r => r.in84).length / rs.filter(r => r.r84).length * 100) : null,
            baseline: baseline(h) };
 }
 const models = [fitModel(1), fitModel(2)];
@@ -268,21 +270,21 @@ const atrDaily = (() => { const b = spxD.slice(-15); let s = 0; for (let i = 1; 
 const ranges = [future[0], future[1]].map((e, i) => {
   if (!e) return null;
   const ev = eventFactor(i === 0 ? [e.exp] : [future[0].exp, e.exp]);
-  const m = { ...models[i], k68: r2(models[i].k68 * ev.f68), k90: r2(models[i].k90 * ev.f90) }, sigma = e.straddle * Math.sqrt(Math.PI / 2);   // an at-the-money straddle is about 0.8 sigma
+  const m = { ...models[i], k68: r2(models[i].k68 * ev.f68), k84: r2(models[i].k84 * ev.f84) }, sigma = e.straddle * Math.sqrt(Math.PI / 2);   // an at-the-money straddle is about 0.8 sigma
   // In positive gamma, dealer hedging tends to pull price toward the biggest gamma strike nearby ("pin").
   const near = gex && gex.total > 0 ? gex.byStrike.filter(r => Math.abs(r[0] - spot) <= sigma).sort((a, b) => Math.abs(b[1] + b[2]) - Math.abs(a[1] + a[2]))[0] : null;
   const magnet = near ? near[0] : null, pull = magnet != null ? magnet - spot : 0;
   const center = spot + m.w * pull + m.b;
   return { label: `${i + 1}DTE`, h: i + 1, exp: e.exp, spot: r2(spot), center: r2(center), magnet, pull: r2(pull), straddle: e.straddle, atmIv: e.iv, sigma: r2(sigma),
-           r68: [r2(center - m.k68 * sigma), r2(center + m.k68 * sigma)], r90: [r2(center - m.k90 * sigma), r2(center + m.k90 * sigma)],
-           k68: m.k68, k90: m.k90, within1: (i === 0 ? cal1 : cal2)?.within1 ?? null, events: ev.events, evF: ev.f68, evWhy: ev.why };
+           r68: [r2(center - m.k68 * sigma), r2(center + m.k68 * sigma)], r84: [r2(center - m.k84 * sigma), r2(center + m.k84 * sigma)],
+           k68: m.k68, k84: m.k84, within1: (i === 0 ? cal1 : cal2)?.within1 ?? null, events: ev.events, evF: ev.f68, evWhy: ev.why };
 }).filter(Boolean);
 // Save or update the open predictions (locked ones are left as they were).
 for (const r of ranges){
   const lockAt = atNY(r.h === 1 ? r.exp : future[0].exp, 9 * 60 + 30);
   if (nowSec >= lockAt) continue;
   const id = `${r.exp}|${r.h}`, rec = { id, h: r.h, target: r.exp, made: new Date().toISOString(), lockAt: new Date(lockAt * 1000).toISOString(),
-    spotAt: r.spot, center: r.center, magnet: r.magnet, pull: r.pull, sigma: r.sigma, r68: r.r68, r90: r.r90, events: r.events.map(e => e.type), evF: r.evF, model: { w: models[r.h - 1].w, b: models[r.h - 1].b } };
+    spotAt: r.spot, center: r.center, magnet: r.magnet, pull: r.pull, sigma: r.sigma, r68: r.r68, r84: r.r84, events: r.events.map(e => e.type), evF: r.evF, model: { w: models[r.h - 1].w, b: models[r.h - 1].b } };
   const i = records.findIndex(x => x.id === id);
   if (i >= 0 && !records[i].actual) records[i] = rec; else if (i < 0) records.push(rec);
 }
@@ -350,7 +352,7 @@ const out = {
   atr14: atrDaily, gex, expirations: expirations.slice(0, 6).map(({ T, ...e }) => e), ranges, calibration: { oneDay: cal1, twoDay: cal2 },
   predictions: { models, recent: records.slice(-60) },
   events: { upcoming: EV.filter(e => e.d > nyNow.date || (e.d === nyNow.date && nyNow.mins < 16 * 60)).slice(0, 40),
-            study: { all: allStats && { n: allStats.n, k68: allStats.k68, k90: allStats.k90, avgMove: allStats.avgMove, avgRange: allStats.avgRange }, quiet, types: study } },
+            study: { all: allStats && { n: allStats.n, k68: allStats.k68, k84: allStats.k84, avgMove: allStats.avgMove, avgRange: allStats.avgRange }, quiet, types: study } },
   levels: { resistance: pickSide(1), support: pickSide(-1), refs },
 };
 writeFileSync("market.json", JSON.stringify(out));

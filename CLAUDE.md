@@ -16,13 +16,15 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
 - The owner wants the default view compact: only the 1DTE and 2DTE high–low range plus 2–3 resistance and support levels
   each. Charts, indicators and GEX sit behind "Show charts & details".
 - The prediction track record lives in its own dropdown ("Prediction track record"), separate from the charts. Every
-  1DTE/2DTE prediction (center, 68%/90% range) sits next to that day's actual SPX close, high and low, with the miss,
+  1DTE/2DTE prediction (center, 68%/84% range) sits next to that day's actual SPX close, high and low, with the miss,
   so the owner can judge how well the predictions work.
 - Scheduled news is part of every prediction: `update-events.mjs` builds `events.json` (FOMC decisions and minutes from
   federalreserve.gov, CPI/jobs report/PPI from bls.gov via curl, PCE/GDP from bea.gov, NYSE holidays and early closes,
   computed opex, quad witching and VIX expiration). 1DTE/2DTE cards badge the events on their days, and each range is
   scaled by that event type's history (days filed under their main event; ratios shrunk toward 1 by sample size;
   checked out of sample on the most recent year). The owner wants FOMC and FOMC minutes always called out.
+- Ranges are 68% (inner) and 84% (outer). The owner moved the outer band from 90% to 84% (Oct 2026): 90% was too wide
+  to collect enough premium. Older records keep their r90 band and are labeled 90%.
 - The owner aims for misses within 10–20 SPX points. Report the real average miss honestly against the ~44-point
   last-price baseline; never overstate accuracy.
 

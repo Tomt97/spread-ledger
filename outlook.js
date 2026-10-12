@@ -113,6 +113,9 @@
     return bars.map(b => { const d = sessionOf(b[0]); if (d !== s){ s = d; pv = 0; v = 0; } const tp = (b[2] + b[3] + b[4]) / 3; pv += tp * b[5]; v += b[5]; return v > 0 ? pv / v : tp; });
   }
 
+  /* The outer band was 90% until Oct 2026 and is 84% now; older saved predictions keep the band they were made with. */
+  const OB = r => r.r84 ? { b: r.r84, p: 84 } : r.r90 ? { b: r.r90, p: 90 } : { b: r.r68, p: 68 };
+
   /* ---------- scheduled news ---------- */
   const EV_SHORT = {FOMC: "FOMC", MINUTES: "FOMC minutes", CPI: "CPI", NFP: "Jobs report", PPI: "PPI", PCE: "PCE", GDP: "GDP", QUAD: "Quad witching", OPEX: "Monthly opex", VIXEXP: "VIX expiration", EARLY: "Early close", HOLIDAY: "Market closed"};
   const BIG = new Set(["FOMC", "MINUTES", "CPI", "NFP"]);
@@ -165,7 +168,7 @@
     const short = l => l.kind === "res" ? "swing high" : l.kind === "sup" ? "swing low" : l.kind === "pivot" ? l.name : l.name.replace(" (GEX)", "").replace(/ \(.*\)/, "").toLowerCase();
     const lvl = l => `<b>${px0(l.p)}</b> <span class="muted">${esc(short(l))}</span>`;
     const compact = R.map(r => { const k = keys(r); return `<div class="ol-mini">
-        <div class="ol-mini-h"><span class="label">${esc(r.label)} · ${esc(dayLabel(r.exp))}</span><span class="muted">90%: ${px0(r.r90[0])}–${px0(r.r90[1])}</span></div>
+        <div class="ol-mini-h"><span class="label">${esc(r.label)} · ${esc(dayLabel(r.exp))}</span><span class="muted">${OB(r).p}%: ${px0(OB(r).b[0])}–${px0(OB(r).b[1])}</span></div>
         ${r.events && r.events.length ? `<div class="ol-evs">${r.events.map(e => evBadge(e, r.h > 1)).join("")}<span class="ol-note">${r.evF && Math.abs(r.evF - 1) >= 0.02 ? `range ${r.evF > 1 ? "widened" : "narrowed"} ${Math.round(Math.abs(r.evF - 1) * 100)}% for ${esc(r.evWhy)}` : esc(r.evWhy && r.evWhy.startsWith("scheduled") ? r.evWhy : "options price this news about right")}</span></div>` : ""}
         <div class="ol-hl"><span>High <b>${px0(r.r68[1])}</b></span><span>Low <b>${px0(r.r68[0])}</b></span><span class="muted">center ${px0(r.center)}</span></div>
         <div class="ol-lv"><span class="label" style="color:var(--loss)">Resistance</span><span>${k.res.map(lvl).join(" · ") || "—"}</span></div>
@@ -220,7 +223,7 @@
       <div class="card-head"><span class="label">${esc(r.label)} · ${esc(dayLabel(r.exp))} close</span><span class="tag">±${r.sigma.toFixed(0)} pts implied</span></div>
       <div class="big">${px(r.center)}</div>
       <div class="row"><span>Likely (68%)</span><span>${px(r.r68[0])} – ${px(r.r68[1])}</span></div>
-      <div class="row"><span>Wide (90%)</span><span>${px(r.r90[0])} – ${px(r.r90[1])}</span></div>
+      <div class="row"><span>Wide (${OB(r).p}%)</span><span>${px(OB(r).b[0])} – ${px(OB(r).b[1])}</span></div>
       <div class="row muted"><span>ATM straddle ${r.straddle.toFixed(2)} · IV ${r.atmIv.toFixed(1)}%</span><span>${r.magnet != null ? `gamma magnet ${px0(r.magnet)}` : ""}</span></div>
       <div class="ol-note">Widths use how big moves really were vs. implied${r.within1 != null ? ` (closes stayed inside ±1 implied σ on ${r.within1.toFixed(0)}% of the last 2 years' days)` : ""}. Typical miss of a last-price guess: ${m ? m.baseline.toFixed(0) : "—"} pts.</div>
       <div class="ol-note">${esc(scored + tuned)}</div></div>`;
@@ -238,7 +241,7 @@
     const rows = order.filter(t => T[t]).map(t => { const v = T[t];
       return `<div class="ol-tr ol-st"><div class="d"><b>${esc(v.name)}</b> <span class="ol-note">${v.n} days</span></div>
         <div class="p"><span class="lab">Moves</span><b>${v.avgMove.toFixed(0)} pts</b> <span class="ol-note">close to close · day range ${v.avgRange.toFixed(0)} pts · closed up ${v.up}%</span></div>
-        <div class="m"><span class="lab">vs. priced</span><b>${esc(vs(v.r68))}</b> <span class="ol-note">tails (90%): ${esc(vs(v.r90))}</span></div>
+        <div class="m"><span class="lab">vs. priced</span><b>${esc(vs(v.r68))}</b> <span class="ol-note">tails (${v.r84 != null ? 84 : 90}%): ${esc(vs(v.r84 ?? v.r90))}</span></div>
         <div class="o"><b>${v.f68 && Math.abs(v.f68 - 1) >= 0.02 ? (v.f68 > 1 ? "+" : "−") + Math.round(Math.abs(v.f68 - 1) * 100) + "%" : "no change"}</b> <span class="ol-note">${v.test ? `last year: ${v.test.plain68}% → ${v.test.adj68}% inside (${v.test.n} days)` : "range applied"}</span></div></div>`; }).join("");
     const open = LS("news") === "1";
     return `<details class="ol-news-d" ${open ? "open" : ""}><summary><span class="chev"><span class="more">News &amp; events${soon.length ? ` (${soon.length} in the next 3 weeks)` : ""}</span><span class="less">Hide news &amp; events</span></span></summary>
@@ -256,15 +259,15 @@
   function trackRecord(P){
     const all = (P.recent || []), done = all.filter(r => r.actual).slice().reverse(), pending = all.filter(r => !r.actual);
     const models = (P.models || []).filter(m => m.n);
-    const head = models.length ? models.map(m => `${m.h}DTE: ${m.n} scored · avg miss ${m.mae.toFixed(1)} pts (last-price guess ${m.maeRaw.toFixed(1)}) · close inside 68% range ${m.hit68}% · inside 90% ${m.hit90}%`).join("<br>")
+    const head = models.length ? models.map(m => `${m.h}DTE: ${m.n} scored · avg miss ${m.mae.toFixed(1)} pts (last-price guess ${m.maeRaw.toFixed(1)}) · close inside 68% range ${m.hit68}% ${m.hit84 != null ? ` · inside 84% ${m.hit84}%` : ""}`).join("<br>")
       : "Nothing scored yet. The first prediction is scored after its target day closes.";
     const row = r => {
       const day = `<div class="d"><b>${esc(dayLabel(r.target))}</b> <span class="ol-note">${r.h}DTE${r.actual ? "" : " · " + (Date.now() < Date.parse(r.lockAt || 0) ? "still updating" : "locked")}</span>${(r.events || []).length ? `<div class="ol-evs" style="margin-top:3px">${r.events.map(t => evBadge({type: t, time: ""})).join("")}</div>` : ""}</div>`;
-      const pred = `<div class="p"><span class="lab">Predicted</span><b>${px(r.center)}</b> <span class="ol-note">68% ${px0(r.r68[0])}–${px0(r.r68[1])} · 90% ${px0(r.r90[0])}–${px0(r.r90[1])}</span></div>`;
+      const pred = `<div class="p"><span class="lab">Predicted</span><b>${px(r.center)}</b> <span class="ol-note">68% ${px0(r.r68[0])}–${px0(r.r68[1])} · ${OB(r).p}% ${px0(OB(r).b[0])}–${px0(OB(r).b[1])}</span></div>`;
       if (!r.actual) return `<div class="ol-tr">${day}${pred}<div class="m"><span class="lab">Market</span><span class="ol-note" style="display:inline;padding-left:0">waiting for the close</span></div><div class="o"></div></div>`;
-      const held = r.actual.h <= r.r90[1] && r.actual.l >= r.r90[0];
-      const mkt = `<div class="m"><span class="lab">Market</span><b>Close ${px(r.actual.c)}</b> <span class="ol-note">High ${px0(r.actual.h)} · Low ${px0(r.actual.l)} · ${held ? "day stayed inside 90%" : "day traded outside 90%"}</span></div>`;
-      const res = `<div class="o"><b>${pts(r.err)}</b> <span class="ol-note">${r.in68 ? "✓ inside 68%" : r.in90 ? "✓ inside 90%" : "✗ outside"}</span></div>`;
+      const ob = OB(r), held = r.actual.h <= ob.b[1] && r.actual.l >= ob.b[0];
+      const mkt = `<div class="m"><span class="lab">Market</span><b>Close ${px(r.actual.c)}</b> <span class="ol-note">High ${px0(r.actual.h)} · Low ${px0(r.actual.l)} · ${held ? `day stayed inside ${ob.p}%` : `day traded outside ${ob.p}%`}</span></div>`;
+      const res = `<div class="o"><b>${pts(r.err)}</b> <span class="ol-note">${r.in68 ? "✓ inside 68%" : r.in84 ? "✓ inside 84%" : r.in90 ? "✓ inside 90%" : "✗ outside"}</span></div>`;
       return `<div class="ol-tr">${day}${pred}${mkt}${res}</div>`;
     };
     const open = LS("track") === "1", n = done.length;
@@ -302,7 +305,8 @@
     const ml = phone ? 36 : 44, mr = phone ? 88 : 132, mt = 10, H = phone ? 300 : 380, rsiH = 70, gap = 26, mb = 22;
     const futW = r1 ? Math.max(28, (W - ml - mr) * 0.08) : 0, plotW = W - ml - mr - futW;
     let lo = Math.min(...bars.map(b => b[3])), hi = Math.max(...bars.map(b => b[2]));
-    if (r1){ lo = Math.min(lo, r1.r90[0]); hi = Math.max(hi, r1.r90[1]); }
+    const r1o = r1 ? OB(r1).b : null;
+    if (r1){ lo = Math.min(lo, r1o[0]); hi = Math.max(hi, r1o[1]); }
     const pad = (hi - lo) * 0.04; lo -= pad; hi += pad;
     const step = plotW / n, X = i => ml + step * (i + 0.5), Y = v => mt + (hi - v) / (hi - lo) * (H - mt);
     const yR = v => H + gap + (100 - v) / 100 * rsiH, total = H + gap + rsiH + mb;
@@ -316,10 +320,10 @@
     // 1DTE range band in the space after the last bar
     if (r1){
       const x0 = ml + plotW + 2, w = futW - 4;
-      parts.push(`<rect x="${x0}" y="${Y(r1.r90[1])}" width="${w}" height="${Y(r1.r90[0]) - Y(r1.r90[1])}" fill="var(--band2)" rx="3"/>`);
+      parts.push(`<rect x="${x0}" y="${Y(r1o[1])}" width="${w}" height="${Y(r1o[0]) - Y(r1o[1])}" fill="var(--band2)" rx="3"/>`);
       parts.push(`<rect x="${x0}" y="${Y(r1.r68[1])}" width="${w}" height="${Y(r1.r68[0]) - Y(r1.r68[1])}" fill="var(--band)" rx="3"/>`);
       parts.push(`<line x1="${x0}" x2="${x0 + w}" y1="${Y(r1.center)}" y2="${Y(r1.center)}" stroke="var(--s1)" stroke-width="2"/>`);
-      parts.push(`<text x="${x0 + w / 2}" y="${Y(r1.r90[1]) - 4}" text-anchor="middle">${esc(r1.label)}</text>`);
+      parts.push(`<text x="${x0 + w / 2}" y="${Y(r1o[1]) - 4}" text-anchor="middle">${esc(r1.label)}</text>`);
     }
     // levels (labels in the right gutter, skipped when they would collide)
     const levels = levelList().filter(l => (showDay || l.kind === "res" || l.kind === "sup" || l.kind === "gex") && l.p > lo && l.p < hi);
@@ -361,7 +365,7 @@
     parts.push(`<rect id="olHit" x="${ml}" y="0" width="${plotW}" height="${total}" fill="transparent"/>`);
     box.innerHTML = `<svg viewBox="0 0 ${W} ${total}" role="img" aria-label="${esc(tf)} chart of ES in ${inES ? "ES" : "SPX"} points with EMA 20, 50, 200${vw ? ", VWAP" : ""}, support and resistance">${parts.join("")}</svg><div class="ol-tip" id="olTip" hidden></div>`;
     document.getElementById("olLegend").innerHTML = series.map(([name, , col]) => `<span><i style="background:${col}"></i>${esc(name)}</span>`).join("")
-      + `<span><i style="background:var(--loss)"></i>Resistance</span><span><i style="background:var(--gain)"></i>Support</span><span><i style="background:var(--accent)"></i>GEX walls / flip</span>${r1 ? `<span><i class="box" style="background:var(--band)"></i>${esc(r1.label)} range 68% / 90%</span>` : ""}`;
+      + `<span><i style="background:var(--loss)"></i>Resistance</span><span><i style="background:var(--gain)"></i>Support</span><span><i style="background:var(--accent)"></i>GEX walls / flip</span>${r1 ? `<span><i class="box" style="background:var(--band)"></i>${esc(r1.label)} range 68% / ${OB(r1).p}%</span>` : ""}`;
     // crosshair: snap to the nearest bar, one readout for every series
     const svg = box.querySelector("svg"), tip = box.querySelector("#olTip"), xl = svg.querySelector("#olX");
     const show = ev => {
