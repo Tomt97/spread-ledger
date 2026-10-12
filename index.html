@@ -2141,44 +2141,41 @@ const shareUrl = cfg => `${location.origin}${location.pathname.replace(/[^/]*$/,
 function newShareId(){ const a = new Uint8Array(18); crypto.getRandomValues(a); return Array.from(a, b => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join(""); }
 function buildShareDoc(cfg){
   const rows = trades.filter(t => t.p && (cfg.acct === ALL || acctOf(t) === cfg.acct)).map(t => ({t, e: evalTrade(t)}));
-  const closed = rows.filter(r => r.e.pnl != null && r.e.closeDate).sort((a, b) => a.e.closeDate.localeCompare(b.e.closeDate));
+  // same order as the Stats page (close date, then entry order) so drawdown matches it exactly
+  const closed = rows.filter(r => r.e.pnl != null && r.e.closeDate).sort((a, b) => a.e.closeDate.localeCompare(b.e.closeDate) || (a.t.createdAt || 0) - (b.t.createdAt || 0));
   const r2 = v => Math.round(v * 100) / 100, daily = {}, strat = {};
-  // Percent mode: account-level P&L becomes % of the owner's starting account size (which is never shared), and each
-  // trade's P&L becomes % return on the capital it risked. Nothing that reveals dollar size goes into the public record.
-  const pct = cfg.unit === "pct" && cfg.base > 0, acc = v => pct ? r2(v / cfg.base * 100) : r2(v);
-  closed.forEach(({e}) => {
-    const d = (daily[e.closeDate] ||= {d: e.closeDate, p: 0, n: 0, w: 0}); d.p += e.pnl; d.n++; if (e.pnl > 0) d.w++;
+  // Percent mode shows the page exactly like the dollar one, except Net P&L, which becomes % of the owner's starting
+  // account size (pp per day). The size itself isn't stored, but it can be worked out from the dollar figures.
+  const pct = cfg.unit === "pct" && cfg.base > 0;
+  closed.forEach(({t, e}) => {
+    // per day: P&L, trades, wins, losses, fees, sum of wins/losses, and the running high/low/drawdown inside the day
+    const d = (daily[e.closeDate] ||= {d: e.closeDate, p: 0, n: 0, w: 0, l: 0, f: 0, ws: 0, ls: 0, hi: 0, lo: 0, dd: 0, dp: 0, pk: 0});
+    d.p += e.pnl; d.n++; d.f += t.fees || 0;
+    if (e.pnl > 0){ d.w++; d.ws += e.pnl; } else if (e.pnl < 0){ d.l++; d.ls += e.pnl; }
+    d.hi = Math.max(d.hi, d.p); d.lo = Math.min(d.lo, d.p); d.pk = Math.max(d.pk, d.p); if (d.pk - d.p > d.dd){ d.dd = d.pk - d.p; d.dp = d.pk; }
     const s = (strat[e.label] ||= {s: e.label, n: 0, w: 0, p: 0}); s.n++; s.p += e.pnl; if (e.pnl > 0) s.w++;
   });
   return {
     ownerUid: me, title: (cfg.title || "Trading progress").slice(0, 80),
     acctLabel: cfg.acct === ALL ? "All accounts" : acctName(cfg.acct),
     openCount: rows.length - closed.length,
-    unit: pct ? "pct" : "usd",
-    daily: Object.values(daily).map(d => ({...d, p: acc(d.p)})),
-    strategies: Object.values(strat).map(x => ({...x, p: acc(x.p)})).sort((a, b) => b.p - a.p),
-    trades: detailOf(cfg) === "summary" ? closed.slice(-2000).map(({t, e}) => ({o: t.openDate || "", c: e.closeDate, s: e.label, u: t.p.symbol, q: pct ? null : t.p.qty, p: pct ? returnOnRisk(t, e.pnl) : r2(e.pnl)})) : null,
+    unit: pct ? "pct" : "usd", v: 2,
+    daily: Object.values(daily).map(({pk, ...d}) => ({...d, p: r2(d.p), f: r2(d.f), ws: r2(d.ws), ls: r2(d.ls), hi: r2(d.hi), lo: r2(d.lo), dd: r2(d.dd), dp: r2(d.dp), ...(pct ? {pp: Math.round(d.p / cfg.base * 1e6) / 1e4} : {})})),
+    strategies: Object.values(strat).map(x => ({...x, p: r2(x.p)})).sort((a, b) => b.p - a.p),
+    trades: detailOf(cfg) === "summary" ? closed.slice(-2000).map(({t, e}) => ({o: t.openDate || "", c: e.closeDate, s: e.label, u: t.p.symbol, q: t.p.qty, p: r2(e.pnl)})) : null,
     detail: detailOf(cfg),
-    full: detailOf(cfg) === "full" ? fullTrades(rows, pct) : null,
+    full: detailOf(cfg) === "full" ? fullTrades(rows) : null,
   };
 }
 const detailOf = cfg => cfg.detail || (cfg.trades ? "summary" : "none");
-/* % return on risk: P&L over the most the position could lose at expiration, before fees (null when risk is unlimited) */
-function returnOnRisk(t, pnl){
-  if (pnl == null) return null;
-  const rp = riskProfile({...t, fees: 0});
-  return rp && isFinite(rp.maxL) && rp.maxL < 0 ? Math.round(pnl / -rp.maxL * 10000) / 100 : null;
-}
 /* full trade details for studying: strikes, legs, entry/exit, fees, order text (newest kept if the list is very long) */
-function fullTrades(rows, pct){
+function fullTrades(rows){
   const r4 = v => v == null || !isFinite(v) ? null : Math.round(v * 10000) / 10000;
-  // in percent mode: one lot, no fees, no quantity in the order text, no notes (they could mention dollars)
-  const raw = t => pct ? String(t.raw || "").replace(/^\s*(BUY|SELL|BOT|SOLD)\s+[+-]?\d+\s+/i, "$1 ") : (t.raw || "");
   let out = rows.slice().sort((a, b) => (a.t.openDate || "").localeCompare(b.t.openDate || "")).map(({t, e}) => ({
-    o: t.openDate || "", c: e.closeDate || "", s: e.label, st: e.status, u: t.p.symbol, a: t.p.action, q: pct ? 1 : t.p.qty, m: t.p.mult || 100,
+    o: t.openDate || "", c: e.closeDate || "", s: e.label, st: e.status, u: t.p.symbol, a: t.p.action, q: t.p.qty, m: t.p.mult || 100,
     k: t.p.strikes.map(fmtK).join("/"), ty: t.p.types.join("/"), x: e.exp, e: r4(t.p.price), xp: r4(e.exitPrice),
-    xk: t.exit ? t.exit.kind : "", sv: t.exit && t.exit.settle != null ? t.exit.settle : null, f: pct ? 0 : Math.round((t.fees || 0) * 100) / 100,
-    p: e.pnl == null ? null : pct ? returnOnRisk(t, e.pnl) : Math.round(e.pnl * 100) / 100, r: raw(t), n: !pct && t.notes && !/^Imported from thinkorswim/.test(t.notes) ? t.notes.slice(0, 300) : "",
+    xk: t.exit ? t.exit.kind : "", sv: t.exit && t.exit.settle != null ? t.exit.settle : null, f: Math.round((t.fees || 0) * 100) / 100,
+    p: e.pnl == null ? null : Math.round(e.pnl * 100) / 100, r: t.raw || "", n: t.notes && !/^Imported from thinkorswim/.test(t.notes) ? t.notes.slice(0, 300) : "",
     l: t.p.legs ? t.p.legs.map(l => ({q: l.q, t: l.t, k: l.k, x: l.exp})) : [],
   }));
   while (out.length > 50 && JSON.stringify(out).length > 850000) out = out.slice(Math.ceil(out.length * 0.1));   // stay under the 1 MB record limit
@@ -2224,9 +2221,9 @@ function renderShareSheet(){
     </div>
     <div class="grid2">
       <div class="field"><span class="label">Show P&amp;L as</span>${unitToggle(c.unit, "data-shunit")}<input type="hidden" id="shareUnit" value="${isPct ? "pct" : "usd"}"></div>
-      <label class="field" id="shareBaseWrap" ${isPct ? "" : "hidden"}><span class="label">Starting account size ($), not shared</span><input type="number" id="shareBase" min="1" step="1" inputmode="decimal" value="${c.base || ""}" placeholder="e.g. 25000"></label>
+      <label class="field" id="shareBaseWrap" ${isPct ? "" : "hidden"}><span class="label">Starting account size ($)</span><input type="number" id="shareBase" min="1" step="1" inputmode="decimal" value="${c.base || ""}" placeholder="e.g. 25000"></label>
     </div>
-    <div class="hint" id="shareUnitHint" ${isPct ? "" : "hidden"}>Totals, charts and the calendar show % of this starting size. Each trade shows % return on the capital it risked (its max loss). Lots, fees, order quantities and notes are left off the page, and so are dollar amounts.</div>
+    <div class="hint" id="shareUnitHint" ${isPct ? "" : "hidden"}>Net P&amp;L shows as % of this starting size. Everything else (averages, drawdown, charts, calendar, trades) stays in dollars, so a viewer could work out the size from the two.</div>
     <label class="field"><span class="label">Trade details to show</span><select id="shareDetail">
       <option value="full" ${det === "full" ? "selected" : ""}>Full details: strikes, entry and exit prices, fees, order text, payoff graph (open and closed trades)</option>
       <option value="summary" ${det === "summary" ? "selected" : ""}>Summary: date, strategy, symbol, lots and P&amp;L of closed trades</option>
@@ -2249,7 +2246,7 @@ async function setLinkUnit(id, unit){
     await DB.doc(`shares/${id}`).set({...buildShareDoc(cfg), updatedAt: Date.now()});
     await col("settings").doc("share").set({links});
     shareLinks = links; lastShareJson[id] = JSON.stringify(buildShareDoc(cfg));
-    shareSheet = {...shareSheet, msg: "", note: `“${cfg.title || "Trading progress"}” now shows ${unit === "pct" ? "% (no dollar amounts)" : "dollars"}.`};
+    shareSheet = {...shareSheet, msg: "", note: `“${cfg.title || "Trading progress"}” now shows ${unit === "pct" ? "Net P&L in %" : "dollars"}.`};
   } catch(e){ shareSheet.msg = "Couldn't switch. Check your connection and try again."; }
   renderShareSheet();
 }

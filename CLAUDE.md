@@ -44,6 +44,12 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
 - Each `#dash` section carries `data-views="..."`; new sections must declare which tabs they belong to. index.html exposes
   `window.LedgerApp` (read-only state + backToMine/render) for nav.js.
 
+## Share links
+- A "%" share link looks exactly like the "$" one (same cards as the app's Stats page: Net P&L, Win rate, Avg per trade
+  with win/loss averages, Max drawdown peak → trough, Top strategy), except Net P&L, which shows as % of the owner's
+  starting account size (owner's request, Oct 2026). The size isn't stored in the share record, but it can be worked out
+  from the dollar figures; the share settings say so.
+
 ## Conventions
 - Must work on any phone or iPad (360–1366 px wide, portrait and landscape) with no sideways page scrolling. Grids use
   `minmax(0,1fr)`, wide tables scroll inside their own box or become cards on phones. Check with the responsive audit

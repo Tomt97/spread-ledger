@@ -43,8 +43,10 @@ h1,h2{margin:0;font-family:var(--display);text-wrap:balance}
 .tabs{display:flex;gap:4px;background:var(--sunk);padding:3px;border-radius:9px;overflow-x:auto}
 .tabs button{border:none;background:none;padding:6px 12px;border-radius:7px;font:inherit;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;flex:none}
 .tabs button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
-.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
-.kpi{background:var(--surface);padding:14px 16px;display:grid;gap:4px;min-width:0}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.kpi{background:var(--surface);padding:14px 16px;display:grid;gap:4px;align-content:start;min-width:0}
+.kpi .v.txt{font-family:var(--display);font-size:19px;font-weight:700;letter-spacing:0;line-height:1.2}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .kpi:last-child{grid-column:1/-1}}
 .kpi .v{font-family:var(--mono);font-size:23px;font-weight:600;letter-spacing:-.02em;overflow-wrap:anywhere}
 .kpi .s{font-size:12.5px;color:var(--muted)}
 .split{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px}
@@ -112,8 +114,10 @@ const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad2
 const isoAdd = (iso, months, days = 0) => { const [y,m,d] = iso.split("-").map(Number); const t = new Date(y, m-1+months, d+days); return `${t.getFullYear()}-${pad2(t.getMonth()+1)}-${pad2(t.getDate())}`; };
 const fmtShort = iso => { const [y,m,d] = iso.split("-").map(Number); return `${MON[m-1]} ${d} ’${String(y).slice(2)}`; };
 const fee$ = v => "$" + (+v || 0).toFixed(2);
-/* Pages shared "in %" carry no dollar amounts: totals are % of the owner's starting account, each trade is % return on risk. */
-const PCT = () => !!(data && data.unit === "pct");
+/* Older pages shared "in %" (no v) carry no dollar amounts: totals are % of the owner's starting account, each trade is % return on risk.
+   Newer ones (v 2) look exactly like the dollar page except Net P&L, which shows as % of the starting account (pp per day). */
+const PCT = () => !!(data && data.unit === "pct" && !data.v);
+const NETPCT = () => !!(data && data.unit === "pct" && data.v >= 2);
 const pctFmt = (v, d = 2, plus = true) => (v < 0 ? "−" : v > 0 && plus ? "+" : "") + Math.abs(v).toFixed(d) + "%";
 const ZERO = () => PCT() ? "0%" : "$0";
 const money = v => v == null || !isFinite(v) ? "—" : PCT() ? pctFmt(v) : (v < 0 ? "−$" : v > 0 ? "+$" : "$") + Math.abs(v).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -136,7 +140,7 @@ async function load(){
     const raw = snap.data();
     // Stored as records (Firestore has no nested arrays); turn them into rows for the charts.
     data = {...raw,
-      daily: (raw.daily || []).map(o => [o.d, o.p, o.n, o.w]),
+      daily: (raw.daily || []).map(o => [o.d, o.p, o.n, o.w, o]),
       strategies: (raw.strategies || []).map(o => [o.s, o.n, o.w, o.p]),
       trades: raw.trades ? raw.trades.map(o => [o.o || "", o.c, o.s, o.u, o.q, o.p]) : null,
       full: raw.full || null};
@@ -162,17 +166,26 @@ function render(){
   // daily rows: [date, pnl, trades, wins]
   const days = (D.daily || []).filter(r => !b || (r[0] >= b[0] && r[0] <= b[1])).sort((a, c) => a[0].localeCompare(c[0]));
   const total = days.reduce((a, r) => a + r[1], 0), n = days.reduce((a, r) => a + r[2], 0), w = days.reduce((a, r) => a + r[3], 0);
-  let cum = 0, peak = 0, dd = 0; const curve = days.map(r => { cum += r[1]; peak = Math.max(peak, cum); dd = Math.max(dd, peak - cum); return [r[0], cum]; });
+  // drawdown trade by trade, like the Stats page: each day carries its own running high/low/drawdown (older pages: by day)
+  let cum = 0, peak = 0, dd = 0, ddPk = 0, ddTr = 0; const curve = days.map(r => { const x = r[4] || {};
+    const pkIn = x.hi != null ? cum + x.hi : cum + r[1], lowAfter = x.lo != null ? cum + x.lo : cum + r[1];
+    if (x.dd != null && x.dd > dd && x.dd > peak - lowAfter){ dd = x.dd; ddPk = cum + x.dp; ddTr = cum + x.dp - x.dd; }
+    if (peak - lowAfter > dd){ dd = peak - lowAfter; ddPk = peak; ddTr = lowAfter; }
+    peak = Math.max(peak, pkIn); cum += r[1]; return [r[0], cum]; });
+  const X = k => days.reduce((a, r) => a + ((r[4] || {})[k] || 0), 0), rich = days.length && (days[0][4] || {}).ws != null;
+  const wsum = X("ws"), lsum = X("ls"), lost = X("l"), fees = X("f"), pctTot = X("pp");
+  const top = (D.strategies || [])[0];
   const best = days.slice().sort((a, c) => c[1] - a[1])[0], worst = days.slice().sort((a, c) => a[1] - c[1])[0];
   const names = {all: "All", "1m": "1M", "3m": "3M", "6m": "6M", ytd: "YTD", "1y": "1Y"};
   const months = {}; days.forEach(r => { const k = r[0].slice(0, 7); months[k] = (months[k] || 0) + r[1]; });
   $("#main").innerHTML = `
     <div class="tabs" role="group" aria-label="Timeframe" style="justify-self:start">${Object.entries(names).map(([k, v]) => `<button type="button" data-range="${k}" aria-pressed="${range === k}">${v}</button>`).join("")}</div>
     <section class="kpis" aria-label="Summary">
-      <div class="kpi"><span class="label">${PCT() ? "Return" : "Net P&amp;L"}</span><span class="v ${cls(total)}">${n ? money(total) : money(0)}</span><span class="s">${PCT() ? "of starting account · " : ""}${n} closed trade${n === 1 ? "" : "s"} · ${D.openCount || 0} open now</span></div>
-      <div class="kpi"><span class="label">Win rate</span><span class="v">${n ? (w / n * 100).toFixed(1) + "%" : "—"}</span><span class="s">${w} won · ${n - w} lost or flat</span></div>
-      <div class="kpi"><span class="label">Avg per trade</span><span class="v ${cls(total / (n || 1))}">${n ? money(total / n) : "—"}</span><span class="s">${best && best[1] > 0 ? `best day ${fmtShort(best[0])} <span class="gain">${compact(best[1])}</span>` : "&nbsp;"}</span></div>
-      <div class="kpi"><span class="label">Max drawdown</span><span class="v ${dd > 0 ? "loss" : ""}">${dd > 0 ? money(-dd) : money(0)}</span><span class="s">${worst && worst[1] < 0 ? `worst day ${fmtShort(worst[0])} <span class="loss">${compact(worst[1])}</span>` : "from peak, by day"}</span></div>
+      <div class="kpi"><span class="label">${PCT() ? "Return" : "Net P&amp;L"}</span><span class="v ${cls(total)}">${NETPCT() ? (n ? pctFmt(pctTot) : "0.00%") : n ? money(total) : money(0)}</span><span class="s">${PCT() || NETPCT() ? "of starting account · " : ""}${n} closed · ${D.openCount || 0} open${rich && !PCT() ? ` · after $${fees.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2})} fees` : ""}</span></div>
+      <div class="kpi"><span class="label">Win rate</span><span class="v">${n ? (w / n * 100).toFixed(1) + "%" : "—"}</span><span class="s">${rich ? `${w}W · ${lost}L${n - w - lost ? ` · ${n - w - lost} flat` : ""}` : `${w} won · ${n - w} lost or flat`}</span></div>
+      <div class="kpi"><span class="label">Avg per trade</span><span class="v ${cls(total / (n || 1))}">${n ? money(total / n) : "—"}</span><span class="s">${rich && n ? `win <span class="gain">${w ? money(wsum / w) : "—"}</span> · loss <span class="loss">${lost ? money(lsum / lost) : "—"}</span>` : best && best[1] > 0 ? `best day ${fmtShort(best[0])} <span class="gain">${compact(best[1])}</span>` : "&nbsp;"}</span></div>
+      <div class="kpi"><span class="label">Max drawdown</span><span class="v ${dd > 0 ? "loss" : ""}">${dd > 0 ? money(-dd) : money(0)}</span><span class="s">${rich && dd > 0 ? `peak ${money0(ddPk)} → ${money0(ddTr)}` : worst && worst[1] < 0 ? `worst day ${fmtShort(worst[0])} <span class="loss">${compact(worst[1])}</span>` : "from peak cumulative P&amp;L"}</span></div>
+      <div class="kpi"><span class="label">Top strategy</span>${top ? `<span class="v txt">${esc(top[0])}</span><span class="s"><span class="${cls(top[3])}">${money(top[3])}</span> · ${top[1]} trade${top[1] === 1 ? "" : "s"} · ${Math.round(top[2] / top[1] * 100)}% win · all time</span>` : `<span class="v txt muted">—</span><span class="s">ranked by total P&amp;L</span>`}</div>
     </section>
     <div class="split">
       <section class="panel card"><div class="card-head"><h2>${PCT() ? "Cumulative return (% of account)" : "Cumulative P&amp;L"}</h2><span class="muted" style="font-size:13px">${days.length} trading day${days.length === 1 ? "" : "s"}</span></div>${lineChart(curve)}</section>
