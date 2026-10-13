@@ -105,6 +105,8 @@
   const nyF = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
   const nyD = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", month: "short", day: "numeric", weekday: "short"});
   const nyH = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", hour: "numeric", hour12: false});
+  const nyMD = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", month: "short", day: "numeric"});
+  const nyHM = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", hour: "numeric", minute: "2-digit"});
   const dayLabel = iso => nyD.format(new Date(iso + "T17:00:00Z"));
   const timeLabel = sec => nyF.format(new Date(sec * 1000)) + " ET";
   const sessionOf = sec => { const d = new Date(sec * 1000); const h = +nyH.format(d) % 24; return new Date(d.getTime() + (h >= 18 ? 864e5 : 0)).toLocaleDateString("en-CA", {timeZone: "America/New_York"}); };
@@ -315,7 +317,7 @@
     const want = Math.round((phone ? 70 : {"15m": 150, "1h": 140, "2h": 130, "4h": 130, "1d": 150}[tf]) * zoom);
     const n = Math.min(all.length, Math.max(20, want)), s0 = all.length - n, bars = all.slice(s0);
     const r1 = (M.ranges || [])[0];
-    const ml = phone ? 36 : 44, mr = phone ? 88 : 132, mt = 10, H = phone ? 300 : 380, rsiH = 70, gap = 26, mb = 22;
+    const ml = phone ? 36 : 44, mr = phone ? 88 : 132, mt = 10, H = phone ? 300 : 380, rsiH = 70, gap = 26, mb = tf === "1d" ? 22 : 36;
     const futW = r1 ? Math.max(28, (W - ml - mr) * 0.08) : 0, plotW = W - ml - mr - futW;
     let lo = Math.min(...bars.map(b => b[3])), hi = Math.max(...bars.map(b => b[2]));
     const r1o = r1 ? OB(r1).b : null;
@@ -345,7 +347,10 @@
       const y = Y(l.p), col = l.kind === "res" ? "var(--loss)" : l.kind === "sup" ? "var(--gain)" : l.kind === "gex" ? "var(--accent)" : "var(--muted)";
       parts.push(`<line x1="${ml}" x2="${ml + plotW + futW}" y1="${y}" y2="${y}" stroke="${col}" stroke-width="1" ${l.kind === "gex" || l.kind === "pivot" || l.kind === "day" || l.kind === "overnight" ? 'stroke-dasharray="4 3"' : ""} opacity=".8"/>`);
       if (used.every(u => Math.abs(u - y) > 12)){ used.push(y);
-        const short = l.kind === "res" ? "R" : l.kind === "sup" ? "S" : l.name.replace(" (GEX)", "").replace(/Prior day /, "PD ").replace(/Overnight /, "ON ").replace(/ \(.*\)/, "");
+        let short = l.kind === "res" ? "R" : l.kind === "sup" ? "S" : l.name.replace(" (GEX)", "").replace(/Prior day /, "PD ").replace(/Overnight /, "ON ").replace(/ \(.*\)/, "");
+        // phones have a narrow gutter: trader shorthand so the name isn't cut off
+        const SH = {"Put wall": "Put W", "Call wall": "Call W", "Gamma flip": "Flip", "PD high": "PDH", "PD low": "PDL", "PD close": "PDC", "ON high": "ONH", "ON low": "ONL"};
+        if (phone && SH[short]) short = SH[short];
         parts.push(`<text x="${ml + plotW + futW + 6}" y="${y + 4}" style="fill:var(--ink)">${Math.round(l.p + o)} ${esc(short)}</text>`); }
     });
     // candles
@@ -369,10 +374,12 @@
     const rp = bars.map((b, i) => [X(i), rs[s0 + i]]).filter(p => p[1] != null);
     if (rp.length > 1) parts.push(`<path d="${rp.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + yR(p[1]).toFixed(1)).join("")}" fill="none" stroke="var(--s1)" stroke-width="2"/>`);
     // x labels
-    const every = Math.max(1, Math.round(n / (phone ? 4 : 7)));
-    for (let i = every - 1; i < n; i += every){
-      const d = new Date(bars[i][0] * 1000), lab = tf === "1d" ? nyD.format(d).replace(/^\w+, /, "") : nyF.format(d).replace(/, /, " ");
-      parts.push(`<text x="${X(i)}" y="${total - 6}" text-anchor="middle">${esc(lab)}</text>`);
+    // short two-line labels (date over time) spaced so they never touch: "Oct 6" / "2 PM"
+    const slots = Math.max(2, Math.min(n, Math.floor(plotW / 60)));
+    for (let j = 0; j < slots; j++){
+      const i = Math.min(n - 1, Math.round((j + 0.5) * n / slots - 0.5)), d = new Date(bars[i][0] * 1000);
+      if (tf === "1d"){ parts.push(`<text x="${X(i)}" y="${total - 6}" text-anchor="middle">${esc(nyMD.format(d))}</text>`); continue; }
+      parts.push(`<text x="${X(i)}" y="${total - 20}" text-anchor="middle">${esc(nyMD.format(d))}</text><text x="${X(i)}" y="${total - 6}" text-anchor="middle">${esc(nyHM.format(d).replace(":00", ""))}</text>`);
     }
     parts.push(`<line id="olX" x1="0" x2="0" y1="${mt}" y2="${H + gap + rsiH}" stroke="var(--muted)" visibility="hidden"/>`);
     parts.push(`<rect id="olHit" x="${ml}" y="0" width="${plotW}" height="${total}" fill="transparent"/>`);
