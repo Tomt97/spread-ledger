@@ -255,7 +255,7 @@ function fitModel(h){
     b = clamp(mean(errs.map((e, i) => e - w * pulls[i])) * n / (n + 20), -15, 15);
   }
   // our own scored record (current model only) for blending into the range widths as it grows
-  const own = rs.filter(r => r.mv >= 2), own68 = own.length >= 15 ? quantile(own.map(r => Math.abs(r.actual.c - r.center) / r.sigma), 0.68) : null,
+  const own = rs.filter(r => r.mv >= 2 || r.made >= "2026-10-13T03")   // made by this model (a few early ones lost their tag), own68 = own.length >= 15 ? quantile(own.map(r => Math.abs(r.actual.c - r.center) / r.sigma), 0.68) : null,
         own84 = own.length >= 15 ? quantile(own.map(r => Math.abs(r.actual.c - r.center) / r.sigma), 0.84) : null;
   return { h, n, w: r2(w), b: r2(b), k68: r2(k68), k84: r2(k84), ownN: own.length, own68, own84,
            mae: n ? r2(mean(rs.map(r => Math.abs(r.err)))) : null, maeRaw: n ? r2(mean(rs.map(r => Math.abs(r.errRaw)))) : null,
