@@ -42,6 +42,9 @@ header.top{align-items:center}
 #morePanel .item .hint{font-weight:500}
 #morePanel .item.danger{color:var(--loss)}
 #morePanel .sep{height:1px;background:var(--line);margin:4px 6px}
+#pullRefresh{position:fixed;top:0;left:50%;z-index:40;transform:translate(-50%,-60px);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:99px;padding:8px 14px;font-size:13.5px;font-weight:650;box-shadow:0 6px 18px rgba(0,0,0,.16);opacity:0;pointer-events:none;transition:opacity .15s;white-space:nowrap;margin-top:env(safe-area-inset-top,0px)}
+#pullRefresh.show{opacity:1}
+#pullRefresh.ready,#pullRefresh.busy{color:var(--accent)}
 @media (max-width:760px){
   #appnav{position:fixed;left:0;right:0;bottom:0;z-index:15;width:auto;max-width:none;border-radius:0;background:var(--surface);border-top:1px solid var(--line);
     padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));justify-content:space-around;gap:0;box-shadow:0 -4px 14px rgba(0,0,0,.06)}
@@ -133,6 +136,35 @@ header.top{align-items:center}
   function closeMore(){ document.getElementById("morePanel")?.remove(); }
   document.addEventListener("keydown", ev => { if (ev.key === "Escape") closeMore(); });
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+  /* ---------- pull to refresh ----------
+     Home-screen apps on iPhone have no pull-to-refresh of their own. Pull down from the top of any tab and let go:
+     market data (SPX outlook, predictions) and option quotes reload. Trades sync live from Firebase anyway.
+     The data itself is rebuilt by the hourly GitHub Action; this fetches the newest copy it published. */
+  const PULL = 70;
+  let y0 = null, pulled = 0, busy = false, pill = null;
+  const pillEl = () => { if (!pill){ pill = document.createElement("div"); pill.id = "pullRefresh"; pill.setAttribute("role", "status"); pill.setAttribute("aria-live", "polite"); document.body.appendChild(pill); } return pill; };
+  const blocked = t => document.getElementById("morePanel") || document.querySelector("#sheetRoot .overlay, .overlay") || (t && t.closest && t.closest("input, textarea, select, [contenteditable]"));
+  document.addEventListener("touchstart", ev => { if (busy || ev.touches.length !== 1 || window.scrollY > 0 || blocked(ev.target)) { y0 = null; return; } y0 = ev.touches[0].clientY; pulled = 0; }, {passive: true});
+  document.addEventListener("touchmove", ev => {
+    if (y0 == null) return;
+    const dy = ev.touches[0].clientY - y0;
+    if (dy <= 0 || window.scrollY > 0){ pulled = 0; if (pill) pill.classList.remove("show"); return; }
+    pulled = dy * 0.5;
+    const p = pillEl(); p.classList.add("show"); p.classList.toggle("ready", pulled >= PULL);
+    p.style.transform = `translate(-50%, ${Math.min(pulled, PULL + 20) - 40}px)`;
+    p.textContent = pulled >= PULL ? "↻ Release to refresh" : "↓ Pull to refresh";
+  }, {passive: true});
+  document.addEventListener("touchend", () => { if (y0 == null) return; y0 = null; if (pulled >= PULL) refresh(); else if (pill) pill.classList.remove("show"); pulled = 0; }, {passive: true});
+  async function refresh(){
+    busy = true; const p = pillEl(); p.classList.add("show", "busy"); p.classList.remove("ready"); p.style.transform = "translate(-50%, 30px)"; p.textContent = "Refreshing…";
+    const detail = {wait: []}; window.dispatchEvent(new CustomEvent("ledger:refresh", {detail}));
+    const res = await Promise.allSettled(detail.wait), at = res.map(r => r.value).find(v => typeof v === "string");
+    const when = at ? new Date(at).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}) : "";
+    p.classList.remove("busy"); p.textContent = when ? `Up to date · market data from ${when}` : "Up to date";
+    setTimeout(() => { p.classList.remove("show"); busy = false; }, 1600);
+  }
+  window.LedgerRefresh = refresh;
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount); else mount();
 })();

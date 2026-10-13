@@ -1630,6 +1630,7 @@ function startQuotes(){
   loadQuotes(); quotesTimer = setInterval(loadQuotes, 3 * 60 * 1000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadQuotes(); });
 }
+window.addEventListener("ledger:refresh", ev => ev.detail.wait.push(loadQuotes()));
 var quoteSym = s => String(s || "").toUpperCase().replace(/^\$/, "").replace(/^SPXW$/, "SPX").replace(/\//g, ".");
 function legQuote(p, exp, type, k){
   const sym = quoteSym(p.symbol), book = quotes && quotes.u && quotes.u[sym]; if (!book) return null;

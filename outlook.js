@@ -154,6 +154,8 @@
     nav ? nav.after(sec) : dash.prepend(sec);
     render(); load();
     setInterval(() => { if (document.visibilityState === "visible") load(); }, 10 * 60 * 1000);
+    // pull-to-refresh (nav.js) asks every data source to reload; hand back the promise so it can say when it's done
+    window.addEventListener("ledger:refresh", ev => ev.detail.wait.push(load().then(() => M && M.updated)));
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && M && Date.now() - Date.parse(M.updated) > 15 * 60 * 1000) load(); });
     window.addEventListener("resize", () => { clearTimeout(mount.rt); mount.rt = setTimeout(() => { if (isOpen()) drawCharts(); }, 150); });
   }
