@@ -109,20 +109,24 @@ pivots, SPX gamma exposure by strike (call wall, put wall, zero-gamma flip) and 
 - **ES to SPX:** each day's ES − SPX spread is measured at the 4:00 pm close (ES's 3–4 pm bar against the SPX
   close), and during the session from matching 15-minute bars. Each ES bar has its own day's spread subtracted, which
   also takes care of quarterly contract rolls.
-- **Ranges:** the at-the-money straddle for each expiration gives the implied move. The widths are calibrated by
-  how big moves really were, compared with VIX1D (1 day) and VIX9D (2 days), over the last two years.
+- **Ranges:** the unit is the move the options market priced when the prediction locks: VIX1D's previous close for
+  1DTE, VIX9D's for 2DTE. 1DTE uses VIX1D as is; for 2DTE a ridge model (`.github/scripts/vol-model.mjs`) widens or
+  narrows it from recent realized volatility (1, 5 and 22 days), the VIX term structure and level, the overnight gap,
+  the previous day's drop and scheduled news. The 68%/84% widths are where past moves from the open actually landed.
+  These choices won a walk-forward test over 10+ years (`backtest-model.mjs`: every day predicted only from the days
+  before it); the details card shows the same check on the last 500 days. All-day high/low reach (84% each) is shown too.
 - **Prediction log:** every range is saved to `predictions.json` on the `quotes` branch. It keeps updating until it locks:
   1DTE at the target day's 9:30 am open, 2DTE at the open the day before. After the target day's close it is
-  scored: points missed and whether the close landed inside the 68% and 90% ranges. After 8 scored days the model
+  scored: points missed and whether the close landed inside the 68% and 84% ranges. After 8 scored days the model
   learns how far closes move toward the biggest nearby gamma strike, and any steady bias. After 15 it also re-fits
   the range widths. The section shows the average miss next to a "last price" guess, so you can see whether the
   model is earning its keep.
 
 - **News & events:** the Action also keeps `events.json`, a calendar built from the official sources: FOMC decisions
   and minutes (Federal Reserve), CPI, the jobs report and PPI (BLS), PCE and GDP (BEA), and holidays and early
-  closes (NYSE), plus option and VIX expirations. Range cards flag events on their day (e.g. ⚑ FOMC 2pm), and each
-  range is scaled by how SPX actually moved on that kind of day over the last three years, compared with what options
-  priced. **News & events** lists the next three weeks and the full history table.
+  closes (NYSE), plus option and VIX expirations. Range cards flag events on their day (e.g. ⚑ FOMC 2pm). VIX1D
+  already prices the next day's news; the 2DTE model adds learned widening for FOMC, CPI, jobs, PPI and minutes days.
+  The history table shows how SPX actually moved on each kind of day compared with what options priced. **News & events** lists the next three weeks and the full history table.
 
 It is built by the same **Update option quotes** Action, so the hourly cron-job.org trigger keeps it fresh. ES trades
 nearly around the clock, so you can also run that job overnight (Sunday 6 pm to Friday 5 pm New York time).

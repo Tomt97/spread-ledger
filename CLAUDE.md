@@ -20,13 +20,20 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   so the owner can judge how well the predictions work.
 - Scheduled news is part of every prediction: `update-events.mjs` builds `events.json` (FOMC decisions and minutes from
   federalreserve.gov, CPI/jobs report/PPI from bls.gov via curl, PCE/GDP from bea.gov, NYSE holidays and early closes,
-  computed opex, quad witching and VIX expiration). 1DTE/2DTE cards badge the events on their days, and each range is
-  scaled by that event type's history (days filed under their main event; ratios shrunk toward 1 by sample size;
-  checked out of sample on the most recent year). The owner wants FOMC and FOMC minutes always called out.
+  computed opex, quad witching and VIX expiration). 1DTE/2DTE cards badge the events on their days. The 1DTE range takes
+  news through VIX1D (which prices it); the 2DTE model has news terms. The News & events study (days filed under their
+  main event, ratios shrunk toward 1) stays as a reference. The owner wants FOMC and FOMC minutes always called out.
 - Ranges are 68% (inner) and 84% (outer). The owner moved the outer band from 90% to 84% (Oct 2026): 90% was too wide
   to collect enough premium. Older records keep their r90 band and are labeled 90%.
-- The owner aims for misses within 10–20 SPX points. Report the real average miss honestly against the ~44-point
-  last-price baseline; never overstate accuracy.
+- Range model (Oct 2026, `vol-model.mjs`, chosen by walk-forward tests in `backtest-model.mjs` over 10+ years): unit = the
+  move priced at lock time (previous close of VIX1D for 1DTE, VIX9D for 2DTE), measured from the lock-time open. 1DTE uses
+  VIX1D alone (features and news dummies added nothing; VIX1D already prices news). 2DTE uses a ridge model (realized vol
+  1/5/22 days, VIX9D/VIX, VIX level, gap, prior drop, FOMC/CPI/NFP/PPI/minutes, opex, Monday) that fixed under-coverage on
+  FOMC days and in stressed markets. Center stays at last price + learned gamma pull: gap/momentum/mean-reversion
+  centers did not beat "no change" out of sample. market.json `modelCheck` reports live walk-forward coverage; adopt a
+  change only if it beats the current model on interval score at the same coverage.
+- The owner aims for misses within 10–20 SPX points. Report the real average miss honestly against the last-price
+  baseline (~34 pts open→close for 1DTE, ~56 for 2DTE); never overstate accuracy.
 
 ## Data pipeline
 - `.github/workflows/quotes.yml` ("Update option quotes") runs `update-quotes.mjs` (CBOE delayed option quotes for every

@@ -3,6 +3,7 @@
 // Sources (free, no key): Yahoo Finance charts (ES=F, ^GSPC, ^VIX, ^VIX1D, ^VIX9D) and CBOE's delayed SPX options.
 // Everything here is a study aid built from delayed data, not a forecast anyone can rely on.
 import { readFileSync, writeFileSync } from "node:fs";
+import { buildRows, fitScale, fitPlain, walkForward, score, EVENT_KEYS } from "./vol-model.mjs";
 
 const UA = { headers: { "User-Agent": "Mozilla/5.0 (spread-ledger market)" } };
 const r2 = v => Math.round(v * 100) / 100;
@@ -44,8 +45,8 @@ async function chart(sym, interval, range){
   }
 }
 const [es15, es60, spxD, spx15, vixD, vix1dD, vix9dD] = await Promise.all([
-  chart("ES=F", "15m", "60d"), chart("ES=F", "60m", "730d"), chart("^GSPC", "1d", "5y"), chart("^GSPC", "15m", "5d"),
-  chart("^VIX", "1d", "5y"), chart("^VIX1D", "1d", "5y"), chart("^VIX9D", "1d", "5y")]);
+  chart("ES=F", "15m", "60d"), chart("ES=F", "60m", "730d"), chart("^GSPC", "1d", "12y"), chart("^GSPC", "15m", "5d"),
+  chart("^VIX", "1d", "12y"), chart("^VIX1D", "1d", "5y"), chart("^VIX9D", "1d", "12y")]);
 if (!es60.length || !spxD.length) { console.error("Missing ES or SPX history"); process.exit(1); }
 
 /* ---------- ES - SPX spread (basis), per trading day ----------
@@ -253,11 +254,10 @@ function fitModel(h){
     if (spp > 0) w = clamp(pulls.reduce((a, p, i) => a + p * errs[i], 0) / spp, 0, 0.7);
     b = clamp(mean(errs.map((e, i) => e - w * pulls[i])) * n / (n + 20), -15, 15);
   }
-  if (n >= 15){        // widths: blend history's calibration with our own record as it grows
-    const zs = rs.map(r => Math.abs(r.actual.c - r.center) / r.sigma), a = n / (n + 40);
-    k68 = (1 - a) * k68 + a * quantile(zs, 0.68); k84 = (1 - a) * k84 + a * quantile(zs, 0.84);
-  }
-  return { h, n, w: r2(w), b: r2(b), k68: r2(k68), k84: r2(k84),
+  // our own scored record (current model only) for blending into the range widths as it grows
+  const own = rs.filter(r => r.mv >= 2), own68 = own.length >= 15 ? quantile(own.map(r => Math.abs(r.actual.c - r.center) / r.sigma), 0.68) : null,
+        own84 = own.length >= 15 ? quantile(own.map(r => Math.abs(r.actual.c - r.center) / r.sigma), 0.84) : null;
+  return { h, n, w: r2(w), b: r2(b), k68: r2(k68), k84: r2(k84), ownN: own.length, own68, own84,
            mae: n ? r2(mean(rs.map(r => Math.abs(r.err)))) : null, maeRaw: n ? r2(mean(rs.map(r => Math.abs(r.errRaw)))) : null,
            hit68: n ? Math.round(rs.filter(r => r.in68).length / n * 100) : null, hit84: rs.some(r => r.r84) ? Math.round(rs.filter(r => r.in84).length / rs.filter(r => r.r84).length * 100) : null,
            baseline: baseline(h) };
@@ -267,24 +267,65 @@ const models = [fitModel(1), fitModel(2)];
 /* ---------- ranges for the next two expirations after today ---------- */
 const future = expirations.filter(e => e.exp > nyNow.date);
 const atrDaily = (() => { const b = spxD.slice(-15); let s = 0; for (let i = 1; i < b.length; i++) s += Math.max(b[i].h - b[i].l, Math.abs(b[i].h - b[i - 1].c), Math.abs(b[i].l - b[i - 1].c)); return r2(s / (b.length - 1)); })();
+/* ---------- the range model (vol-model.mjs), checked walk-forward in backtest-model.mjs ----------
+   Unit: the move the options market priced when the prediction locks (before the 9:30 open, so the previous close of
+   VIX1D for 1DTE, VIX9D for 2DTE). 1DTE: VIX1D alone held its 68%/84% ranges best in testing (it already prices the
+   next day's news). 2DTE: a ridge model on realized volatility, the VIX term structure and level, the overnight gap,
+   yesterday's drop and scheduled news (FOMC, CPI, jobs, PPI, minutes) widens or narrows the VIX9D move. The ranges
+   are the 68%/84% points of past |move| / predicted scale. The center stays at the last price plus the gamma pull
+   learned from our own record: nothing tested (gap, yesterday, last week) beat "no change" out of sample. */
+const dOf = b => ({ d: ny(b.t).date, o: b.o, h: b.h, l: b.l, c: b.c });
+const finDays = spxD.filter(b => finished.has(ny(b.t).date)).map(dOf);
+const partial = spxD.filter(b => ny(b.t).date === nyNow.date && !finished.has(nyNow.date)).map(dOf);
+const vmap = bars => new Map(bars.map(b => [ny(b.t).date, { o: b.o, c: b.c }]));
+const VOL = { vix: vmap(vixD), vix9d: vmap(vix9dD), vix1d: vmap(vix1dD) };
+const evT = new Map([...evOn].map(([d, es]) => [d, es.map(e => e.type)]));
+const SRC = { 1: "vix1dPrev", 2: "vix9dPrev" };
+const rowsFor = h => buildRows(finDays, VOL, evT, h, { src: SRC[h] }).filter(r => r.move != null);
+let R1 = rowsFor(1); const R2 = rowsFor(2);
+if (R1.length < 250){ SRC[1] = "vix9dPrev"; R1 = rowsFor(1); }          // VIX1D missing: fall back to the 9-day VIX model
+const VM = { 1: SRC[1] === "vix1dPrev" ? fitPlain(R1) : fitScale(R1), 2: fitScale(R2) };
+// "Last price" baseline on the same footing as the predictions: average |move| from the lock-time open, last ~year.
+[R1, R2].forEach((R, i) => { if (R.length >= 100) models[i].baseline = r2(mean(R.slice(-250).map(r => Math.abs(r.move)))); });
+// Walk-forward check of the model on recent days (each day predicted only from the days before it).
+const check = h => { const R = h === 1 ? R1 : R2, f = h === 1 && SRC[1] === "vix1dPrev" ? tr => fitPlain(tr) : tr => fitScale(tr);
+  const wf = walkForward(R, f, { start: Math.min(500, Math.max(250, R.length - 500)) }).slice(-500), s = score(wf);
+  return { days: s.n, from: wf[0]?.r.d, to: wf.at(-1)?.r.d, cov68: s.cov68, cov84: s.cov84, width68: s.width68, width84: s.width84, upHold84: s.upHold84, dnHold84: s.dnHold84,
+           unit: SRC[h].replace("Prev", "").toUpperCase(), features: h === 2 || SRC[1] !== "vix1dPrev" }; };
+const modelCheck = R1.length && R2.length ? { oneDay: check(1), twoDay: check(2) } : null;
+// Features for a prediction that locks at the next session's open: today's bar so far (if any), then the lock day at the current price.
+function liveRow(h, lockD, targetD){
+  const seq = [...finDays, ...partial, { d: lockD, o: spot, h: spot, l: spot, c: spot, open: true }];
+  if (h === 2) seq.push({ d: targetD, o: spot, h: spot, l: spot, c: spot, open: true });
+  return buildRows(seq, VOL, evT, h, { src: SRC[h] }).find(r => r.d === targetD) || null;
+}
 const ranges = [future[0], future[1]].map((e, i) => {
   if (!e) return null;
-  const ev = eventFactor(i === 0 ? [e.exp] : [future[0].exp, e.exp]);
-  const m = { ...models[i], k68: r2(models[i].k68 * ev.f68), k84: r2(models[i].k84 * ev.f84) }, sigma = e.straddle * Math.sqrt(Math.PI / 2);   // an at-the-money straddle is about 0.8 sigma
+  const h = i + 1, row = liveRow(h, future[0].exp, e.exp), M2 = VM[h]; if (!row) return null;
+  const ev = eventFactor(h === 1 ? [e.exp] : [future[0].exp, e.exp]);
+  const s = row.I * M2.scale(row.x), sigma = s;
+  // how much scheduled news moved this range (2DTE model only; VIX1D prices it for 1DTE)
+  const noEv = row.x.map((v, j) => j >= 7 && j < 7 + EVENT_KEYS.length ? 0 : v), evF = M2.scale(row.x) / M2.scale(noEv);
+  const evNames = EVENT_KEYS.filter((k, j) => row.x[7 + j] === 1).map(k => study[k]?.name || k);
+  const mm = models[i], a = mm.ownN >= 15 ? mm.ownN / (mm.ownN + 40) : 0;
+  const k68 = (1 - a) * M2.k68 + a * (mm.own68 ?? M2.k68), k84 = (1 - a) * M2.k84 + a * (mm.own84 ?? M2.k84);
   // In positive gamma, dealer hedging tends to pull price toward the biggest gamma strike nearby ("pin").
   const near = gex && gex.total > 0 ? gex.byStrike.filter(r => Math.abs(r[0] - spot) <= sigma).sort((a, b) => Math.abs(b[1] + b[2]) - Math.abs(a[1] + a[2]))[0] : null;
   const magnet = near ? near[0] : null, pull = magnet != null ? magnet - spot : 0;
-  const center = spot + m.w * pull + m.b;
-  return { label: `${i + 1}DTE`, h: i + 1, exp: e.exp, spot: r2(spot), center: r2(center), magnet, pull: r2(pull), straddle: e.straddle, atmIv: e.iv, sigma: r2(sigma),
-           r68: [r2(center - m.k68 * sigma), r2(center + m.k68 * sigma)], r84: [r2(center - m.k84 * sigma), r2(center + m.k84 * sigma)],
-           k68: m.k68, k84: m.k84, within1: (i === 0 ? cal1 : cal2)?.within1 ?? null, events: ev.events, evF: ev.f68, evWhy: ev.why };
+  const center = spot + mm.w * pull + mm.b;
+  return { label: `${h}DTE`, h, exp: e.exp, spot: r2(spot), center: r2(center), magnet, pull: r2(pull), straddle: e.straddle, atmIv: e.iv, sigma: r2(sigma),
+           implied: r2(row.I), unit: SRC[h].replace("Prev", "").toUpperCase(),
+           r68: [r2(center - k68 * s), r2(center + k68 * s)], r84: [r2(center - k84 * s), r2(center + k84 * s)],
+           reach84: [r2(spot - M2.dn84 * s), r2(spot + M2.up84 * s)],
+           k68: r2(k68), k84: r2(k84), within1: (i === 0 ? cal1 : cal2)?.within1 ?? null, events: ev.events,
+           evF: r2(evF), evWhy: evNames.length && Math.abs(evF - 1) >= 0.02 ? `${evNames.join(" + ")} days` : ev.events.length ? (h === 1 ? "VIX1D already prices it" : "options price this news about right") : "quiet day (no scheduled news)" };
 }).filter(Boolean);
 // Save or update the open predictions (locked ones are left as they were).
 for (const r of ranges){
   const lockAt = atNY(r.h === 1 ? r.exp : future[0].exp, 9 * 60 + 30);
   if (nowSec >= lockAt) continue;
   const id = `${r.exp}|${r.h}`, rec = { id, h: r.h, target: r.exp, made: new Date().toISOString(), lockAt: new Date(lockAt * 1000).toISOString(),
-    spotAt: r.spot, center: r.center, magnet: r.magnet, pull: r.pull, sigma: r.sigma, r68: r.r68, r84: r.r84, events: r.events.map(e => e.type), evF: r.evF, model: { w: models[r.h - 1].w, b: models[r.h - 1].b } };
+    spotAt: r.spot, center: r.center, magnet: r.magnet, pull: r.pull, sigma: r.sigma, r68: r.r68, r84: r.r84, events: r.events.map(e => e.type), evF: r.evF, mv: 2, model: { w: models[r.h - 1].w, b: models[r.h - 1].b } };
   const i = records.findIndex(x => x.id === id);
   if (i >= 0 && !records[i].actual) records[i] = rec; else if (i < 0) records.push(rec);
 }
@@ -349,7 +390,7 @@ const out = {
   bars: { "15m": pack(lastSession(12)(a15)), "1h": pack(a60.filter(b => b.t > since(75))), "2h": pack(a2h.filter(b => b.t > since(150))),
           "4h": pack(a4h.filter(b => b.t > since(300))), "1d": pack(aD.filter(b => b.t > since(730))) },
   spxDaily: spxD.slice(-260).map(b => [ny(b.t).date, r2(b.o), r2(b.h), r2(b.l), r2(b.c)]),
-  atr14: atrDaily, gex, expirations: expirations.slice(0, 6).map(({ T, ...e }) => e), ranges, calibration: { oneDay: cal1, twoDay: cal2 },
+  atr14: atrDaily, gex, expirations: expirations.slice(0, 6).map(({ T, ...e }) => e), ranges, calibration: { oneDay: cal1, twoDay: cal2 }, modelCheck,
   predictions: { models, recent: records.slice(-60) },
   events: { upcoming: EV.filter(e => e.d > nyNow.date || (e.d === nyNow.date && nyNow.mins < 16 * 60)).slice(0, 40),
             study: { all: allStats && { n: allStats.n, k68: allStats.k68, k84: allStats.k84, avgMove: allStats.avgMove, avgRange: allStats.avgRange }, quiet, types: study } },

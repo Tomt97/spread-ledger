@@ -231,16 +231,24 @@
     if (open) drawCharts();
   }
 
+  // How the range was built and how it held up when tested day by day (market.json modelCheck)
+  function modelNote(r){
+    const c = M.modelCheck && M.modelCheck[r.h === 1 ? "oneDay" : "twoDay"];
+    const how = r.unit ? (r.h === 1 && r.unit === "VIX1D" ? "Range = the move VIX1D priced at the close before, sized by how far SPX really went from the open." :
+      `Range = the move ${esc(r.unit)} priced, widened or narrowed by recent realized volatility, the VIX term structure, the gap and scheduled news.`) : "Widths use how big moves really were vs. implied.";
+    return how + (c ? ` Tested day by day on the last ${c.days} days: the 68% range held ${c.cov68}% of the time, the 84% range ${c.cov84}%.` : "");
+  }
   function rangeCard(r, m){
     const scored = m && m.n ? `${m.n} scored · avg miss ${m.mae.toFixed(1)} pts (last-price guess ${m.maeRaw.toFixed(1)}) · inside 68%: ${m.hit68}%` : "No scored predictions yet: the first is scored after its target day closes.";
     const tuned = m && m.n >= 8 ? ` · tuned: pull ${Math.round(m.w * 100)}%, bias ${pts(m.b)}` : "";
     return `<div class="ol-range">
-      <div class="card-head"><span class="label">${esc(r.label)} · ${esc(dayLabel(r.exp))} close</span><span class="tag">±${r.sigma.toFixed(0)} pts implied</span></div>
+      <div class="card-head"><span class="label">${esc(r.label)} · ${esc(dayLabel(r.exp))} close</span><span class="tag">1σ ±${r.sigma.toFixed(0)} pts</span></div>
       <div class="big">${px(r.center)}</div>
       <div class="row"><span>Likely (68%)</span><span>${px(r.r68[0])} – ${px(r.r68[1])}</span></div>
       <div class="row"><span>Wide (${OB(r).p}%)</span><span>${px(OB(r).b[0])} – ${px(OB(r).b[1])}</span></div>
       <div class="row muted"><span>ATM straddle ${r.straddle.toFixed(2)} · IV ${r.atmIv.toFixed(1)}%</span><span>${r.magnet != null ? `gamma magnet ${px0(r.magnet)}` : ""}</span></div>
-      <div class="ol-note">Widths use how big moves really were vs. implied${r.within1 != null ? ` (closes stayed inside ±1 implied σ on ${r.within1.toFixed(0)}% of the last 2 years' days)` : ""}. Typical miss of a last-price guess: ${m ? m.baseline.toFixed(0) : "—"} pts.</div>
+      ${r.reach84 ? `<div class="row"><span>All day (84% each)</span><span>high under ${px0(r.reach84[1])} · low above ${px0(r.reach84[0])}</span></div>` : ""}
+      <div class="ol-note">${modelNote(r)} Typical miss of a last-price guess: ${m ? m.baseline.toFixed(0) : "—"} pts.</div>
       <div class="ol-note">${esc(scored + tuned)}</div></div>`;
   }
 
