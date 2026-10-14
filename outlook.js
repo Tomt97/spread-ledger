@@ -240,6 +240,12 @@
       `Range = the move ${esc(r.unit)} priced, widened or narrowed by recent realized volatility, the VIX term structure, the gap and scheduled news.`) : "Widths use how big moves really were vs. implied.";
     return how + (c ? ` Tested day by day on the last ${c.days} days: the 68% range held ${c.cov68}% of the time, the 84% range ${c.cov84}%.` : "");
   }
+  // A prediction locks with the last update before the open; say so when that update was hours old (no pre-market run).
+  function staleNote(r){
+    const gap = (Date.parse(r.lockAt || 0) - Date.parse(r.made || 0)) / 36e5;
+    if (!(gap >= 3) || Date.now() < Date.parse(r.lockAt || 0)) return "";
+    return ` · <span style="color:var(--warn)">locked on data from ${Math.round(gap)} h before the open</span>`;
+  }
   function rangeCard(r, m){
     const scored = m && m.n ? `${m.n} scored · avg miss ${m.mae.toFixed(1)} pts (last-price guess ${m.maeRaw.toFixed(1)}) · inside 68%: ${m.hit68}%` : "No scored predictions yet: the first is scored after its target day closes.";
     const tuned = m && m.n >= 8 ? ` · tuned: pull ${Math.round(m.w * 100)}%, bias ${pts(m.b)}` : "";
@@ -287,7 +293,7 @@
     const head = models.length ? models.map(m => `${m.h}DTE: ${m.n} scored · avg miss ${m.mae.toFixed(1)} pts (last-price guess ${m.maeRaw.toFixed(1)}) · close inside 68% range ${m.hit68}% ${m.hit84 != null ? ` · inside 84% ${m.hit84}%` : ""}`).join("<br>")
       : "Nothing scored yet. The first prediction is scored after its target day closes.";
     const row = r => {
-      const day = `<div class="d"><b>${esc(dayLabel(r.target))}</b> <span class="ol-note">${r.h}DTE${r.actual ? "" : " · " + (Date.now() < Date.parse(r.lockAt || 0) ? "still updating" : "locked")}</span>${(r.events || []).length ? `<div class="ol-evs" style="margin-top:3px">${r.events.map(t => evBadge({type: t, time: ""})).join("")}</div>` : ""}</div>`;
+      const day = `<div class="d"><b>${esc(dayLabel(r.target))}</b> <span class="ol-note">${r.h}DTE${r.actual ? "" : " · " + (Date.now() < Date.parse(r.lockAt || 0) ? "still updating" : "locked")}${staleNote(r)}</span>${(r.events || []).length ? `<div class="ol-evs" style="margin-top:3px">${r.events.map(t => evBadge({type: t, time: ""})).join("")}</div>` : ""}</div>`;
       const pred = `<div class="p"><span class="lab">Predicted</span><b>${px(r.center)}</b> <span class="ol-note">68% ${px0(r.r68[0])}–${px0(r.r68[1])} · ${OB(r).p}% ${px0(OB(r).b[0])}–${px0(OB(r).b[1])}</span></div>`;
       if (!r.actual) return `<div class="ol-tr">${day}${pred}<div class="m"><span class="lab">Market</span><span class="ol-note" style="display:inline;padding-left:0">waiting for the close</span></div><div class="o"></div></div>`;
       const ob = OB(r), held = r.actual.h <= ob.b[1] && r.actual.l >= ob.b[0];

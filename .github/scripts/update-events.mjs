@@ -55,10 +55,31 @@ const bls = (code, type, label) => async () => {
   const arch = await get(`https://www.bls.gov/bls/news-release/${code}.htm`);
   if (arch) for (const m of arch.matchAll(new RegExp(`${code}_(\\d{2})(\\d{2})(\\d{4})\\.htm`, "g"))) out.set(`${m[3]}-${m[1]}-${m[2]}`, 1);
   const sched = await get(`https://www.bls.gov/schedule/news_release/${code}.htm`);
-  if (sched) for (const m of text(sched).matchAll(/([A-Z][a-z]{2})\.? (\d{1,2}), (\d{4}) (\d{1,2}:\d{2} [AP]M)/g)) out.set(iso(+m[3], mIdx(m[1]), +m[2]), m[4].replace(/^0/, ""));
+  // "Oct. 14, 2026 08:30 AM" or "Sept. 11, 2026" with footnote marks or extra cells between the date and the time
+  if (sched) for (const m of text(sched).matchAll(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)[a-z]*\.? (\d{1,2}),? (\d{4})(?:\(\d\)|\[\d\]|[^\d]){0,40}?(\d{1,2}:\d{2} ?[AP]M)/g))
+    out.set(iso(+m[3], mIdx(m[1]), +m[2]), m[4].replace(/^0/, "").replace(/(\d)([AP]M)/, "$1 $2"));
+  // BLS's own calendar feed: a second, machine-readable source for upcoming dates
+  for (const [d, t] of (await blsFeed()).get(code) || []) if (!out.has(d) || out.get(d) === 1) out.set(d, t);
   if (out.size < 12) return null;
   return [...out.entries()].map(([d, t]) => ({ d, type, time: typeof t === "string" ? t : "8:30 AM", label }));
 };
+let feedP = null;
+const FEED = { cpi: /consumer price index/i, ppi: /producer price index/i, empsit: /employment situation/i };
+function blsFeed(){
+  return feedP ||= (async () => {
+    const out = new Map(), ics = await get("https://www.bls.gov/schedule/news_release/bls.ics"); if (!ics) return out;
+    for (const ev of ics.replace(/\r?\n[ \t]/g, "").split("BEGIN:VEVENT").slice(1)){
+      const sum = (/SUMMARY[^:]*:(.*)/.exec(ev) || [])[1] || "", dt = /DTSTART[^:]*:(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2}))?(Z?)/.exec(ev);
+      const code = Object.keys(FEED).find(k => FEED[k].test(sum)); if (!code || !dt || /(annual|revision|regional|metropolitan|state)/i.test(sum)) continue;
+      let h = dt[4] != null ? +dt[4] : 8, mi = dt[5] != null ? +dt[5] : 30;
+      if (dt[6] === "Z"){ h -= /^(0[4-9]|10)/.test(dt[2]) || (dt[2] === "03" && +dt[3] >= 8) || (dt[2] === "11" && +dt[3] < 7) ? 4 : 5; }   // UTC to New York (close enough for release times)
+      const t = `${(h % 12) || 12}:${String(mi).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+      (out.get(code) || out.set(code, []).get(code)).push([`${dt[1]}-${dt[2]}-${dt[3]}`, t]);
+    }
+    console.log("BLS feed:", [...out].map(([k, v]) => `${k} ${v.length}`).join(", ") || "nothing read");
+    return out;
+  })();
+}
 sources.cpi = bls("cpi", "CPI", "CPI inflation report");
 sources.nfp = bls("empsit", "NFP", "Jobs report (nonfarm payrolls)");
 sources.ppi = bls("ppi", "PPI", "PPI producer prices");
@@ -114,7 +135,13 @@ try { prev = JSON.parse(readFileSync(process.env.PREV_EVENTS || "prev/events.jso
 const events = [], status = {};
 for (const [name, fn] of Object.entries(sources)){
   let got = null; try { got = await fn(); } catch (e) { console.error(`${name}: ${e.message}`); }
-  if (got){ got.forEach(e => events.push({ ...e, src: name })); status[name] = `${got.length} new`; }
+  if (got){
+    got.forEach(e => events.push({ ...e, src: name })); status[name] = `${got.length} new`;
+    // A release can drop off the schedule page on its own day, before it shows up in the archive: keep what we knew.
+    const have = new Set(got.map(e => e.d + e.type)), recent = new Date(Date.now() - 45 * 864e5).toISOString().slice(0, 10);
+    const kept = prev.filter(e => e.src === name && e.d >= recent && !have.has(e.d + e.type)); kept.forEach(e => events.push(e));
+    if (kept.length) status[name] += `, kept ${kept.length} recent from last run`;
+  }
   else { const kept = prev.filter(e => e.src === name); kept.forEach(e => events.push(e)); status[name] = `failed, kept ${kept.length} from last run`; }
 }
 const hol = new Set(events.filter(e => e.type === "HOLIDAY").map(e => e.d));
@@ -122,5 +149,11 @@ const thisY = new Date().getUTCFullYear();
 computed(thisY - 3, thisY + 1, hol).forEach(e => events.push({ ...e, src: "calc" }));
 const seen = new Set(), clean = events.filter(e => /^\d{4}-\d{2}-\d{2}$/.test(e.d)).sort((a, b) => a.d.localeCompare(b.d) || a.type.localeCompare(b.type))
   .filter(e => { const k = e.d + e.type; if (seen.has(k)) return false; seen.add(k); return true; });
+// Monthly releases should never be missing: flag any month in the next ~5 weeks without one (shown in the log and status).
+{ const today = new Date().toISOString().slice(0, 10), soon = addDays(today, 35);
+  for (const [type, src] of [["CPI", "cpi"], ["NFP", "nfp"], ["PPI", "ppi"]]){
+    const months = new Set(events.filter(e => e.type === type).map(e => e.d.slice(0, 7)));
+    for (const ym of [today.slice(0, 7), soon.slice(0, 7)]) if (!months.has(ym)) { status[src] = (status[src] || "") + ` · WARNING no ${type} date for ${ym}`; console.error(`WARNING: no ${type} date found for ${ym}`); }
+  } }
 writeFileSync("events.json", JSON.stringify({ updated: new Date().toISOString(), status, events: clean }));
 console.log("events.json:", JSON.stringify(status), clean.length, "events;", clean.filter(e => e.d >= new Date().toISOString().slice(0, 10)).slice(0, 12).map(e => `${e.d} ${e.type}`).join(", "));
