@@ -32,6 +32,10 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   FOMC days and in stressed markets. Center stays at last price + learned gamma pull: gap/momentum/mean-reversion
   centers did not beat "no change" out of sample. market.json `modelCheck` reports live walk-forward coverage; adopt a
   change only if it beats the current model on interval score at the same coverage.
+- Each record logs the gamma regime at lock (`gex.total`, `flip`, `belowFlip`) and the implied move (`iv`). Once ~40 days are
+  scored, test whether negative-gamma / below-flip days need wider ranges (no GEX history exists to backtest it).
+- Locks must use a fresh pre-market run: 8:30 am ET data (CPI, PPI, jobs) moves the open. The track record flags
+  predictions that locked on data 3+ hours old. Oct 14, 2026: CPI was missed by the calendar and the lock used 7:27 pm data.
 - The owner aims for misses within 10–20 SPX points. Report the real average miss honestly against the last-price
   baseline (~34 pts open→close for 1DTE, ~56 for 2DTE); never overstate accuracy.
 

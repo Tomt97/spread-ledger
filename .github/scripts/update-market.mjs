@@ -326,7 +326,7 @@ for (const r of ranges){
   const lockAt = atNY(r.h === 1 ? r.exp : future[0].exp, 9 * 60 + 30);
   if (nowSec >= lockAt) continue;
   const id = `${r.exp}|${r.h}`, rec = { id, h: r.h, target: r.exp, made: new Date().toISOString(), lockAt: new Date(lockAt * 1000).toISOString(),
-    spotAt: r.spot, center: r.center, magnet: r.magnet, pull: r.pull, sigma: r.sigma, r68: r.r68, r84: r.r84, events: r.events.map(e => e.type), evF: r.evF, mv: 2, model: { w: models[r.h - 1].w, b: models[r.h - 1].b } };
+    spotAt: r.spot, center: r.center, magnet: r.magnet, pull: r.pull, sigma: r.sigma, r68: r.r68, r84: r.r84, events: r.events.map(e => e.type), evF: r.evF, mv: 2, gex: gex ? { total: gex.total, flip: gex.flip, belowFlip: gex.flip != null ? spot < gex.flip : null } : null, iv: r.implied, model: { w: models[r.h - 1].w, b: models[r.h - 1].b } };
   const i = records.findIndex(x => x.id === id);
   if (i >= 0 && !records[i].actual) records[i] = rec; else if (i < 0) records.push(rec);
 }
