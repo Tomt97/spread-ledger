@@ -7,6 +7,9 @@ on:
     # 9:30 am - 4:15 pm New York in daylight and standard time. GitHub may run scheduled jobs late or
     # skip some; the app shows the quote time.
     - cron: "7,22,37,52 13-21 * * 1-5"
+    # Pre-market, so the day's ranges are fresh before the 9:30 am New York open (8:30 am Central):
+    # 10:47, 11:47 and 12:47 UTC = 5:47-7:47 am Central in daylight time, 4:47-6:47 am in standard time.
+    - cron: "47 10-12 * * 1-5"
   # Also started every hour by a free cron-job.org job (see README), because GitHub's own schedule
   # often runs only once or twice a day on small repositories.
   workflow_dispatch:
