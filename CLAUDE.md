@@ -37,6 +37,13 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   scored, test whether negative-gamma / below-flip days need wider ranges (no GEX history exists to backtest it).
 - Locks must use a fresh pre-market run: 8:30 am ET data (CPI, PPI, jobs) moves the open. The track record flags
   predictions that locked on data 3+ hours old. Oct 14, 2026: CPI was missed by the calendar and the lock used 7:27 pm data.
+- Failed Breakdown (Adam Mancini's public setup), coded in `backtest-fb.mjs` (swing low → flush → reclaim, targets at next
+  swing highs, 75% at T1 + runner; strict variant needs a tested shelf and an elevator-down drop). Oct 2026 result: no
+  significant edge vs the same trade at random bars (best +0.05R, t≈0.7, 2.5 years hourly ES). Don't present it as a
+  signal unless a future test beats the random-entry control. His edge, if any, is in discretionary level choice.
+- What predicts the close (`backtest-center.mjs`, Oct 2026): 32 signals known at the open (gap, VIX, SKEW, other markets,
+  calendar) gave no usable edge (−0.3 pt MAE, worse last year). Time of day matters: no-change MAE 31 pts at 10 am →
+  12 pts at 3 pm (hourly ES, 2 years). The 10–20 pt goal is realistic only for afternoon re-forecasts.
 - The owner aims for misses within 10–20 SPX points. Report the real average miss honestly against the last-price
   baseline (~34 pts open→close for 1DTE, ~56 for 2DTE); never overstate accuracy.
 
