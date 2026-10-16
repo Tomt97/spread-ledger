@@ -1,0 +1,35 @@
+name: Research backtests
+# Started by hand (Actions → Research backtests → Run workflow). Runs the walk-forward studies and saves the results
+# on the `research` branch, which holds only result files (no workflows), so deleting it triggers nothing.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Events from the quotes branch
+        run: |
+          mkdir prev
+          git fetch -q --depth=1 origin quotes && git --work-tree=prev checkout FETCH_HEAD -- events.json || true
+      - name: Range model check
+        continue-on-error: true
+        run: node .github/scripts/backtest-model.mjs > model.txt 2>&1; tail -c 1500 model.txt
+      - name: What helps predict the close
+        continue-on-error: true
+        run: node .github/scripts/backtest-center.mjs > center.txt 2>&1; tail -c 4000 center.txt
+      - name: Save results on the research branch
+        run: |
+          mkdir out && cp *.json *.txt out/ 2>/dev/null; cd out && ls
+          git init -q -b research
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A && git commit -q -m "Research results"
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" research

@@ -44,8 +44,9 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   ticker in the public `tickers` collection + SPX/XSP/RUT/NDX), `update-events.mjs` and `update-market.mjs` (Yahoo ES/SPX/VIX bars, CBOE SPX
   chain → GEX, levels, ranges). It force-pushes a single commit to the `quotes` branch, keeping files not rebuilt in that run.
 - Started hourly by the owner's cron-job.org job (workflow_dispatch); GitHub's own schedule is only a backup (it runs ~2×/day).
-- This session's proxy blocks CBOE/Yahoo and Actions logs: test scripts on GitHub via a temporary push-triggered
-  branch that commits its output, then ask the owner to delete the branch (branch deletion isn't allowed from here).
+- This session's proxy blocks CBOE/Yahoo and Actions logs. Research runs go through `.github/workflows/research.yml`
+  (workflow_dispatch only: `gh workflow run research.yml`), which force-pushes results to the `research` branch (result
+  files only). Don't use push-triggered probe branches: deleting one re-runs its workflow (Oct 13 it overwrote `quotes`).
 
 ## Navigation (owner's preference: a clean main page)
 - `nav.js` gives the app tabs like popular trading apps: **Home** (alerts, SPX 1DTE/2DTE ranges, performance, trades),
