@@ -89,6 +89,11 @@
   #outlook .ol-tr.ol-st .o{grid-column:1 / -1;grid-row:auto;text-align:left}
   #outlook .ol-tr.ol-st .o .ol-note{display:block;padding-left:76px}
 }
+#outlook .ol-pfs{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;margin-top:3px}
+#outlook .ol-pf{display:inline-block;font-size:12px;font-weight:700;padding:1px 7px;border-radius:99px;white-space:nowrap}
+#outlook .ol-pf.pass{background:var(--gain-soft);color:var(--gain)}
+#outlook .ol-pf.fail{background:var(--loss-soft);color:var(--loss)}
+@media (max-width:640px){ #outlook .ol-tr .o .ol-pfs{display:flex} }
 #outlook .ol-err{color:var(--loss);font-size:13px}
 .ol-root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--pos:#2a78d6;--neg:#e34948;--band:rgba(42,120,214,.13);--band2:rgba(42,120,214,.07)}
 @media (prefers-color-scheme: dark){:root:where(:not([data-theme="light"])) .ol-root{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--pos:#3987e5;--neg:#e66767;--band:rgba(57,135,229,.2);--band2:rgba(57,135,229,.1)}}
@@ -298,7 +303,9 @@
       if (!r.actual) return `<div class="ol-tr">${day}${pred}<div class="m"><span class="lab">Market</span><span class="ol-note" style="display:inline;padding-left:0">waiting for the close</span></div><div class="o"></div></div>`;
       const ob = OB(r), held = r.actual.h <= ob.b[1] && r.actual.l >= ob.b[0];
       const mkt = `<div class="m"><span class="lab">Market</span><b>Close ${px(r.actual.c)}</b> <span class="ol-note">High ${px0(r.actual.h)} · Low ${px0(r.actual.l)} · ${held ? `day stayed inside ${ob.p}%` : `day traded outside ${ob.p}%`}</span></div>`;
-      const res = `<div class="o"><b>${pts(r.err)}</b> <span class="ol-note">${r.in68 ? "✓ inside 68%" : r.in84 ? "✓ inside 84%" : r.in90 ? "✓ inside 90%" : "✗ outside"}</span></div>`;
+      // pass/fail for each band on its own line: ✓ the close landed inside it, ✗ it missed
+      const mark = (ok, p) => `<span class="ol-pf ${ok ? "pass" : "fail"}">${ok ? "✓" : "✗"} ${p}%</span>`;
+      const res = `<div class="o"><b>${pts(r.err)}</b><span class="ol-pfs">${mark(!!r.in68, 68)}${mark(!!(r.r84 ? r.in84 : r.in90), r.r84 ? 84 : 90)}</span></div>`;
       return `<div class="ol-tr">${day}${pred}${mkt}${res}</div>`;
     };
     const open = LS("track") === "1", n = done.length;
