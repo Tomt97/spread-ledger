@@ -45,7 +45,7 @@ async function chart(sym, interval, range){
   }
 }
 const [es15, es60, spxD, spx15, vixD, vix1dD, vix9dD] = await Promise.all([
-  chart("ES=F", "15m", "60d"), chart("ES=F", "60m", "730d"), chart("^GSPC", "1d", "12y"), chart("^GSPC", "15m", "5d"),
+  chart("ES=F", "15m", "60d"), chart("ES=F", "60m", "730d"), chart("^GSPC", "1d", "12y"), chart("^GSPC", "15m", "60d"),
   chart("^VIX", "1d", "12y"), chart("^VIX1D", "1d", "5y"), chart("^VIX9D", "1d", "12y")]);
 if (!es60.length || !spxD.length) { console.error("Missing ES or SPX history"); process.exit(1); }
 
@@ -54,6 +54,12 @@ if (!es60.length || !spxD.length) { console.error("Missing ES or SPX history"); 
 const spxClose = new Map(spxD.map(b => [ny(b.t).date, b.c]));
 const basisByDay = new Map();
 for (const b of es60){ const t = ny(b.t); if (t.h === 15 && t.m === 0 && spxClose.has(t.date)) basisByDay.set(t.date, b.c - spxClose.get(t.date)); }
+// Better, where 15-minute bars exist (about 60 days): the median of ES − SPX over every matched bar of the session.
+// The single closing bar is noisy (SPX closes in an auction, ES's last trade before 4:00 pm isn't the same moment):
+// checked against the session median it was off by ~2 pts typically and up to 5 (basis-check.mjs).
+{ const sp = new Map(spx15.map(b => [b.t, b.c])), byDay = new Map();
+  for (const b of es15){ if (!sp.has(b.t)) continue; const t = ny(b.t); if (t.mins < 9 * 60 + 45 || t.mins > 15 * 60 + 45) continue; (byDay.get(t.date) || byDay.set(t.date, []).get(t.date)).push(b.c - sp.get(b.t)); }
+  for (const [d, v] of byDay) if (v.length >= 8 && (spxClose.has(d) || d < ny(Date.now() / 1000).date)) basisByDay.set(d, median(v)); }
 // Today, during the session: median of matching 15-minute closes (both feeds stamp bars on the quarter hour).
 const spx15ByT = new Map(spx15.map(b => [b.t, b.c]));
 const todayNY = ny(Date.now() / 1000).date;
