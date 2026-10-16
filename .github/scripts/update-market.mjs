@@ -266,7 +266,8 @@ function fitModel(h){
 const models = [fitModel(1), fitModel(2)];
 
 /* ---------- ranges for the next two expirations after today ---------- */
-const future = expirations.filter(e => e.exp > nyNow.date);
+// Before the 9:30 am open, today's session is still ahead: keep predicting it (its 1DTE locks at this open).
+const future = expirations.filter(e => e.exp > nyNow.date || (e.exp === nyNow.date && nyNow.mins < 9 * 60 + 30));
 const atrDaily = (() => { const b = spxD.slice(-15); let s = 0; for (let i = 1; i < b.length; i++) s += Math.max(b[i].h - b[i].l, Math.abs(b[i].h - b[i - 1].c), Math.abs(b[i].l - b[i - 1].c)); return r2(s / (b.length - 1)); })();
 /* ---------- the range model (vol-model.mjs), checked walk-forward in backtest-model.mjs ----------
    Unit: the move the options market priced when the prediction locks (before the 9:30 open, so the previous close of
@@ -296,7 +297,7 @@ const check = h => { const R = h === 1 ? R1 : R2, f = h === 1 && SRC[1] === "vix
 const modelCheck = R1.length && R2.length ? { oneDay: check(1), twoDay: check(2) } : null;
 // Features for a prediction that locks at the next session's open: today's bar so far (if any), then the lock day at the current price.
 function liveRow(h, lockD, targetD){
-  const seq = [...finDays, ...partial, { d: lockD, o: spot, h: spot, l: spot, c: spot, open: true }];
+  const seq = [...finDays, ...partial.filter(b => b.d < lockD), { d: lockD, o: spot, h: spot, l: spot, c: spot, open: true }];
   if (h === 2) seq.push({ d: targetD, o: spot, h: spot, l: spot, c: spot, open: true });
   return buildRows(seq, VOL, evT, h, { src: SRC[h] }).find(r => r.d === targetD) || null;
 }
