@@ -8,8 +8,9 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   bars. They are converted to **SPX points** by subtracting the ES − SPX spread (basis) before any analysis.
   Predictions (1DTE/2DTE ranges, centers, key levels) are always stated in **SPX** terms. ES points are only an
   optional display toggle.
-- Basis per trading day = ES 1-hour bar starting 3:00 pm New York (closes 4:00 pm) minus the SPX daily close; during the
-  session, the median of matching 15-minute closes. Each ES bar has its own session's basis subtracted (this handles rolls).
+- Basis per trading day = median of ES − SPX over every matched 15-minute bar of the session (9:45 am–3:45 pm), where
+  15-minute data exists (~60 days); older days use the ES 3–4 pm bar close minus the SPX close (noisier by ~2–5 pts,
+  checked in `basis-check.mjs`). Before the open, yesterday's value; during the session, the median of the last 8 matched bars. Each ES bar has its own session's basis subtracted (this handles rolls).
 - Every prediction goes in `predictions.json` on the `quotes` branch, locks at the open (1DTE: target day; 2DTE: day
   before), is scored against the actual SPX close, and the scores tune the model (`fitModel` in
   `.github/scripts/update-market.mjs`). Keep the track record and its comparison with a "last price" guess visible.
