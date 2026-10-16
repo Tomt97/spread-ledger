@@ -28,6 +28,9 @@ jobs:
       - name: ES - SPX spread check
         continue-on-error: true
         run: node .github/scripts/basis-check.mjs > basis.txt 2>&1; tail -c 3000 basis.txt
+      - name: Failed Breakdown setup on ES
+        continue-on-error: true
+        run: node .github/scripts/backtest-fb.mjs > fb.txt 2>&1; tail -c 3000 fb.txt
       - name: Save results on the research branch
         run: |
           mkdir out && cp *.json *.txt out/ 2>/dev/null; cd out && ls
