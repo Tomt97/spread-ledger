@@ -704,6 +704,7 @@ function subscribeTo(uid){
   priceBook = {};
   unsubs.push(col("settings").onSnapshot(snap => { const pb = snap.docs.find(x => x.id === "prices"); priceBook = pb ? (pb.data().books || {}) : {}; if (settleSheet) renderSettleSheet(); autoSettle();
     const sh = snap.docs.find(x => x.id === "share"); shareLinks = sh && viewUid === me ? shareLinksOf(sh.data()) : []; if (shareSheet && shareSheet.edit == null) renderShareSheet(); scheduleShareSync();
+    const pl = snap.docs.find(x => x.id === "plans"); traderPlans = pl ? (pl.data().plans || []) : []; window.dispatchEvent(new Event("ledger:plans"));
     const d = snap.docs.find(x => x.id === "fees"); feeCfg = d ? {rates: {}, other: 0, ...d.data()} : JSON.parse(JSON.stringify(FEE_DEFAULTS)); updatePreview(); render(); }, () => {}));
   unsubs.push(col("market").onSnapshot(snap => { market = {}; snap.docs.forEach(d => { const v = d.data(); market[v.symbol || d.id] = v; }); scheduleRender(); }, () => {}));
   render();
@@ -833,7 +834,19 @@ function viewMember(uid){
 }
 function backToMine(){ page = "mine"; viewingName = ""; subscribeTo(me); }
 /* Read-only view of the app state for nav.js (the More menu and tab bar), plus the two actions it needs. */
+/* Trader plans (levels pasted from someone's daily plan), kept with the account's private settings; plans.js shows them. */
+var traderPlans = [];
+const PLANS_LS = "spread-ledger-plans";
 window.LedgerApp = {
+  plans: {
+    list: () => mode === "db" ? traderPlans : (() => { try { return JSON.parse(localStorage.getItem(PLANS_LS) || "[]"); } catch { return []; } })(),
+    canEdit: () => mode === "db" ? !readOnly() : true,
+    save: async list => {
+      const keep = list.slice(-120);
+      if (mode === "db") return dbWrite(() => col("settings").doc("plans").set({plans: keep, updatedAt: Date.now()}));
+      try { localStorage.setItem(PLANS_LS, JSON.stringify(keep)); } catch {} window.dispatchEvent(new Event("ledger:plans")); return true;
+    },
+  },
   state: () => ({ owner: !!isOwnerView, admin: !!adminMode, db: mode === "db", readOnly: readOnly(), adminOK: adminOK(), pending: pendingCount,
                   members: page === "members", viewingOther: mode === "db" && viewUid !== me }),
   backToMine: () => { if (page === "members" || viewUid !== me) backToMine(); },
@@ -2805,6 +2818,7 @@ if (!window.LEDGER_HOSTED) boot();
 
 <script src="outlook.js" defer></script>
 <script src="nav.js" defer></script>
+<script src="plans.js" defer></script>
 <script type="module" src="firebase.js"></script>
 </body>
 </html>

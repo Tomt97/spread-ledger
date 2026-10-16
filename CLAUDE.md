@@ -41,6 +41,12 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   swing highs, 75% at T1 + runner; strict variant needs a tested shelf and an elevator-down drop). Oct 2026 result: no
   significant edge vs the same trade at random bars (best +0.05R, t≈0.7, 2.5 years hourly ES). Don't present it as a
   signal unless a future test beats the random-entry control. His edge, if any, is in discretionary level choice.
+- Trader levels (`plans.js`, Market tab): the owner pastes a trader's plan (e.g. Mancini's ES plan); `parsePlan` reads
+  supports / targets / long triggers / breakdowns (skips recap sentences, expands 7765-55), plans are private in
+  `members/<uid>/settings/plans`, ES levels are converted with that day's basis, the current plan is drawn on the chart
+  (kind "trader") and each finished session is scored from the time the plan was saved (support held = flush ≤12 pts and
+  close back above; target hit; trigger = trade under then 15-min close above, worked if the next target came before the
+  flush low). Targets are compared with how often a level that far from the open is reached by chance.
 - What predicts the close (`backtest-center.mjs`, Oct 2026): 32 signals known at the open (gap, VIX, SKEW, other markets,
   calendar) gave no usable edge (−0.3 pt MAE, worse last year). Time of day matters: no-change MAE 31 pts at 10 am →
   12 pts at 3 pm (hourly ES, 2 years). The 10–20 pt goal is realistic only for afternoon re-forecasts.

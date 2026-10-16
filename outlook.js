@@ -147,6 +147,8 @@
     (lv.resistance || []).slice(0, 4).forEach(l => L.push({p: l.p, name: "Resistance", kind: "res", detail: `${l.tfs.join("/")} swings · ${l.touches} rejection${l.touches === 1 ? "" : "s"}`, score: l.score}));
     (lv.support || []).slice(0, 4).forEach(l => L.push({p: l.p, name: "Support", kind: "sup", detail: `${l.tfs.join("/")} swings · ${l.touches} rejection${l.touches === 1 ? "" : "s"}`, score: l.score}));
     (lv.refs || []).forEach(r => L.push({p: r.p, name: r.name, kind: r.group, detail: r.group === "gex" ? "options positioning" : r.group === "pivot" ? "from prior day's high, low, close" : r.group === "overnight" ? "ES since 6 pm" : "SPX regular session"}));
+    // levels from a trader's plan the owner pasted (plans.js), already in SPX points
+    try { (window.LedgerPlans && window.LedgerPlans.chartLevels() || []).forEach(l => L.push({...l, kind: "trader"})); } catch {}
     return L.sort((a, b) => b.p - a.p);
   }
 
@@ -158,6 +160,9 @@
     const nav = dash.querySelector(".acctbar");
     nav ? nav.after(sec) : dash.prepend(sec);
     render(); load();
+    // plans.js reads the market data (bars, spread) and redraws its levels on the chart
+    window.LedgerOutlook = { data: () => M, sessionOf: sec => sessionOf(sec), redraw: () => { if (M) render(); } };
+    window.addEventListener("ledger:plans", () => { if (M) render(); });
     setInterval(() => { if (document.visibilityState === "visible") load(); }, 10 * 60 * 1000);
     // pull-to-refresh (nav.js) asks every data source to reload; hand back the promise so it can say when it's done
     window.addEventListener("ledger:refresh", ev => ev.detail.wait.push(load().then(() => M && M.updated)));
@@ -167,7 +172,7 @@
   const isOpen = () => !!document.querySelector("#outlook > details[open]");
   async function load(){
     if (loading) return; loading = true;
-    try { const r = await fetch(host, {cache: "no-cache"}); if (!r.ok) throw 0; M = await r.json(); failed = false; }
+    try { const r = await fetch(host, {cache: "no-cache"}); if (!r.ok) throw 0; M = await r.json(); failed = false; window.dispatchEvent(new Event("ledger:market")); }
     catch { failed = !M; }
     loading = false; render();
   }
@@ -364,13 +369,13 @@
       parts.push(`<text x="${x0 + w / 2}" y="${Y(r1o[1]) - 4}" text-anchor="middle">${esc(r1.label)}</text>`);
     }
     // levels (labels in the right gutter, skipped when they would collide)
-    const levels = levelList().filter(l => (showDay || l.kind === "res" || l.kind === "sup" || l.kind === "gex") && l.p > lo && l.p < hi);
+    const levels = levelList().filter(l => (showDay || l.kind === "res" || l.kind === "sup" || l.kind === "gex" || l.kind === "trader") && l.p > lo && l.p < hi);
     const used = [];
     levels.forEach(l => {
-      const y = Y(l.p), col = l.kind === "res" ? "var(--loss)" : l.kind === "sup" ? "var(--gain)" : l.kind === "gex" ? "var(--accent)" : "var(--muted)";
-      parts.push(`<line x1="${ml}" x2="${ml + plotW + futW}" y1="${y}" y2="${y}" stroke="${col}" stroke-width="1" ${l.kind === "gex" || l.kind === "pivot" || l.kind === "day" || l.kind === "overnight" ? 'stroke-dasharray="4 3"' : ""} opacity=".8"/>`);
+      const y = Y(l.p), col = l.kind === "res" ? "var(--loss)" : l.kind === "sup" ? "var(--gain)" : l.kind === "gex" ? "var(--accent)" : l.kind === "trader" ? "var(--s4)" : "var(--muted)";
+      parts.push(`<line x1="${ml}" x2="${ml + plotW + futW}" y1="${y}" y2="${y}" stroke="${col}" stroke-width="${l.kind === "trader" ? 1.5 : 1}" ${l.kind === "trader" ? 'stroke-dasharray="1 3"' : l.kind === "gex" || l.kind === "pivot" || l.kind === "day" || l.kind === "overnight" ? 'stroke-dasharray="4 3"' : ""} opacity=".8"/>`);
       if (used.every(u => Math.abs(u - y) > 12)){ used.push(y);
-        let short = l.kind === "res" ? "R" : l.kind === "sup" ? "S" : l.name.replace(" (GEX)", "").replace(/Prior day /, "PD ").replace(/Overnight /, "ON ").replace(/ \(.*\)/, "");
+        let short = l.kind === "trader" ? l.short : l.kind === "res" ? "R" : l.kind === "sup" ? "S" : l.name.replace(" (GEX)", "").replace(/Prior day /, "PD ").replace(/Overnight /, "ON ").replace(/ \(.*\)/, "");
         // phones have a narrow gutter: trader shorthand so the name isn't cut off
         const SH = {"Put wall": "Put W", "Call wall": "Call W", "Gamma flip": "Flip", "PD high": "PDH", "PD low": "PDL", "PD close": "PDC", "ON high": "ONH", "ON low": "ONL"};
         if (phone && SH[short]) short = SH[short];
@@ -408,7 +413,7 @@
     parts.push(`<rect id="olHit" x="${ml}" y="0" width="${plotW}" height="${total}" fill="transparent"/>`);
     box.innerHTML = `<svg viewBox="0 0 ${W} ${total}" role="img" aria-label="${esc(tf)} chart of ES in ${inES ? "ES" : "SPX"} points with EMA 20, 50, 200${vw ? ", VWAP" : ""}, support and resistance">${parts.join("")}</svg><div class="ol-tip" id="olTip" hidden></div>`;
     document.getElementById("olLegend").innerHTML = series.map(([name, , col]) => `<span><i style="background:${col}"></i>${esc(name)}</span>`).join("")
-      + `<span><i style="background:var(--loss)"></i>Resistance</span><span><i style="background:var(--gain)"></i>Support</span><span><i style="background:var(--accent)"></i>GEX walls / flip</span>${r1 ? `<span><i class="box" style="background:var(--band)"></i>${esc(r1.label)} range 68% / ${OB(r1).p}%</span>` : ""}`;
+      + `<span><i style="background:var(--loss)"></i>Resistance</span><span><i style="background:var(--gain)"></i>Support</span><span><i style="background:var(--accent)"></i>GEX walls / flip</span>${levels.some(l => l.kind === "trader") ? `<span><i style="background:var(--s4)"></i>Trader plan</span>` : ""}${r1 ? `<span><i class="box" style="background:var(--band)"></i>${esc(r1.label)} range 68% / ${OB(r1).p}%</span>` : ""}`;
     // crosshair: snap to the nearest bar, one readout for every series
     const svg = box.querySelector("svg"), tip = box.querySelector("#olTip"), xl = svg.querySelector("#olX");
     const show = ev => {

@@ -132,6 +132,12 @@ It is built by the same **Update option quotes** Action, so the hourly cron-job.
 nearly around the clock, so you can also run that job overnight (Sunday 6 pm to Friday 5 pm New York time).
 Delayed data, for study only.
 
+## Trader levels (Market tab)
+Paste a trader's daily plan (for example an ES futures plan from X or a newsletter) into **Trader levels**. The app reads
+the supports, targets, long triggers and breakdown levels (tap a label to fix it), converts ES to SPX with that day's
+spread, draws the current plan on the chart and, after each session, scores every level: supports held, targets hit,
+long triggers worked, next to how often targets that far away get hit by chance. Plans are private to your account.
+
 ## Share your progress (read-only links)
 **Share progress** (next to Export to Excel) creates links like
 `https://<you>.github.io/spread-ledger/view.html?s=<random code>`, each for one account (or all combined).
