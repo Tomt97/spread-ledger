@@ -44,7 +44,7 @@ function simulate(B, s, entry, stop, t1, t2, horizon){
   return { got1, pts: pnl, R: pnl / R };
 }
 
-function study(B, { k, lookback, maxBars, horizon, label }){
+function study(B, { k, lookback, maxBars, horizon, label, strict }){
   const atr = atrSeries(B), { lows, highs } = pivots(B, k), sig = [];
   const state = new Map();   // pivot index → { flushAt, flushLow } while a flush is in progress
   let lastSig = -99;
@@ -53,7 +53,19 @@ function study(B, { k, lookback, maxBars, horizon, label }){
     for (const L of lows){
       if (L.conf >= t || t - L.i > lookback || L.used) continue;
       const st = state.get(L.i);
-      if (!st){ if (b.l < L.p - 0.25 * A) state.set(L.i, { at: t, low: b.l }); continue; }
+      if (!st){
+        if (b.l < L.p - 0.25 * A){
+          if (strict){
+            // "big previously set low": the level held at least one more test after it formed
+            let touches = 0; for (let j = L.i + 1; j < t; j++) if (Math.abs(B[j].l - L.p) <= 0.3 * A) touches++;
+            // "elevator down": a fast drop of at least 2.5 ATR over the last 6 bars into the flush
+            const hiBefore = Math.max(...B.slice(Math.max(0, t - 6), t + 1).map(x => x.h));
+            if (touches < 1 || hiBefore - b.l < 2.5 * A){ L.used = true; continue; }
+          }
+          state.set(L.i, { at: t, low: b.l });
+        }
+        continue;
+      }
       st.low = Math.min(st.low, b.l);
       if (st.low < L.p - 3 * A || t - st.at > maxBars){ L.used = true; continue; }         // a real breakdown, not a trap
       if (b.c > L.p + 0.1 * A && t - lastSig > 4){
@@ -88,8 +100,11 @@ function study(B, { k, lookback, maxBars, horizon, label }){
 const [es15, es60] = await Promise.all([chart("ES=F", "15m", "60d"), chart("ES=F", "60m", "730d")]);
 console.log(`ES 15m ${es15.length} bars, 60m ${es60.length} bars`);
 const out = { made: new Date().toISOString(), runs: [] };
-for (const [B, cfgs] of [[es15, [{ label: "15m k=4", k: 4, lookback: 300, maxBars: 10, horizon: 90 }, { label: "15m k=8", k: 8, lookback: 400, maxBars: 10, horizon: 90 }]],
-                         [es60, [{ label: "60m k=3", k: 3, lookback: 120, maxBars: 8, horizon: 46 }, { label: "60m k=6", k: 6, lookback: 200, maxBars: 8, horizon: 46 }]]])
+for (const [B, cfgs] of [[es15, [{ label: "15m k=4", k: 4, lookback: 300, maxBars: 10, horizon: 90 }, { label: "15m k=8", k: 8, lookback: 400, maxBars: 10, horizon: 90 },
+                                 { label: "15m k=8 STRICT (shelf + elevator down)", k: 8, lookback: 600, maxBars: 10, horizon: 90, strict: true }]],
+                         [es60, [{ label: "60m k=3", k: 3, lookback: 120, maxBars: 8, horizon: 46 }, { label: "60m k=6", k: 6, lookback: 200, maxBars: 8, horizon: 46 },
+                                 { label: "60m k=3 STRICT (shelf + elevator down)", k: 3, lookback: 200, maxBars: 8, horizon: 46, strict: true },
+                                 { label: "60m k=6 STRICT (shelf + elevator down)", k: 6, lookback: 300, maxBars: 8, horizon: 46, strict: true }]]])
   for (const c of cfgs) if (B.length > 300) out.runs.push(study(B, c));
 writeFileSync("fb-check.json", JSON.stringify(out, null, 1));
 console.log(JSON.stringify(out.runs.map(({ recent, ...r }) => r), null, 1));
