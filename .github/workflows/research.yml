@@ -25,6 +25,9 @@ jobs:
       - name: What helps predict the close
         continue-on-error: true
         run: node .github/scripts/backtest-center.mjs > center.txt 2>&1; tail -c 4000 center.txt
+      - name: ES - SPX spread check
+        continue-on-error: true
+        run: node .github/scripts/basis-check.mjs > basis.txt 2>&1; tail -c 3000 basis.txt
       - name: Save results on the research branch
         run: |
           mkdir out && cp *.json *.txt out/ 2>/dev/null; cd out && ls
