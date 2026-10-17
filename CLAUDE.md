@@ -39,6 +39,14 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   width = VIX prior close × √(time left / 6.5 h) × k for the hour (`rodCal`, from ~400 sessions of hourly ES). Walk-forward:
   68% held 69–72%, 84% 86–87% at every hour; 68% width ~71 pts at 10 am → ~27 at 3 pm. One forecast per clock hour is
   kept in predictions.json `rod` and scored at the close (`rodStats` by hour in the track record).
+- Strike odds (`dist` in market.json, "Strike odds" box): percentiles of the last 500 days' close move and dn/up excursion
+  in each model's scale units; close-below/above and touch odds per strike for 1DTE/2DTE; rest of day uses `rodCal.abs`
+  (touch ≈ 2 × finish).
+- Level scoring: `levelLog` in predictions.json snapshots the levels before each open and scores them after the close
+  (tested within 2 pts; held = ≤12 pts through and closed back on its side) against round numbers every 25 pts
+  (`levelStats`). 10+ year check (backtest-center part D): pivots held 30%, R1/S1 28%, R2/S2 29%, prior-day high/low 27%,
+  prior close 25% vs round numbers 23.6%: real but modest edge; most levels break when tested. Swing and GEX levels can
+  only be judged by the live log.
 - Each record logs the gamma regime at lock (`gex.total`, `flip`, `belowFlip`) and the implied move (`iv`). Once ~40 days are
   scored, test whether negative-gamma / below-flip days need wider ranges (no GEX history exists to backtest it).
 - Locks must use a fresh pre-market run: 8:30 am ET data (CPI, PPI, jobs) moves the open. The track record flags

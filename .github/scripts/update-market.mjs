@@ -299,7 +299,7 @@ const VM = { 1: SRC[1] === "vix1dPrev" ? fitPlain(R1) : fitScale(R1), 2: fitScal
 const VMS = { 1: withSkew(VM[1], R1), 2: withSkew(VM[2], R2) };
 // Strike odds: the last 500 days' moves in units of each model's scale, as percentiles (0..100). close = signed move from
 // the lock-time open to the close; dn/up = how far below/above that open the session traded (for "touch" odds).
-const pctl = a => { const s = [...a].sort((x, y) => x - y); return Array.from({ length: 101 }, (_, i) => r2(quantile(s, i / 100) * 1000) / 1000); };
+const pctl = a => { const s = [...a].sort((x, y) => x - y); return Array.from({ length: 101 }, (_, i) => Math.round(quantile(s, i / 100) * 1000) / 1000); };
 const DIST = Object.fromEntries([[1, R1], [2, R2]].map(([h, R]) => { const rows = R.filter(r => r.range > 0).slice(-500), sc = r => r.I * VM[h].scale(r.x);
   return [h, { close: pctl(rows.map(r => r.move / sc(r))), dn: pctl(rows.map(r => r.dn / sc(r))), up: pctl(rows.map(r => r.up / sc(r))), n: rows.length }]; }));
 // "Last price" baseline on the same footing as the predictions: average |move| from the lock-time open, last ~year.
@@ -364,7 +364,7 @@ const rodCal = (() => {
     const z = []; for (const [d, hs] of days){ if (hs[15] == null || hs[H - 1] == null || d >= nyNow.date) continue; const v = vixBefore(d); if (!v) continue;
       const unit = hs[H - 1] * v / 100 / Math.sqrt(252) * Math.sqrt((16 - H) / 6.5); z.push(Math.abs(hs[15] - hs[H - 1]) / unit); }
     const zz = z.slice(-400); if (zz.length >= 100) out[H] = { k68: quantile(zz, 0.68), k84: quantile(zz, 0.84), n: zz.length,
-      abs: Array.from({ length: 21 }, (_, i) => r2(quantile(zz, i / 20) * 1000) / 1000) };
+      abs: Array.from({ length: 21 }, (_, i) => Math.round(quantile(zz, i / 20) * 1000) / 1000) };
   }
   return out;
 })();
