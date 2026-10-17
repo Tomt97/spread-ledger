@@ -1,7 +1,7 @@
 // Walk-forward check of the 1DTE/2DTE range model (vol-model.mjs) against the plain "implied move × history" way.
 // Every day is predicted only from data before it. Writes model-check.json. Run in GitHub Actions (Yahoo is reachable there).
 import { readFileSync, writeFileSync } from "node:fs";
-import { buildRows, fitScale, fitPlain, fitCenter, walkForward, score, FEATURES, mean } from "./vol-model.mjs";
+import { buildRows, fitScale, fitPlain, fitCenter, walkForward, score, FEATURES, mean, withSkew, symBands, scoreBands, stressOf } from "./vol-model.mjs";
 
 const UA = { headers: { "User-Agent": "Mozilla/5.0 (spread-ledger backtest)" } };
 const nyDate = t => new Date(t * 1000).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
@@ -48,6 +48,16 @@ for (const h of [1, 2]){
   const common = [...sets[0]].filter(d => sets.every(s => s.has(d)));
   const recent = new Set(common.slice(-750));
   const out = {};
+  // skewed ranges vs symmetric, on the model each horizon uses live (1DTE: VIX1D at the prior close; 2DTE: VIX9D ridge)
+  { const R = h === 1 ? buildRows(days, vol, evOn, h, { src: "vix1dPrev" }).filter(r => r.move != null) : R9p;
+    const fit = h === 1 ? tr => fitPlain(tr) : tr => fitScale(tr), st = h === 1 ? 250 : 500;
+    const sk = { symmetric: walkForward(R, tr => symBands(fit(tr)), { start: st }), skewed: walkForward(R, tr => withSkew(fit(tr), tr), { start: st }),
+                 skewedStress: walkForward(R, tr => withSkew(fit(tr), tr, { stress: true }), { start: st }) };
+    const last = sk.symmetric.slice(-500).map(p => p.r.d), keep = new Set(last);
+    out.skew = Object.fromEntries(Object.entries(sk).map(([k, v]) => { const pv = v.filter(p => keep.has(p.r.d));
+      return [k, { last500: scoreBands(pv), stressDays: scoreBands(pv.filter(p => stressOf(p.r))), calmDays: scoreBands(pv.filter(p => !stressOf(p.r))), allYears: scoreBands(v) }]; }));
+    out.skew.stressShare = +(R.filter(stressOf).length / R.length * 100).toFixed(1);
+  }
   for (const [k, v] of Object.entries(variants)){
     const pv = v.filter(p => recent.has(p.r.d)); out[k] = score(pv);
     // coverage in calm vs stressed markets (VIX terciles), so a good average doesn't hide a regime problem

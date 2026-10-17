@@ -110,6 +110,18 @@ for (const H of [10, 11, 12, 13, 14, 15]){
   partB[`${H}:00`] = { days: out.length, maeNoChange: +mean(out.map(o => Math.abs(o.y))).toFixed(1), maeMomentum: +mean(out.map(o => Math.abs(o.y - o.hat))).toFixed(1),
     within10: +(out.filter(o => Math.abs(o.y) <= 10).length / out.length * 100).toFixed(0), within20: +(out.filter(o => Math.abs(o.y) <= 20).length / out.length * 100).toFixed(0), beta: +out.at(-1).b.toFixed(3) };
 }
-const report = { made: new Date().toISOString(), partA, partB };
+// Part C: "rest of day" ranges. At each hour, the rest-of-day move in units of the day's implied move (VIX at the prior
+// close) × √(time left / 6.5 h). Walk-forward quantiles give the 68%/84% half-widths; check coverage and width.
+const partC = {};
+for (const H of [10, 11, 12, 13, 14, 15]){
+  const rs = dayRows.filter(r => r.px[H] != null).map(r => { const v = prior("vix", r.d, 1); if (!v) return null;
+    const unit = r.px[H] * v.c / 100 / Math.sqrt(252) * Math.sqrt((16 - H) / 6.5); return { d: r.d, y: r.close - r.px[H], unit }; }).filter(Boolean);
+  if (rs.length < 200) continue;
+  const out = []; for (let i = 120; i < rs.length; i++){ const z = rs.slice(Math.max(0, i - 400), i).map(r => Math.abs(r.y) / r.unit);
+    const k68 = quantile(z, 0.68), k84 = quantile(z, 0.84), r = rs[i]; out.push({ in68: Math.abs(r.y) <= k68 * r.unit, in84: Math.abs(r.y) <= k84 * r.unit, w68: 2 * k68 * r.unit, w84: 2 * k84 * r.unit, k68, k84 }); }
+  partC[`${H}:00`] = { days: out.length, cov68: +(out.filter(o => o.in68).length / out.length * 100).toFixed(1), cov84: +(out.filter(o => o.in84).length / out.length * 100).toFixed(1),
+    width68: +mean(out.map(o => o.w68)).toFixed(1), width84: +mean(out.map(o => o.w84)).toFixed(1), k68: +out.at(-1).k68.toFixed(3), k84: +out.at(-1).k84.toFixed(3) };
+}
+const report = { made: new Date().toISOString(), partA, partB, partC };
 writeFileSync("center-check.json", JSON.stringify(report, null, 1));
-console.log(JSON.stringify({ ridgeAll: partA.ridgeAll, ridgeTop6: partA.ridgeTop6, top: uni.slice(0, 10), partB }, null, 1));
+console.log(JSON.stringify({ ridgeAll: partA.ridgeAll, ridgeTop6: partA.ridgeTop6, top: uni.slice(0, 10), partB, partC }, null, 1));

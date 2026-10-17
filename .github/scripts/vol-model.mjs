@@ -156,3 +156,33 @@ export function score(preds, centerOf = () => 0){
   }
   return res;
 }
+
+/* ---------- skewed (asymmetric) ranges ----------
+   SPX falls faster than it rises. Instead of ±k, take the down and up edges from the signed moves' own quantiles
+   (16th/84th for the 68% range, 8th/92nd for 84%). Optionally separate "stressed" days (VIX term structure inverted,
+   VIX above ~24, or a big drop the day before), which have the fatter downside tail. */
+export const stressOf = r => r.x[3] > 0 || r.x[4] > 0.18 || r.x[6] > 1;
+export function withSkew(model, train, { calN = 500, stress = false, minStress = 80 } = {}){
+  const ok = train.filter(r => r.range > 0).slice(-Math.max(calN, stress ? 1500 : 0));
+  const zOf = r => r.move / (r.I * model.scale(r.x));
+  const q = rows => { const z = rows.map(zOf); return { lo68: quantile(z, 0.16), hi68: quantile(z, 0.84), lo84: quantile(z, 0.08), hi84: quantile(z, 0.92) }; };
+  const calm = q(ok.slice(-calN)), st = stress ? ok.filter(stressOf) : [];
+  const stressed = stress && st.length >= minStress ? q(st.slice(-calN)) : null;
+  return { ...model, bands: r => (stressed && stressOf(r) ? stressed : calm), nStress: st.length };
+}
+export const symBands = model => ({ ...model, bands: () => ({ lo68: -model.k68, hi68: model.k68, lo84: -model.k84, hi84: model.k84 }) });
+export function scoreBands(preds){
+  const res = { n: preds.length };
+  for (const [name, a] of [["68", 0.32], ["84", 0.16]]){
+    let hit = 0, w = 0, is = 0, below = 0, above = 0;
+    for (const { r, m } of preds){
+      const s = r.I * m.scale(r.x), b = m.bands(r), lo = b["lo" + name] * s, hi = b["hi" + name] * s;
+      w += hi - lo; if (r.move < lo) below++; else if (r.move > hi) above++; else hit++;
+      is += (hi - lo) + (2 / a) * (r.move < lo ? lo - r.move : r.move > hi ? r.move - hi : 0);
+    }
+    const n = preds.length || 1;
+    Object.assign(res, { ["cov" + name]: +(hit / n * 100).toFixed(1), ["width" + name]: +(w / n).toFixed(1), ["is" + name]: +(is / n).toFixed(1),
+      ["below" + name]: +(below / n * 100).toFixed(1), ["above" + name]: +(above / n * 100).toFixed(1) });
+  }
+  return res;
+}
