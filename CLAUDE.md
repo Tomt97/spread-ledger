@@ -33,6 +33,12 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   FOMC days and in stressed markets. Center stays at last price + learned gamma pull: gap/momentum/mean-reversion
   centers did not beat "no change" out of sample. market.json `modelCheck` reports live walk-forward coverage; adopt a
   change only if it beats the current model on interval score at the same coverage.
+- 84% range is skewed (Oct 2026): `withSkew` takes its edges from signed-move quantiles (8th/92nd). Same interval score
+  as ±k over 500 days, closes below it 6.8% vs 8.2%. The 68% range stays symmetric (skewing it helped nothing).
+- Rest of day (`restOfDay` in market.json, "Today → 4:00 PM close" card): during the session, center = current price,
+  width = VIX prior close × √(time left / 6.5 h) × k for the hour (`rodCal`, from ~400 sessions of hourly ES). Walk-forward:
+  68% held 69–72%, 84% 86–87% at every hour; 68% width ~71 pts at 10 am → ~27 at 3 pm. One forecast per clock hour is
+  kept in predictions.json `rod` and scored at the close (`rodStats` by hour in the track record).
 - Each record logs the gamma regime at lock (`gex.total`, `flip`, `belowFlip`) and the implied move (`iv`). Once ~40 days are
   scored, test whether negative-gamma / below-flip days need wider ranges (no GEX history exists to backtest it).
 - Locks must use a fresh pre-market run: 8:30 am ET data (CPI, PPI, jobs) moves the open. The track record flags
