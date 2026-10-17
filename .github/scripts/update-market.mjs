@@ -3,7 +3,7 @@
 // Sources (free, no key): Yahoo Finance charts (ES=F, ^GSPC, ^VIX, ^VIX1D, ^VIX9D) and CBOE's delayed SPX options.
 // Everything here is a study aid built from delayed data, not a forecast anyone can rely on.
 import { readFileSync, writeFileSync } from "node:fs";
-import { buildRows, fitScale, fitPlain, walkForward, score, EVENT_KEYS } from "./vol-model.mjs";
+import { buildRows, fitScale, fitPlain, walkForward, score, EVENT_KEYS, withSkew } from "./vol-model.mjs";
 
 const UA = { headers: { "User-Agent": "Mozilla/5.0 (spread-ledger market)" } };
 const r2 = v => Math.round(v * 100) / 100;
@@ -236,7 +236,8 @@ function eventFactor(dates){
    the day before. Once the target day closes, it's scored. The scores tune the model below. */
 const PRED_FILE = process.env.PRED_FILE || "predictions.json";
 let records = [];
-try { records = JSON.parse(readFileSync(PRED_FILE, "utf8")).records || []; } catch { console.log("No earlier predictions found; starting a new log."); }
+let rod = [];
+try { const pf = JSON.parse(readFileSync(PRED_FILE, "utf8")); records = pf.records || []; rod = pf.rod || []; } catch { console.log("No earlier predictions found; starting a new log."); }
 const nyNow = ny(nowSec);
 const finished = new Map(spxD.filter(b => ny(b.t).date < nyNow.date || nyNow.mins >= 16 * 60 + 15).map(b => [ny(b.t).date, b]));
 for (const r of records){
@@ -293,6 +294,9 @@ const rowsFor = h => buildRows(finDays, VOL, evT, h, { src: SRC[h] }).filter(r =
 let R1 = rowsFor(1); const R2 = rowsFor(2);
 if (R1.length < 250){ SRC[1] = "vix9dPrev"; R1 = rowsFor(1); }          // VIX1D missing: fall back to the 9-day VIX model
 const VM = { 1: SRC[1] === "vix1dPrev" ? fitPlain(R1) : fitScale(R1), 2: fitScale(R2) };
+// The 84% range takes its down and up edges from the signed moves (SPX falls faster than it rises). Tested over 500 days:
+// same interval score as ±k, but closes below the range fell from 8.2% to 6.8% (1DTE), even with breaks above.
+const VMS = { 1: withSkew(VM[1], R1), 2: withSkew(VM[2], R2) };
 // "Last price" baseline on the same footing as the predictions: average |move| from the lock-time open, last ~year.
 [R1, R2].forEach((R, i) => { if (R.length >= 100) models[i].baseline = r2(mean(R.slice(-250).map(r => Math.abs(r.move)))); });
 // Walk-forward check of the model on recent days (each day predicted only from the days before it).
@@ -323,7 +327,8 @@ const ranges = [future[0], future[1]].map((e, i) => {
   const center = spot + mm.w * pull + mm.b;
   return { label: `${h}DTE`, h, exp: e.exp, spot: r2(spot), center: r2(center), magnet, pull: r2(pull), straddle: e.straddle, atmIv: e.iv, sigma: r2(sigma),
            implied: r2(row.I), unit: SRC[h].replace("Prev", "").toUpperCase(),
-           r68: [r2(center - k68 * s), r2(center + k68 * s)], r84: [r2(center - k84 * s), r2(center + k84 * s)],
+           r68: [r2(center - k68 * s), r2(center + k68 * s)],
+           r84: a > 0 ? [r2(center - k84 * s), r2(center + k84 * s)] : (b => [r2(center + b.lo84 * s), r2(center + b.hi84 * s)])(VMS[h].bands(row)),
            reach84: [r2(spot - M2.dn84 * s), r2(spot + M2.up84 * s)],
            k68: r2(k68), k84: r2(k84), within1: (i === 0 ? cal1 : cal2)?.within1 ?? null, events: ev.events,
            evF: r2(evF), evWhy: evNames.length && Math.abs(evF - 1) >= 0.02 ? `${evNames.join(" + ")} days` : ev.events.length ? (h === 1 ? "VIX1D already prices it" : "options price this news about right") : "quiet day (no scheduled news)" };
@@ -339,7 +344,42 @@ for (const r of ranges){
 }
 records.sort((a, b) => a.target.localeCompare(b.target) || a.h - b.h);
 records = records.slice(-400);
-writeFileSync("predictions.json", JSON.stringify({ updated: new Date().toISOString(), records }));
+
+/* ---------- rest of day: from now to today's 4 pm close ----------
+   Width = the day's implied move (VIX at the prior close) × √(time left / 6.5 h), times k for the hour, where k is the
+   68%/84% point of past rest-of-day moves in those units (hourly ES, last ~400 sessions). Tested walk-forward over two
+   years: the 68% range held 69–72% and the 84% range 86–87% at every hour (backtest-center.mjs, part C). Each hour's
+   first forecast is kept and scored at the close. */
+const vixClose = [...vx.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+const vixBefore = d => { let v = null; for (const [k, c] of vixClose){ if (k >= d) break; v = c; } return v; };
+const rodCal = (() => {
+  const days = new Map(); for (const b of es60){ const t = ny(b.t); if (t.h < 9 || t.h > 15 || t.m !== 0) continue; (days.get(t.date) || days.set(t.date, {}).get(t.date))[t.h] = b.c; }
+  const out = {};
+  for (let H = 10; H <= 15; H++){
+    const z = []; for (const [d, hs] of days){ if (hs[15] == null || hs[H - 1] == null || d >= nyNow.date) continue; const v = vixBefore(d); if (!v) continue;
+      const unit = hs[H - 1] * v / 100 / Math.sqrt(252) * Math.sqrt((16 - H) / 6.5); z.push(Math.abs(hs[15] - hs[H - 1]) / unit); }
+    const zz = z.slice(-400); if (zz.length >= 100) out[H] = { k68: quantile(zz, 0.68), k84: quantile(zz, 0.84), n: zz.length };
+  }
+  return out;
+})();
+let restOfDay = null;
+{ const m = nyNow.mins, live = partial.length && m >= 9 * 60 + 30 && m < 16 * 60, v = vixBefore(nyNow.date);
+  const H = Math.min(15, Math.max(10, Math.floor(m / 60) + (m % 60 ? 1 : 0))), cal = rodCal[H];
+  if (live && v && cal){
+    const rem = (16 * 60 - m) / 390, sig = spot * v / 100 / Math.sqrt(252) * Math.sqrt(rem);
+    restOfDay = { d: nyNow.date, at: new Date().toISOString(), spot: r2(spot), minsLeft: 16 * 60 - m, sigma: r2(sig), hour: H,
+                  r68: [r2(spot - cal.k68 * sig), r2(spot + cal.k68 * sig)], r84: [r2(spot - cal.k84 * sig), r2(spot + cal.k84 * sig)] };
+    const id = `${nyNow.date}|${Math.floor(m / 60)}`;      // one kept forecast per clock hour
+    if (!rod.some(x => x.id === id)) rod.push({ id, d: nyNow.date, at: restOfDay.at, hour: Math.floor(m / 60), mins: m, spot: restOfDay.spot, r68: restOfDay.r68, r84: restOfDay.r84 });
+  }
+}
+for (const x of rod){ if (x.actual != null || !finished.has(x.d)) continue; const c = finished.get(x.d).c;
+  x.actual = r2(c); x.err = r2(c - x.spot); x.in68 = c >= x.r68[0] && c <= x.r68[1]; x.in84 = c >= x.r84[0] && c <= x.r84[1]; }
+rod = rod.slice(-600);
+const rodStats = (() => { const by = {}; for (const x of rod.filter(x => x.actual != null)){ (by[x.hour] ||= []).push(x); }
+  return Object.entries(by).sort((a, b) => a[0] - b[0]).map(([h, xs]) => ({ hour: +h, n: xs.length, mae: r2(mean(xs.map(x => Math.abs(x.err)))),
+    hit68: Math.round(xs.filter(x => x.in68).length / xs.length * 100), hit84: Math.round(xs.filter(x => x.in84).length / xs.length * 100) })); })();
+writeFileSync("predictions.json", JSON.stringify({ updated: new Date().toISOString(), records, rod }));
 
 /* ---------- support & resistance (SPX points) ---------- */
 function swings(bars, k, weight, tf){
@@ -399,7 +439,8 @@ const out = {
           "4h": pack(a4h.filter(b => b.t > since(300))), "1d": pack(aD.filter(b => b.t > since(730))) },
   spxDaily: spxD.slice(-260).map(b => [ny(b.t).date, r2(b.o), r2(b.h), r2(b.l), r2(b.c)]),
   atr14: atrDaily, gex, expirations: expirations.slice(0, 6).map(({ T, ...e }) => e), ranges, calibration: { oneDay: cal1, twoDay: cal2 }, modelCheck,
-  predictions: { models, recent: records.slice(-60) },
+  predictions: { models, recent: records.slice(-60), rod: rod.slice(-60), rodStats },
+  restOfDay, rodCal: Object.fromEntries(Object.entries(rodCal).map(([h, c]) => [h, { k68: r2(c.k68), k84: r2(c.k84), n: c.n }])),
   events: { upcoming: EV.filter(e => e.d > nyNow.date || (e.d === nyNow.date && nyNow.mins < 16 * 60)).slice(0, 40),
             study: { all: allStats && { n: allStats.n, k68: allStats.k68, k84: allStats.k84, avgMove: allStats.avgMove, avgRange: allStats.avgRange }, quiet, types: study } },
   levels: { resistance: pickSide(1), support: pickSide(-1), refs },

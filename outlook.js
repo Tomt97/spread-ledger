@@ -94,6 +94,7 @@
 #outlook .ol-pf.pass{background:var(--gain-soft);color:var(--gain)}
 #outlook .ol-pf.fail{background:var(--loss-soft);color:var(--loss)}
 @media (max-width:640px){ #outlook .ol-tr .o .ol-pfs{display:flex} }
+#outlook .ol-rest{border-color:var(--accent)}
 #outlook .ol-err{color:var(--loss);font-size:13px}
 .ol-root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--pos:#2a78d6;--neg:#e34948;--band:rgba(42,120,214,.13);--band2:rgba(42,120,214,.07)}
 @media (prefers-color-scheme: dark){:root:where(:not([data-theme="light"])) .ol-root{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--pos:#3987e5;--neg:#e66767;--band:rgba(57,135,229,.2);--band2:rgba(57,135,229,.1)}}
@@ -202,7 +203,7 @@
         <div class="ol-lv"><span class="label" style="color:var(--gain)">Support</span><span>${k.sup.map(lvl).join(" · ") || "—"}</span></div></div>`; }).join("");
     el.innerHTML = `<div class="ol-top">
         <div class="ol-top-h"><span class="label">SPX outlook</span><span class="muted">${inES ? "ES" : "SPX"} ≈ <b style="color:var(--ink);font-family:var(--mono)">${px(M.spot)}</b> · likely (68%) close range · ${esc(timeLabel(Date.parse(M.updated) / 1000))}</span></div>
-        <div class="ol-minis">${compact || `<span class="ol-note">No upcoming SPX expirations in the data right now.</span>`}</div>
+        <div class="ol-minis">${restCard()}${compact || `<span class="ol-note">No upcoming SPX expirations in the data right now.</span>`}</div>
         <button class="linkish ol-golink" type="button" data-goview="market">Charts, news &amp; track record →</button></div>
       <details ${open ? "open" : ""}>
       <summary><span class="chev"><span class="more">Show charts &amp; details</span><span class="less">Hide charts &amp; details</span></span></summary>
@@ -297,6 +298,24 @@
   }
 
   /* Its own dropdown: every prediction next to what the market did that day (close, high, low). */
+  // During the session: where SPX likely closes today, from the current price and the time left (see update-market.mjs)
+  function restCard(){
+    const r = M.restOfDay; if (!r || Date.now() - Date.parse(r.at) > 75 * 60e3) return "";
+    const st = ((M.predictions || {}).rodStats || []).find(x => x.hour === Math.floor((16 * 60 - r.minsLeft) / 60));
+    const t = new Date(r.at).toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit", timeZone: "America/New_York"});
+    return `<div class="ol-mini ol-rest">
+      <div class="ol-mini-h"><span class="label">Today → 4:00 PM close</span><span class="muted">84%: ${px0(r.r84[0])}–${px0(r.r84[1])}</span></div>
+      <div class="ol-hl"><span>High <b>${px0(r.r68[1])}</b></span><span>Low <b>${px0(r.r68[0])}</b></span><span class="muted">now ${px0(r.spot)}</span></div>
+      <div class="ol-note">68% range from ${esc(t)} ET with ${Math.floor(r.minsLeft / 60)}h ${r.minsLeft % 60}m left. Narrows each hour.${st && st.n >= 5 ? ` Past ${st.n} days at this hour: avg miss ${st.mae.toFixed(0)} pts, 68% held ${st.hit68}%.` : ""}</div></div>`;
+  }
+  function restRecord(P){
+    const S = P.rodStats || []; if (!S.length) return `<div class="ol-note">Rest-of-day forecasts (one kept each hour of the session) are scored at the close; the first scores appear after today's close.</div>`;
+    const hr = h => h === 9 ? "9:30" : h < 12 ? `${h}:00 AM` : h === 12 ? "12:00 PM" : `${h - 12}:00 PM`;
+    return `<h3 style="margin-top:6px">Rest of day, by time of the forecast</h3>
+      <div class="scroll"><table><thead><tr><th>Made at (ET)</th><th class="r">Days</th><th class="r">Avg miss</th><th class="r">68% held</th><th class="r">84% held</th></tr></thead><tbody>
+      ${S.map(x => `<tr><td>${hr(x.hour)}</td><td class="num r">${x.n}</td><td class="num r">${x.mae.toFixed(1)}</td><td class="num r">${x.hit68}%</td><td class="num r">${x.hit84}%</td></tr>`).join("")}
+      </tbody></table></div>`;
+  }
   function trackRecord(P){
     const all = (P.recent || []), done = all.filter(r => r.actual).slice().reverse(), pending = all.filter(r => !r.actual);
     const models = (P.models || []).filter(m => m.n);
@@ -320,6 +339,7 @@
         <div class="ol-note">Each range keeps updating until it locks (1DTE at the target day's 9:30 am open, 2DTE at the open the day before), then it's scored against that day's SPX close. Miss = actual close − predicted center.</div>
         ${all.length ? `<div class="ol-trs"><div class="ol-tr ol-trh"><div class="d label">Day</div><div class="p label">Predicted</div><div class="m label">Market</div><div class="o label">Off by</div></div>
           ${pending.slice().reverse().map(row).join("")}${done.map(row).join("")}</div>` : ""}
+        ${restRecord(P)}
       </div></details>`;
   }
 
