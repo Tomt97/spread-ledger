@@ -122,6 +122,22 @@ for (const H of [10, 11, 12, 13, 14, 15]){
   partC[`${H}:00`] = { days: out.length, cov68: +(out.filter(o => o.in68).length / out.length * 100).toFixed(1), cov84: +(out.filter(o => o.in84).length / out.length * 100).toFixed(1),
     width68: +mean(out.map(o => o.w68)).toFixed(1), width84: +mean(out.map(o => o.w84)).toFixed(1), k68: +out.at(-1).k68.toFixed(3), k84: +out.at(-1).k84.toFixed(3) };
 }
-const report = { made: new Date().toISOString(), partA, partB, partC };
+// Part D: do classic day levels (prior day high/low/close, floor pivots) hold better than round numbers?
+// Same rule as the live level log, scaled to the price level of the day (12 pts and 25 pts at SPX ~7700).
+const partD = (() => {
+  const sum = {}, add = (g, j) => { const k = sum[g] ||= { tested: 0, held: 0 }; if (j && j.tested){ k.tested++; if (j.held) k.held++; } };
+  for (let i = 15; i < S.length; i++){
+    const b = S[i], p = S[i - 1], scale = b.o / 7700, tol = 2 * scale, deep = 12 * scale, step = 25 * scale;
+    let A = 0; for (let j = i - 14; j <= i - 1; j++) A += Math.max(S[j].h - S[j].l, Math.abs(S[j].h - S[j - 1].c), Math.abs(S[j].l - S[j - 1].c)); A /= 14;
+    const judge = x => { if (Math.abs(x - b.o) > 1.5 * A || Math.abs(x - b.o) < tol) return null; const sup = x < b.o, tested = sup ? b.l <= x + tol : b.h >= x - tol;
+      if (!tested) return { tested: false }; const depth = sup ? x - b.l : b.h - x; return { tested: true, held: depth <= deep && (sup ? b.c >= x : b.c <= x) }; };
+    const P = (p.h + p.l + p.c) / 3;
+    const L = { "prior day high/low": [p.h, p.l], "prior day close": [p.c], "pivot": [P], "R1/S1": [2 * P - p.l, 2 * P - p.h], "R2/S2": [P + (p.h - p.l), P - (p.h - p.l)] };
+    for (const [g, xs] of Object.entries(L)) for (const x of xs) add(g, judge(x));
+    for (let x = Math.ceil((b.o - 1.5 * A) / step) * step; x <= b.o + 1.5 * A; x += step) add("round numbers (baseline)", judge(x));
+  }
+  return Object.fromEntries(Object.entries(sum).map(([g, v]) => [g, { ...v, heldPct: +(v.held / (v.tested || 1) * 100).toFixed(1) }]));
+})();
+const report = { made: new Date().toISOString(), partA, partB, partC, partD };
 writeFileSync("center-check.json", JSON.stringify(report, null, 1));
-console.log(JSON.stringify({ ridgeAll: partA.ridgeAll, ridgeTop6: partA.ridgeTop6, top: uni.slice(0, 10), partB, partC }, null, 1));
+console.log(JSON.stringify({ ridgeAll: partA.ridgeAll, ridgeTop6: partA.ridgeTop6, top: uni.slice(0, 10), partB, partC, partD }, null, 1));

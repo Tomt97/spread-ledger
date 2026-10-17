@@ -95,6 +95,7 @@
 #outlook .ol-pf.fail{background:var(--loss-soft);color:var(--loss)}
 @media (max-width:640px){ #outlook .ol-tr .o .ol-pfs{display:flex} }
 #outlook .ol-rest{border-color:var(--accent)}
+#outlook .ol-odds{display:grid;gap:8px;min-width:0}
 #outlook .ol-err{color:var(--loss);font-size:13px}
 .ol-root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--pos:#2a78d6;--neg:#e34948;--band:rgba(42,120,214,.13);--band2:rgba(42,120,214,.07)}
 @media (prefers-color-scheme: dark){:root:where(:not([data-theme="light"])) .ol-root{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--pos:#3987e5;--neg:#e66767;--band:rgba(57,135,229,.2);--band2:rgba(57,135,229,.1)}}
@@ -220,6 +221,7 @@
           <div class="ol-stat"><span class="label">ATR (14 days)</span><span class="v">${M.atr14 != null ? M.atr14.toFixed(1) : "—"}</span><span class="s">average SPX daily range, points</span></div>
         </div>
         <div class="ol-ranges">${R.map(r => rangeCard(r, (P.models || []).find(m => m.h === r.h))).join("") || `<span class="ol-note">No ranges right now (no upcoming SPX expirations in the data).</span>`}</div>
+        ${oddsBox(R)}
         <div class="card-head"><h3>ES chart in ${inES ? "ES" : "SPX"} points</h3>
           <div class="ol-ctl">
             <div class="tabs" role="group" aria-label="Chart timeframe">${["15m", "1h", "2h", "4h", "1d"].map(t => `<button type="button" data-oltf="${t}" aria-pressed="${t === tf}">${t === "1d" ? "Daily" : t}</button>`).join("")}</div>
@@ -235,7 +237,7 @@
           <div style="display:grid;gap:8px;align-content:start;min-width:0"><h3>Key levels</h3>
             <div class="scroll" style="max-height:330px;overflow-y:auto"><table><thead><tr><th class="r">${inES ? "ES" : "SPX"}</th><th>Level</th><th class="r">Away</th></tr></thead><tbody>
             ${levelList().map(l => `<tr><td class="num r">${px(l.p)}</td><td><b>${esc(l.name)}</b><div class="ol-note">${esc(l.detail)}</div></td><td class="num r">${pts(l.p - M.spot)}</td></tr>`).join("")}
-            </tbody></table></div></div>
+            </tbody></table></div>${levelStatsBox()}</div>
         </div>
       </div></details>
       ${trackRecord(P)}
@@ -308,6 +310,47 @@
       <div class="ol-hl"><span>High <b>${px0(r.r68[1])}</b></span><span>Low <b>${px0(r.r68[0])}</b></span><span class="muted">now ${px0(r.spot)}</span></div>
       <div class="ol-note">68% range from ${esc(t)} ET with ${Math.floor(r.minsLeft / 60)}h ${r.minsLeft % 60}m left. Narrows each hour.${st && st.n >= 5 ? ` Past ${st.n} days at this hour: avg miss ${st.mae.toFixed(0)} pts, 68% held ${st.hit68}%.` : ""}</div></div>`;
   }
+  /* ---------- strike odds ----------
+     From the last 500 days of moves measured in the same units as today's range (market.json dist): the chance the
+     close lands below/above a strike, and the chance price trades through it during the session(s) ("touch"). */
+  const cdf = (pc, x, step) => { const n = pc.length - 1; if (x <= pc[0]) return 0; if (x >= pc[n]) return 1;
+    let i = 0; while (i < n - 1 && pc[i + 1] < x) i++; return Math.min(1, (i + (x - pc[i]) / ((pc[i + 1] - pc[i]) || 1e-9)) * step); };
+  const pctTxt = p => p < 0.01 ? "<1%" : p > 0.99 ? ">99%" : Math.round(p * 100) + "%";
+  function strikeOdds(K){
+    const out = [], D = M.dist || {};
+    const rd = M.restOfDay, cal = rd && M.rodCal && M.rodCal[rd.hour];
+    if (rd && cal && cal.abs && Date.now() - Date.parse(rd.at) < 75 * 60e3){
+      const beyond = 0.5 * (1 - cdf(cal.abs, Math.abs(K - rd.spot) / rd.sigma, 0.05));
+      out.push({ when: "Today (to 4 pm)", below: K < rd.spot ? beyond : 1 - beyond, touch: Math.min(1, 2 * beyond), approx: true });
+    }
+    for (const r of M.ranges || []){ const d = D[r.h]; if (!d) continue;
+      const below = cdf(d.close, (K - r.center) / r.sigma, 0.01);
+      const touch = K < r.spot ? 1 - cdf(d.dn, (r.spot - K) / r.sigma, 0.01) : 1 - cdf(d.up, (K - r.spot) / r.sigma, 0.01);
+      out.push({ when: `${r.label} · ${dayLabel(r.exp).replace(/^\w+, /, "")}`, below, touch }); }
+    return out;
+  }
+  function oddsRows(){
+    const raw = (LS("strikes") || defaultStrikes()).split(/[ ,]+/).map(Number).filter(v => isFinite(v) && v > 0).slice(0, 4);
+    return raw.flatMap(k => strikeOdds(k - off()).map((o, i) => `<tr><td class="num">${i ? "" : `<b>${Math.round(k)}</b>`}</td><td>${esc(o.when)}</td><td class="num r">${pctTxt(o.below)}</td><td class="num r">${pctTxt(1 - o.below)}</td><td class="num r">${o.approx ? "≈" : ""}${pctTxt(o.touch)}</td></tr>`)).join("")
+      || `<tr><td colspan="5" class="ol-note">Type one or more strikes above.</td></tr>`;
+  }
+  function defaultStrikes(){ const r = (M.ranges || [])[0]; if (!r) return ""; const o = off(); return `${Math.floor((r.r84[0] + o) / 25) * 25}, ${Math.ceil((r.r84[1] + o) / 25) * 25}`; }
+  function oddsBox(R){
+    if (!R.length || !M.dist) return "";
+    return `<div class="ol-odds"><div class="card-head"><h3>Strike odds</h3><label class="ol-note" style="display:flex;gap:6px;align-items:center">Strikes <input id="olK" inputmode="decimal" value="${esc(LS("strikes") || defaultStrikes())}" style="width:130px;font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)"></label></div>
+      <div class="scroll"><table><thead><tr><th>Strike</th><th>Expires</th><th class="r">Close below</th><th class="r">Close above</th><th class="r">Touch</th></tr></thead><tbody id="olOdds">${oddsRows()}</tbody></table></div>
+      <div class="ol-note">From the last 500 days of moves sized like today's range. Touch = trades through the strike between the lock-time open and that day's close (2DTE: both sessions). Today's touch is estimated as twice the finish odds. Not a price for the option; a study aid.</div></div>`;
+  }
+  // How our levels held vs round numbers (market.json levelStats; scored after each session)
+  function levelStatsBox(){
+    const S = M.levelStats; const NM = { swing: "Swing highs/lows", gex: "GEX walls / flip", day: "Prior day high/low/close", pivot: "Pivots", overnight: "Overnight high/low" };
+    if (!S || !S.sessions) return `<div class="ol-note" style="margin-top:8px">How these levels hold is scored after each session against round numbers (every 25 pts); the first results appear after the next close.</div>`;
+    return `<h3 style="margin-top:10px">How the levels held (last ${S.sessions} session${S.sessions === 1 ? "" : "s"})</h3>
+      <div class="scroll"><table><thead><tr><th>Level type</th><th class="r">Tested</th><th class="r">Held</th></tr></thead><tbody>
+      ${S.groups.map(g => `<tr><td>${esc(NM[g.g] || g.g)}</td><td class="num r">${g.tested}</td><td class="num r">${g.rate == null ? "—" : g.rate + "%"}</td></tr>`).join("")}
+      <tr><td class="muted">Round numbers (baseline)</td><td class="num r">${S.round.tested}</td><td class="num r">${S.round.rate == null ? "—" : S.round.rate + "%"}</td></tr></tbody></table></div>
+      <div class="ol-note">Tested = SPX came within 2 pts. Held = it went no more than 12 pts through and closed back on its side. A level type earns its place only if it holds more often than round numbers.${S.sessions < 20 ? " Too few sessions yet to judge." : ""}</div>`;
+  }
   function restRecord(P){
     const S = P.rodStats || []; if (!S.length) return `<div class="ol-note">Rest-of-day forecasts (one kept each hour of the session) are scored at the close; the first scores appear after today's close.</div>`;
     const hr = h => h === 9 ? "9:30" : h < 12 ? `${h}:00 AM` : h === 12 ? "12:00 PM" : `${h - 12}:00 PM`;
@@ -352,6 +395,7 @@
     el.querySelectorAll("[data-olzoom]").forEach(b => b.addEventListener("click", () => { zoom = Math.max(0.35, Math.min(3, zoom * (b.dataset.olzoom === "in" ? 0.7 : 1.4))); drawCharts(); }));
     const es = el.querySelector("#olES"); if (es) es.addEventListener("change", () => { inES = es.checked; LSset("es", inES ? "1" : "0"); render(); });
     const dy = el.querySelector("#olDay"); if (dy) dy.addEventListener("change", () => { showDay = dy.checked; LSset("day", showDay ? "1" : "0"); drawCharts(); });
+    const k = el.querySelector("#olK"); if (k) k.addEventListener("input", () => { LSset("strikes", k.value); const t = el.querySelector("#olOdds"); if (t) t.innerHTML = oddsRows(); });
   }
 
   function drawCharts(){ drawPrice(); drawGex(); }

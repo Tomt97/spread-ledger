@@ -236,8 +236,8 @@ function eventFactor(dates){
    the day before. Once the target day closes, it's scored. The scores tune the model below. */
 const PRED_FILE = process.env.PRED_FILE || "predictions.json";
 let records = [];
-let rod = [];
-try { const pf = JSON.parse(readFileSync(PRED_FILE, "utf8")); records = pf.records || []; rod = pf.rod || []; } catch { console.log("No earlier predictions found; starting a new log."); }
+let rod = [], levelLog = [];
+try { const pf = JSON.parse(readFileSync(PRED_FILE, "utf8")); records = pf.records || []; rod = pf.rod || []; levelLog = pf.levelLog || []; } catch { console.log("No earlier predictions found; starting a new log."); }
 const nyNow = ny(nowSec);
 const finished = new Map(spxD.filter(b => ny(b.t).date < nyNow.date || nyNow.mins >= 16 * 60 + 15).map(b => [ny(b.t).date, b]));
 for (const r of records){
@@ -297,6 +297,11 @@ const VM = { 1: SRC[1] === "vix1dPrev" ? fitPlain(R1) : fitScale(R1), 2: fitScal
 // The 84% range takes its down and up edges from the signed moves (SPX falls faster than it rises). Tested over 500 days:
 // same interval score as ±k, but closes below the range fell from 8.2% to 6.8% (1DTE), even with breaks above.
 const VMS = { 1: withSkew(VM[1], R1), 2: withSkew(VM[2], R2) };
+// Strike odds: the last 500 days' moves in units of each model's scale, as percentiles (0..100). close = signed move from
+// the lock-time open to the close; dn/up = how far below/above that open the session traded (for "touch" odds).
+const pctl = a => { const s = [...a].sort((x, y) => x - y); return Array.from({ length: 101 }, (_, i) => r2(quantile(s, i / 100) * 1000) / 1000); };
+const DIST = Object.fromEntries([[1, R1], [2, R2]].map(([h, R]) => { const rows = R.filter(r => r.range > 0).slice(-500), sc = r => r.I * VM[h].scale(r.x);
+  return [h, { close: pctl(rows.map(r => r.move / sc(r))), dn: pctl(rows.map(r => r.dn / sc(r))), up: pctl(rows.map(r => r.up / sc(r))), n: rows.length }]; }));
 // "Last price" baseline on the same footing as the predictions: average |move| from the lock-time open, last ~year.
 [R1, R2].forEach((R, i) => { if (R.length >= 100) models[i].baseline = r2(mean(R.slice(-250).map(r => Math.abs(r.move)))); });
 // Walk-forward check of the model on recent days (each day predicted only from the days before it).
@@ -358,7 +363,8 @@ const rodCal = (() => {
   for (let H = 10; H <= 15; H++){
     const z = []; for (const [d, hs] of days){ if (hs[15] == null || hs[H - 1] == null || d >= nyNow.date) continue; const v = vixBefore(d); if (!v) continue;
       const unit = hs[H - 1] * v / 100 / Math.sqrt(252) * Math.sqrt((16 - H) / 6.5); z.push(Math.abs(hs[15] - hs[H - 1]) / unit); }
-    const zz = z.slice(-400); if (zz.length >= 100) out[H] = { k68: quantile(zz, 0.68), k84: quantile(zz, 0.84), n: zz.length };
+    const zz = z.slice(-400); if (zz.length >= 100) out[H] = { k68: quantile(zz, 0.68), k84: quantile(zz, 0.84), n: zz.length,
+      abs: Array.from({ length: 21 }, (_, i) => r2(quantile(zz, i / 20) * 1000) / 1000) };
   }
   return out;
 })();
@@ -379,7 +385,7 @@ rod = rod.slice(-600);
 const rodStats = (() => { const by = {}; for (const x of rod.filter(x => x.actual != null)){ (by[x.hour] ||= []).push(x); }
   return Object.entries(by).sort((a, b) => a[0] - b[0]).map(([h, xs]) => ({ hour: +h, n: xs.length, mae: r2(mean(xs.map(x => Math.abs(x.err)))),
     hit68: Math.round(xs.filter(x => x.in68).length / xs.length * 100), hit84: Math.round(xs.filter(x => x.in84).length / xs.length * 100) })); })();
-writeFileSync("predictions.json", JSON.stringify({ updated: new Date().toISOString(), records, rod }));
+// (predictions.json is written at the end, together with the level log)
 
 /* ---------- support & resistance (SPX points) ---------- */
 function swings(bars, k, weight, tf){
@@ -429,6 +435,37 @@ if (prev){ ref(prev.h, `Prior day high (${ny(prev.t).date.slice(5)})`, "day"); r
 if (overnight.length){ ref(Math.max(...overnight.map(b => b.h)), "Overnight high", "overnight"); ref(Math.min(...overnight.map(b => b.l)), "Overnight low", "overnight"); }
 if (gex){ ref(gex.callWall, "Call wall (GEX)", "gex"); ref(gex.putWall, "Put wall (GEX)", "gex"); ref(gex.flip, "Gamma flip", "gex"); }
 
+/* ---------- how our levels hold up ----------
+   The levels shown before a session's open are kept, and after the close each one near the open (within 1.5 ATR) is
+   scored on the SPX session: below the open it's support, above it resistance. Tested = price came within 2 pts.
+   Held = it went no more than 12 pts through and closed back on its side. Round numbers (every 25 pts) in the same
+   zone, same rules, are the baseline: levels are only useful if they hold more often than round numbers do. */
+{ const lockDay = future[0] && future[0].exp;
+  if (lockDay && nowSec < atNY(lockDay, 9 * 60 + 30)){
+    const snap = [...pickSide(1).map(l => ({ p: l.p, g: "swing" })), ...pickSide(-1).map(l => ({ p: l.p, g: "swing" })), ...refs.map(r => ({ p: r.p, g: r.group, name: r.name }))];
+    const i = levelLog.findIndex(x => x.d === lockDay), rec = { d: lockDay, at: new Date().toISOString(), levels: snap };
+    if (i >= 0 && !levelLog[i].score) levelLog[i] = rec; else if (i < 0) levelLog.push(rec);
+  }
+  const judge = (p, b, A) => { if (Math.abs(p - b.o) > 1.5 * A || Math.abs(p - b.o) < 2) return null;
+    const sup = p < b.o, tested = sup ? b.l <= p + 2 : b.h >= p - 2; if (!tested) return { sup, tested: false };
+    const depth = sup ? p - b.l : b.h - p; return { sup, tested: true, held: depth <= 12 && (sup ? b.c >= p : b.c <= p) }; };
+  for (const x of levelLog){
+    if (x.score || !finished.has(x.d)) continue;
+    const b = finished.get(x.d), A = atrDaily || 50, by = {};
+    for (const l of x.levels){ const j = judge(l.p, b, A); if (!j) continue; const k = by[l.g] ||= { tested: 0, held: 0, untested: 0 }; if (j.tested){ k.tested++; if (j.held) k.held++; } else k.untested++; }
+    const rn = { tested: 0, held: 0, untested: 0 };
+    for (let p = Math.ceil((b.o - 1.5 * A) / 25) * 25; p <= b.o + 1.5 * A; p += 25){ const j = judge(p, b, A); if (!j) continue; if (j.tested){ rn.tested++; if (j.held) rn.held++; } else rn.untested++; }
+    x.score = { o: r2(b.o), h: r2(b.h), l: r2(b.l), c: r2(b.c), by, round: rn };
+  }
+  levelLog = levelLog.slice(-250);
+}
+const levelStats = (() => {
+  const S = levelLog.filter(x => x.score).slice(-60), sum = {}, rn = { tested: 0, held: 0 };
+  for (const x of S){ for (const [g, v] of Object.entries(x.score.by)){ const k = sum[g] ||= { tested: 0, held: 0 }; k.tested += v.tested; k.held += v.held; } rn.tested += x.score.round.tested; rn.held += x.score.round.held; }
+  return { sessions: S.length, groups: Object.entries(sum).map(([g, v]) => ({ g, ...v, rate: v.tested ? Math.round(v.held / v.tested * 100) : null })), round: { ...rn, rate: rn.tested ? Math.round(rn.held / rn.tested * 100) : null } };
+})();
+writeFileSync("predictions.json", JSON.stringify({ updated: new Date().toISOString(), records, rod, levelLog }));
+
 const out = {
   updated: new Date().toISOString(),
   note: "Delayed data (Yahoo Finance, CBOE). ES converted to SPX points by subtracting each day's ES minus SPX spread at the 4:00 pm close.",
@@ -440,10 +477,10 @@ const out = {
   spxDaily: spxD.slice(-260).map(b => [ny(b.t).date, r2(b.o), r2(b.h), r2(b.l), r2(b.c)]),
   atr14: atrDaily, gex, expirations: expirations.slice(0, 6).map(({ T, ...e }) => e), ranges, calibration: { oneDay: cal1, twoDay: cal2 }, modelCheck,
   predictions: { models, recent: records.slice(-60), rod: rod.slice(-60), rodStats },
-  restOfDay, rodCal: Object.fromEntries(Object.entries(rodCal).map(([h, c]) => [h, { k68: r2(c.k68), k84: r2(c.k84), n: c.n }])),
+  restOfDay, rodCal: Object.fromEntries(Object.entries(rodCal).map(([h, c]) => [h, { k68: r2(c.k68), k84: r2(c.k84), n: c.n, abs: c.abs }])), dist: DIST,
   events: { upcoming: EV.filter(e => e.d > nyNow.date || (e.d === nyNow.date && nyNow.mins < 16 * 60)).slice(0, 40),
             study: { all: allStats && { n: allStats.n, k68: allStats.k68, k84: allStats.k84, avgMove: allStats.avgMove, avgRange: allStats.avgRange }, quiet, types: study } },
-  levels: { resistance: pickSide(1), support: pickSide(-1), refs },
+  levels: { resistance: pickSide(1), support: pickSide(-1), refs }, levelStats,
 };
 writeFileSync("market.json", JSON.stringify(out));
 console.log(`market.json: spot ${out.spot}, ES ${out.es.last}, basis ${out.basis.now}, ranges ${JSON.stringify(ranges.map(r => [r.label, r.r68]))}, GEX flip ${gex?.flip}`);
