@@ -1,0 +1,302 @@
+vix9 3017, dxy 3018, vix 3020, skew 2960, tnx 3017, gold 3017, oil 3015, btc 4384, hyg 3017, spx 3017, rut 3017, dax 3044, ndx 3017, n225 2930 | ES 60m 13635
+Part A rows 2957 (2015-01-14..2026-10-16)
+{
+ "ridgeAll": [
+  {
+   "lambda": 30,
+   "days": 2207,
+   "maeNoChange": 26.79,
+   "maeModel": 26.79,
+   "gainPts": 0,
+   "dmT": 0.01,
+   "directionHit": 54.8,
+   "avgShiftPts": 7.7,
+   "lastYear": {
+    "maeNoChange": 33.78,
+    "maeModel": 34.54
+   }
+  },
+  {
+   "lambda": 300,
+   "days": 2207,
+   "maeNoChange": 26.79,
+   "maeModel": 26.61,
+   "gainPts": 0.18,
+   "dmT": 0.86,
+   "directionHit": 55.6,
+   "avgShiftPts": 6.8,
+   "lastYear": {
+    "maeNoChange": 33.78,
+    "maeModel": 34.43
+   }
+  },
+  {
+   "lambda": 3000,
+   "days": 2207,
+   "maeNoChange": 26.79,
+   "maeModel": 26.47,
+   "gainPts": 0.32,
+   "dmT": 2.66,
+   "directionHit": 56.2,
+   "avgShiftPts": 3.8,
+   "lastYear": {
+    "maeNoChange": 33.78,
+    "maeModel": 33.97
+   }
+  }
+ ],
+ "ridgeTop6": [
+  {
+   "lambda": 30,
+   "days": 2207,
+   "maeNoChange": 26.79,
+   "maeModel": 26.6,
+   "gainPts": 0.19,
+   "dmT": 0.86,
+   "directionHit": 55.1,
+   "avgShiftPts": 7,
+   "lastYear": {
+    "maeNoChange": 33.78,
+    "maeModel": 34.74
+   }
+  },
+  {
+   "lambda": 300,
+   "days": 2207,
+   "maeNoChange": 26.79,
+   "maeModel": 26.52,
+   "gainPts": 0.27,
+   "dmT": 1.34,
+   "directionHit": 55.4,
+   "avgShiftPts": 6.4,
+   "lastYear": {
+    "maeNoChange": 33.78,
+    "maeModel": 34.63
+   }
+  },
+  {
+   "lambda": 3000,
+   "days": 2207,
+   "maeNoChange": 26.79,
+   "maeModel": 26.45,
+   "gainPts": 0.34,
+   "dmT": 2.86,
+   "directionHit": 56.2,
+   "avgShiftPts": 3.6,
+   "lastYear": {
+    "maeNoChange": 33.78,
+    "maeModel": 34.01
+   }
+  }
+ ],
+ "top": [
+  {
+   "f": "vixOvernight",
+   "corr": -0.166,
+   "t": -9,
+   "firstHalf": -0.267,
+   "secondHalf": -0.053
+  },
+  {
+   "f": "gap",
+   "corr": 0.158,
+   "t": 8.6,
+   "firstHalf": 0.206,
+   "secondHalf": 0.115
+  },
+  {
+   "f": "n225Today",
+   "corr": 0.055,
+   "t": 3,
+   "firstHalf": 0.107,
+   "secondHalf": 0.002
+  },
+  {
+   "f": "tnxChg",
+   "corr": -0.038,
+   "t": -2,
+   "firstHalf": -0.064,
+   "secondHalf": -0.018
+  },
+  {
+   "f": "opex",
+   "corr": -0.038,
+   "t": -2,
+   "firstHalf": -0.033,
+   "secondHalf": -0.042
+  },
+  {
+   "f": "prevOC",
+   "corr": -0.034,
+   "t": -1.9,
+   "firstHalf": -0.049,
+   "secondHalf": -0.019
+  },
+  {
+   "f": "mon",
+   "corr": 0.03,
+   "t": 1.6,
+   "firstHalf": 0.005,
+   "secondHalf": 0.056
+  },
+  {
+   "f": "tomStart",
+   "corr": 0.027,
+   "t": 1.5,
+   "firstHalf": 0.012,
+   "secondHalf": 0.042
+  },
+  {
+   "f": "btcRet",
+   "corr": 0.027,
+   "t": 1.4,
+   "firstHalf": 0.044,
+   "secondHalf": -0.002
+  },
+  {
+   "f": "fomc",
+   "corr": -0.024,
+   "t": -1.3,
+   "firstHalf": 0,
+   "secondHalf": -0.037
+  }
+ ],
+ "partB": {
+  "10:00": {
+   "days": 465,
+   "maeNoChange": 31.3,
+   "maeMomentum": 31.3,
+   "within10": 22,
+   "within20": 45,
+   "beta": 0.166
+  },
+  "11:00": {
+   "days": 465,
+   "maeNoChange": 26.1,
+   "maeMomentum": 26.2,
+   "within10": 31,
+   "within20": 54,
+   "beta": 0.013
+  },
+  "12:00": {
+   "days": 465,
+   "maeNoChange": 22.3,
+   "maeMomentum": 22.5,
+   "within10": 37,
+   "within20": 63,
+   "beta": 0.016
+  },
+  "13:00": {
+   "days": 465,
+   "maeNoChange": 19.1,
+   "maeMomentum": 19.4,
+   "within10": 44,
+   "within20": 69,
+   "beta": 0.025
+  },
+  "14:00": {
+   "days": 465,
+   "maeNoChange": 15.2,
+   "maeMomentum": 15.3,
+   "within10": 52,
+   "within20": 77,
+   "beta": 0.028
+  },
+  "15:00": {
+   "days": 465,
+   "maeNoChange": 12.2,
+   "maeMomentum": 12.6,
+   "within10": 59,
+   "within20": 83,
+   "beta": 0.04
+  }
+ },
+ "partC": {
+  "10:00": {
+   "days": 465,
+   "cov68": 70.8,
+   "cov84": 86,
+   "width68": 71.4,
+   "width84": 106.9,
+   "k68": 0.464,
+   "k84": 0.647
+  },
+  "11:00": {
+   "days": 465,
+   "cov68": 70.3,
+   "cov84": 85.6,
+   "width68": 61.7,
+   "width84": 86,
+   "k68": 0.425,
+   "k84": 0.612
+  },
+  "12:00": {
+   "days": 465,
+   "cov68": 68.8,
+   "cov84": 86.7,
+   "width68": 49,
+   "width84": 76.4,
+   "k68": 0.401,
+   "k84": 0.567
+  },
+  "13:00": {
+   "days": 465,
+   "cov68": 72,
+   "cov84": 85.6,
+   "width68": 42.2,
+   "width84": 67,
+   "k68": 0.376,
+   "k84": 0.594
+  },
+  "14:00": {
+   "days": 465,
+   "cov68": 72.3,
+   "cov84": 86.9,
+   "width68": 35.6,
+   "width84": 57,
+   "k68": 0.357,
+   "k84": 0.561
+  },
+  "15:00": {
+   "days": 465,
+   "cov68": 70.5,
+   "cov84": 86.7,
+   "width68": 27.1,
+   "width84": 44.3,
+   "k68": 0.408,
+   "k84": 0.663
+  }
+ },
+ "partD": {
+  "prior day high/low": {
+   "tested": 2492,
+   "held": 677,
+   "heldPct": 27.2
+  },
+  "prior day close": {
+   "tested": 1551,
+   "held": 388,
+   "heldPct": 25
+  },
+  "pivot": {
+   "tested": 1624,
+   "held": 488,
+   "heldPct": 30
+  },
+  "R1/S1": {
+   "tested": 2545,
+   "held": 718,
+   "heldPct": 28.2
+  },
+  "R2/S2": {
+   "tested": 1364,
+   "held": 391,
+   "heldPct": 28.7
+  },
+  "round numbers (baseline)": {
+   "tested": 7561,
+   "held": 1788,
+   "heldPct": 23.6
+  }
+ }
+}
