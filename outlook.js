@@ -96,6 +96,9 @@
 @media (max-width:640px){ #outlook .ol-tr .o .ol-pfs{display:flex} }
 #outlook .ol-rest{border-color:var(--accent)}
 #outlook .ol-odds{display:grid;gap:8px;min-width:0}
+#outlook .ol-setups{display:grid;gap:8px;min-width:0}
+#outlook .ol-best{font-size:14px;padding:10px 12px;border-radius:10px;background:var(--sunk);border-left:4px solid var(--accent)}
+#outlook .ol-trade b{font-family:var(--mono)}
 #outlook .ol-err{color:var(--loss);font-size:13px}
 .ol-root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--pos:#2a78d6;--neg:#e34948;--band:rgba(42,120,214,.13);--band2:rgba(42,120,214,.07)}
 @media (prefers-color-scheme: dark){:root:where(:not([data-theme="light"])) .ol-root{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--pos:#3987e5;--neg:#e66767;--band:rgba(57,135,229,.2);--band2:rgba(57,135,229,.1)}}
@@ -201,7 +204,8 @@
         ${r.events && r.events.length ? `<div class="ol-evs">${r.events.map(e => evBadge(e, r.h > 1)).join("")}<span class="ol-note">${r.evF && Math.abs(r.evF - 1) >= 0.02 ? `range ${r.evF > 1 ? "widened" : "narrowed"} ${Math.round(Math.abs(r.evF - 1) * 100)}% for ${esc(r.evWhy)}` : esc(r.evWhy && r.evWhy.startsWith("scheduled") ? r.evWhy : "options price this news about right")}</span></div>` : ""}
         <div class="ol-hl"><span>High <b>${px0(r.r68[1])}</b></span><span>Low <b>${px0(r.r68[0])}</b></span><span class="muted">center ${px0(r.center)}</span></div>
         <div class="ol-lv"><span class="label" style="color:var(--loss)">Resistance</span><span>${k.res.map(lvl).join(" · ") || "—"}</span></div>
-        <div class="ol-lv"><span class="label" style="color:var(--gain)">Support</span><span>${k.sup.map(lvl).join(" · ") || "—"}</span></div></div>`; }).join("");
+        <div class="ol-lv"><span class="label" style="color:var(--gain)">Support</span><span>${k.sup.map(lvl).join(" · ") || "—"}</span></div>
+        ${tradeLine(r.trade)}</div>`; }).join("");
     el.innerHTML = `<div class="ol-top">
         <div class="ol-top-h"><span class="label">SPX outlook</span><span class="muted">${inES ? "ES" : "SPX"} ≈ <b style="color:var(--ink);font-family:var(--mono)">${px(M.spot)}</b> · likely (68%) close range · ${esc(timeLabel(Date.parse(M.updated) / 1000))}</span></div>
         <div class="ol-minis">${restCard()}${compact || `<span class="ol-note">No upcoming SPX expirations in the data right now.</span>`}</div>
@@ -220,6 +224,7 @@
           <div class="ol-stat"><span class="label">Call wall · Put wall</span><span class="v">${g ? `${px0(g.callWall)} · ${px0(g.putWall)}` : "—"}</span><span class="s">largest call / put gamma strikes</span></div>
           <div class="ol-stat"><span class="label">ATR (14 days)</span><span class="v">${M.atr14 != null ? M.atr14.toFixed(1) : "—"}</span><span class="s">average SPX daily range, points</span></div>
         </div>
+        ${setupsBox(R)}
         <div class="ol-ranges">${R.map(r => rangeCard(r, (P.models || []).find(m => m.h === r.h))).join("") || `<span class="ol-note">No ranges right now (no upcoming SPX expirations in the data).</span>`}</div>
         ${oddsBox(R)}
         <div class="card-head"><h3>ES chart in ${inES ? "ES" : "SPX"} points</h3>
@@ -308,8 +313,33 @@
     return `<div class="ol-mini ol-rest">
       <div class="ol-mini-h"><span class="label">Today → 4:00 PM close</span><span class="muted">84%: ${px0(r.r84[0])}–${px0(r.r84[1])}</span></div>
       <div class="ol-hl"><span>High <b>${px0(r.r68[1])}</b></span><span>Low <b>${px0(r.r68[0])}</b></span><span class="muted">now ${px0(r.spot)}</span></div>
+      ${tradeLine(r.trade)}
       <div class="ol-note">68% range from ${esc(t)} ET with ${Math.floor(r.minsLeft / 60)}h ${r.minsLeft % 60}m left. Narrows each hour.${st && st.n >= 5 ? ` Past ${st.n} days at this hour: avg miss ${st.mae.toFixed(0)} pts, 68% held ${st.hit68}%.` : ""}</div></div>`;
   }
+  /* ---------- credit spread ideas (market.json r.trade, built in update-market.mjs) ---------- */
+  const sp = x => `${x.type} ${x.short}/${x.long}`;
+  function tradeLine(T){
+    if (!T) return "";
+    const ideas = [T.pcs, T.ccs].filter(Boolean);
+    if (!ideas.length) return `<div class="ol-lv ol-trade"><span class="label">Spread</span><span class="muted">Skip: ${esc(T.why || "nothing qualifies")}</span></div>`;
+    return `<div class="ol-lv ol-trade"><span class="label">${ideas.length === 2 ? "Iron condor" : "Spread"}</span><span>${ideas.map(x => `<b>${sp(x)}</b> <span class="muted">$${x.credit.toFixed(2)} · ${x.pop}% POP</span>`).join(" · ")}</span></div>`;
+  }
+  function setupsBox(R){
+    const rows = [], rd = M.restOfDay && Date.now() - Date.parse(M.restOfDay.at) < 75 * 60e3 ? M.restOfDay : null;
+    if (rd && rd.trade) rows.push(["Today (0DTE)", rd.trade]);
+    R.forEach(r => r.trade && rows.push([`${r.label} · ${dayLabel(r.exp).replace(/^\w+, /, "")}`, r.trade]));
+    if (!rows.length) return "";
+    const all = rows.flatMap(([when, T]) => [T.pcs, T.ccs].filter(Boolean).map(x => ({ when, ...x })));
+    const best = all.slice().sort((a, b) => b.ev - a.ev)[0];
+    const line = (when, x) => `<tr><td>${esc(when)}</td><td><b>${sp(x)}</b></td><td class="num r">$${x.credit.toFixed(2)}<div class="ol-note">fill ${x.natural.toFixed(2)}</div></td><td class="num r">${x.pop}%</td><td class="num r">${x.pTouch}%</td><td class="num r ${x.ev >= 0 ? "gain" : "loss"}">${x.ev >= 0 ? "+" : "−"}$${Math.abs(x.ev).toFixed(0)}</td><td class="num r">$${x.maxLoss.toFixed(0)}</td></tr>`;
+    return `<div class="ol-setups"><div class="card-head"><h3>Suggested setups</h3><span class="ol-note">short strike outside the 84% range · credit ≥ $0.80 · else skip</span></div>
+      ${best ? `<div class="ol-best">${best.ev >= 0 ? "Best idea" : "Least bad"}: <b>${esc(best.when)} ${sp(best)}</b> for $${best.credit.toFixed(2)} · ${best.pop}% chance of profit · ${best.pTouch}% chance the short strike gets touched · expected ${best.ev >= 0 ? "+" : "−"}$${Math.abs(best.ev).toFixed(0)} per spread${best.ev < 0 ? ". The premium is below what the model thinks the risk is worth: skip or size down." : "."}</div>` : `<div class="ol-best">Nothing qualifies right now: no spread outside the 84% range pays $0.80. Skip.</div>`}
+      <div class="scroll"><table><thead><tr><th>Expires</th><th>Spread</th><th class="r">Credit</th><th class="r">POP</th><th class="r">Touch</th><th class="r">Exp. value</th><th class="r">Max loss</th></tr></thead><tbody>
+      ${rows.map(([when, T]) => { const ideas = [T.pcs, T.ccs].filter(Boolean); return ideas.length ? ideas.map(x => line(when, x)).join("") + (T.ic ? `<tr><td></td><td class="ol-note" colspan="6">Both together = iron condor for $${T.ic.credit.toFixed(2)} (expected ${T.ic.ev >= 0 ? "+" : "−"}$${Math.abs(T.ic.ev).toFixed(0)}, max loss $${T.ic.maxLoss.toFixed(0)})</td></tr>` : "") : `<tr><td>${esc(when)}</td><td colspan="6" class="ol-note">Skip: ${esc(T.why || "nothing qualifies")}</td></tr>`; }).join("")}
+      </tbody></table></div>
+      <div class="ol-note">Credit = mid price (fill = sell at the bid, buy at the ask). POP = chance SPX closes on the safe side of the break-even. Expected value and odds come from the same 500-day distribution as the ranges. Delayed CBOE quotes: check live prices before trading. A study aid, not advice.</div></div>`;
+  }
+
   /* ---------- strike odds ----------
      From the last 500 days of moves measured in the same units as today's range (market.json dist): the chance the
      close lands below/above a strike, and the chance price trades through it during the session(s) ("touch"). */

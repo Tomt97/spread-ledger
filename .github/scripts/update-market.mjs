@@ -106,7 +106,7 @@ function atNY(iso, mins){
   return guess + (mins - t.mins) * 60;
 }
 const expirySec = (iso, am) => atNY(iso, am ? 9 * 60 + 30 : 16 * 60);       // AM-settled monthly SPX: 9:30 am
-let gex = null, expirations = [];
+let gex = null, expirations = [], chainByExp = new Map();      // chainByExp: PM-settled SPXW options per expiration (for spread ideas)
 if (chain?.data?.options){
   const S = +chain.data.current_price, opts = [];
   for (const q of chain.data.options){
@@ -140,7 +140,7 @@ if (chain?.data?.options){
           byStrike: rows.filter(r => Math.abs(r[0] / S - 1) <= 0.05).map(r => [r[0], Math.round(r[1]), Math.round(r[2])]),
           curve: grid.map(([x, y]) => [r2(x), Math.round(y)]) };
   // Implied move for each expiration from the at-the-money straddle (PM-settled SPXW only).
-  const byExp = new Map();
+  const byExp = new Map(); chainByExp = byExp;
   for (const o of opts){ if (o.am) continue; (byExp.get(o.exp) || byExp.set(o.exp, []).get(o.exp)).push(o); }
   expirations = [...byExp.keys()].sort().map(exp => {
     const list = byExp.get(exp), ks = [...new Set(list.map(o => o.K))];
@@ -434,6 +434,55 @@ if (prev){ ref(prev.h, `Prior day high (${ny(prev.t).date.slice(5)})`, "day"); r
   ref(P, "Pivot", "pivot"); ref(2 * P - prev.l, "R1", "pivot"); ref(2 * P - prev.h, "S1", "pivot"); ref(P + (prev.h - prev.l), "R2", "pivot"); ref(P - (prev.h - prev.l), "S2", "pivot"); }
 if (overnight.length){ ref(Math.max(...overnight.map(b => b.h)), "Overnight high", "overnight"); ref(Math.min(...overnight.map(b => b.l)), "Overnight low", "overnight"); }
 if (gex){ ref(gex.callWall, "Call wall (GEX)", "gex"); ref(gex.putWall, "Put wall (GEX)", "gex"); ref(gex.flip, "Gamma flip", "gex"); }
+
+/* ---------- credit spread ideas (put credit spread / call credit spread) ----------
+   For today's session (rest of day), 1DTE and 2DTE: the short strike must be outside the 84% range (about an 8% chance
+   or less of finishing beyond it), width 5 then 10 points, and the mid credit at least $0.80; of those, the strike
+   farthest from the price. Each idea carries the model's odds and expected value (credit minus the average loss over
+   the model's close distribution), so overpriced or underpaid premium shows. Delayed CBOE quotes: check live prices. */
+const MIN_CREDIT = 0.8, WIDTHS = [5, 10];
+const cdfP = (pc, x, step) => { const n = pc.length - 1; if (x <= pc[0]) return 0; if (x >= pc[n]) return 1; let i = 0; while (i < n - 1 && pc[i + 1] < x) i++; return Math.min(1, (i + (x - pc[i]) / ((pc[i + 1] - pc[i]) || 1e-9)) * step); };
+function spreadIdeas(exp, view){
+  const list = chainByExp.get(exp); if (!list || !view) return null;
+  const mid = o => o && o.bid > 0 && o.ask > 0 && o.ask >= o.bid ? (o.bid + o.ask) / 2 : null;
+  const book = t => new Map(list.filter(o => o.type === t).map(o => [o.K, o]));
+  const P = book("P"), C = book("C");
+  const side = (isPut) => {
+    const B = isPut ? P : C, edge = isPut ? view.lo84 : view.hi84;
+    const shorts = [...B.keys()].filter(K => isPut ? K <= edge : K >= edge).sort((a, b) => isPut ? a - b : b - a);   // farthest first
+    for (const w of WIDTHS) for (const K of shorts){
+      const L = isPut ? K - w : K + w, so = B.get(K), lo = B.get(L), ms = mid(so), ml = mid(lo);
+      if (ms == null || ml == null) continue;
+      const credit = ms - ml; if (credit < MIN_CREDIT || credit >= w) continue;
+      // model odds: close beyond the short strike, beyond the long strike, and trading through the short strike
+      const pShort = isPut ? view.below(K) : 1 - view.below(K), pLong = isPut ? view.below(L) : 1 - view.below(L);
+      const loss = view.samples.reduce((a, S) => a + Math.max(0, Math.min(w, isPut ? K - S : S - K)), 0) / view.samples.length;
+      return { type: isPut ? "PCS" : "CCS", short: K, long: L, width: w, credit: r2(credit), natural: r2(Math.max(0, so.bid - lo.ask)),
+               pop: Math.round((1 - (isPut ? view.below(K - credit) : 1 - view.below(K + credit))) * 100), pItm: Math.round(pShort * 100), pMax: Math.round(pLong * 100),
+               pTouch: Math.round(view.touch(K) * 100), ev: r2((credit - loss) * 100), maxLoss: r2((w - credit) * 100), ror: Math.round(credit / (w - credit) * 100), dist: r2(Math.abs(K - spot)) };
+    }
+    return null;
+  };
+  const pcs = side(true), ccs = side(false);
+  return { exp, pcs, ccs, ic: pcs && ccs ? { credit: r2(pcs.credit + ccs.credit), ev: r2(pcs.ev + ccs.ev), maxLoss: r2(Math.max(pcs.width, ccs.width) * 100 - (pcs.credit + ccs.credit) * 100) } : null,
+           why: !pcs && !ccs ? `No spread outside the 84% range pays $${MIN_CREDIT.toFixed(2)}` : null };
+}
+// the model's view of a horizon: the 84% edges, the chance of closing below a price, touch odds, close samples
+function viewFor(r){
+  const d = DIST[r.h]; if (!d) return null;
+  const below = K => cdfP(d.close, (K - r.center) / r.sigma, 0.01);
+  const touch = K => K < r.spot ? 1 - cdfP(d.dn, (r.spot - K) / r.sigma, 0.01) : 1 - cdfP(d.up, (K - r.spot) / r.sigma, 0.01);
+  const samples = d.close.slice(0, 100).map((z, i) => r.center + (z + d.close[i + 1]) / 2 * r.sigma);   // 100 equal-probability points
+  return { lo84: r.r84[0], hi84: r.r84[1], below, touch, samples };
+}
+for (const r of ranges) r.trade = spreadIdeas(r.exp, viewFor(r));
+if (restOfDay){
+  const cal = rodCal[restOfDay.hour], absP = cal.abs, sig = restOfDay.sigma, x = K => Math.abs(K - restOfDay.spot) / sig;
+  const tail = K => 0.5 * (1 - cdfP(absP, x(K), 0.05));
+  const below = K => K < restOfDay.spot ? tail(K) : 1 - tail(K);
+  const samples = []; for (let i = 0; i < 20; i++){ const z = (absP[i] + absP[i + 1]) / 2; samples.push(restOfDay.spot + z * sig, restOfDay.spot - z * sig); }
+  restOfDay.trade = spreadIdeas(nyNow.date, { lo84: restOfDay.r84[0], hi84: restOfDay.r84[1], below, touch: K => Math.min(1, 2 * tail(K)), samples });
+}
 
 /* ---------- how our levels hold up ----------
    The levels shown before a session's open are kept, and after the close each one near the open (within 1.5 ATR) is
