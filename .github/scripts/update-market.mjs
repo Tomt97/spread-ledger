@@ -450,6 +450,10 @@ function spreadIdeas(exp, view){
   const side = (isPut) => {
     const B = isPut ? P : C, edge = isPut ? view.lo84 : view.hi84;
     const shorts = [...B.keys()].filter(K => isPut ? K <= edge : K >= edge).sort((a, b) => isPut ? a - b : b - a);   // farthest first
+    // what the safe strike nearest the range edge pays at the widest width, to show how far short a "skip" is
+    const near = shorts.length ? (() => { const K = shorts[shorts.length - 1], w = WIDTHS[WIDTHS.length - 1], L = isPut ? K - w : K + w, a = mid(B.get(K)), b = mid(B.get(L));
+      return a != null && b != null ? { short: K, long: L, credit: r2(a - b) } : null; })() : null;
+    side.near = side.near || {}; side.near[isPut ? "P" : "C"] = near;
     for (const w of WIDTHS) for (const K of shorts){
       const L = isPut ? K - w : K + w, so = B.get(K), lo = B.get(L), ms = mid(so), ml = mid(lo);
       if (ms == null || ml == null) continue;
@@ -463,9 +467,10 @@ function spreadIdeas(exp, view){
     }
     return null;
   };
-  const pcs = side(true), ccs = side(false);
-  return { exp, pcs, ccs, ic: pcs && ccs ? { credit: r2(pcs.credit + ccs.credit), ev: r2(pcs.ev + ccs.ev), maxLoss: r2(Math.max(pcs.width, ccs.width) * 100 - (pcs.credit + ccs.credit) * 100) } : null,
-           why: !pcs && !ccs ? `No spread outside the 84% range pays $${MIN_CREDIT.toFixed(2)}` : null };
+  const pcs = side(true), ccs = side(false), nr = side.near || {};
+  const nearTxt = (n, t) => n ? `${t} ${n.short}/${n.long} pays $${n.credit.toFixed(2)}` : null;
+  return { exp, pcs, ccs, nearPut: !pcs ? nearTxt(nr.P, "PCS") : null, nearCall: !ccs ? nearTxt(nr.C, "CCS") : null, ic: pcs && ccs ? { credit: r2(pcs.credit + ccs.credit), ev: r2(pcs.ev + ccs.ev), maxLoss: r2(Math.max(pcs.width, ccs.width) * 100 - (pcs.credit + ccs.credit) * 100) } : null,
+           why: !pcs && !ccs ? `no spread outside the 84% range pays $${MIN_CREDIT.toFixed(2)}${[nearTxt(nr.P, "PCS"), nearTxt(nr.C, "CCS")].filter(Boolean).length ? ` (closest: ${[nearTxt(nr.P, "PCS"), nearTxt(nr.C, "CCS")].filter(Boolean).join(", ")})` : ""}` : null };
 }
 // the model's view of a horizon: the 84% edges, the chance of closing below a price, touch odds, close samples
 function viewFor(r){
