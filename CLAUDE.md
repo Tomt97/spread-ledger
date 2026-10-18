@@ -42,6 +42,10 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
 - Strike odds (`dist` in market.json, "Strike odds" box): percentiles of the last 500 days' close move and dn/up excursion
   in each model's scale units; close-below/above and touch odds per strike for 1DTE/2DTE; rest of day uses `rodCal.abs`
   (touch ≈ 2 × finish).
+- Spread ideas (owner's rule, Oct 2026): for today (0DTE, during the session), 1DTE and 2DTE, suggest a PCS and/or CCS only
+  if the short strike is outside the 84% range and the mid credit is ≥ $0.80 (5 then 10 wide, farthest strike that
+  pays); else "skip" with what the closest safe spread pays. Both sides = iron condor. Each idea shows POP, touch odds and
+  expected value from the model distribution (`spreadIdeas` in update-market.mjs; "Suggested setups" + card lines).
 - Level scoring: `levelLog` in predictions.json snapshots the levels before each open and scores them after the close
   (tested within 2 pts; held = ≤12 pts through and closed back on its side) against round numbers every 25 pts
   (`levelStats`). 10+ year check (backtest-center part D): pivots held 30%, R1/S1 28%, R2/S2 29%, prior-day high/low 27%,

@@ -97,6 +97,10 @@
 #outlook .ol-rest{border-color:var(--accent)}
 #outlook .ol-odds{display:grid;gap:8px;min-width:0}
 #outlook .ol-setups{display:grid;gap:8px;min-width:0}
+#outlook .ol-setcards{display:none;gap:8px}
+#outlook .ol-setcard{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:3px;font-size:14px}
+#outlook .ol-setcard b{font-family:var(--mono)}
+@media (max-width:640px){ #outlook .ol-setcards{display:grid} #outlook .ol-settable{display:none} }
 #outlook .ol-best{font-size:14px;padding:10px 12px;border-radius:10px;background:var(--sunk);border-left:4px solid var(--accent)}
 #outlook .ol-trade b{font-family:var(--mono)}
 #outlook .ol-err{color:var(--loss);font-size:13px}
@@ -334,7 +338,10 @@
     const line = (when, x) => `<tr><td>${esc(when)}</td><td><b>${sp(x)}</b></td><td class="num r">$${x.credit.toFixed(2)}<div class="ol-note">fill ${x.natural.toFixed(2)}</div></td><td class="num r">${x.pop}%</td><td class="num r">${x.pTouch}%</td><td class="num r ${x.ev >= 0 ? "gain" : "loss"}">${x.ev >= 0 ? "+" : "−"}$${Math.abs(x.ev).toFixed(0)}</td><td class="num r">$${x.maxLoss.toFixed(0)}</td></tr>`;
     return `<div class="ol-setups"><div class="card-head"><h3>Suggested setups</h3><span class="ol-note">short strike outside the 84% range · credit ≥ $0.80 · else skip</span></div>
       ${best ? `<div class="ol-best">${best.ev >= 0 ? "Best idea" : "Least bad"}: <b>${esc(best.when)} ${sp(best)}</b> for $${best.credit.toFixed(2)} · ${best.pop}% chance of profit · ${best.pTouch}% chance the short strike gets touched · expected ${best.ev >= 0 ? "+" : "−"}$${Math.abs(best.ev).toFixed(0)} per spread${best.ev < 0 ? ". The premium is below what the model thinks the risk is worth: skip or size down." : "."}</div>` : `<div class="ol-best">Nothing qualifies right now: no spread outside the 84% range pays $0.80. Skip.</div>`}
-      <div class="scroll"><table><thead><tr><th>Expires</th><th>Spread</th><th class="r">Credit</th><th class="r">POP</th><th class="r">Touch</th><th class="r">Exp. value</th><th class="r">Max loss</th></tr></thead><tbody>
+      <div class="ol-setcards">${rows.map(([when, T]) => { const ideas = [T.pcs, T.ccs].filter(Boolean);
+        return `<div class="ol-setcard"><span class="label">${esc(when)}</span>${ideas.length ? ideas.map(x => `<div><b>${sp(x)}</b> · $${x.credit.toFixed(2)} <span class="ol-note">(fill ${x.natural.toFixed(2)})</span></div><div class="ol-note">${x.pop}% chance of profit · ${x.pTouch}% touch · expected <span class="${x.ev >= 0 ? "gain" : "loss"}">${x.ev >= 0 ? "+" : "−"}$${Math.abs(x.ev).toFixed(0)}</span> · max loss $${x.maxLoss.toFixed(0)}</div>`).join("")
+          + (T.ic ? `<div class="ol-note">Both = iron condor $${T.ic.credit.toFixed(2)}, expected ${T.ic.ev >= 0 ? "+" : "−"}$${Math.abs(T.ic.ev).toFixed(0)}</div>` : "") : `<div class="ol-note">Skip: ${esc(T.why || "nothing qualifies")}</div>`}</div>`; }).join("")}</div>
+      <div class="scroll ol-settable"><table><thead><tr><th>Expires</th><th>Spread</th><th class="r">Credit</th><th class="r">POP</th><th class="r">Touch</th><th class="r">Exp. value</th><th class="r">Max loss</th></tr></thead><tbody>
       ${rows.map(([when, T]) => { const ideas = [T.pcs, T.ccs].filter(Boolean); return ideas.length ? ideas.map(x => line(when, x)).join("") + (T.ic ? `<tr><td></td><td class="ol-note" colspan="6">Both together = iron condor for $${T.ic.credit.toFixed(2)} (expected ${T.ic.ev >= 0 ? "+" : "−"}$${Math.abs(T.ic.ev).toFixed(0)}, max loss $${T.ic.maxLoss.toFixed(0)})</td></tr>` : "") : `<tr><td>${esc(when)}</td><td colspan="6" class="ol-note">Skip: ${esc(T.why || "nothing qualifies")}</td></tr>`; }).join("")}
       </tbody></table></div>
       <div class="ol-note">Credit = mid price (fill = sell at the bid, buy at the ask). POP = chance SPX closes on the safe side of the break-even. Expected value and odds come from the same 500-day distribution as the ranges. Delayed CBOE quotes: check live prices before trading. A study aid, not advice.</div></div>`;
