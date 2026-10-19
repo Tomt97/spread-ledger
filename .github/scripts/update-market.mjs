@@ -449,8 +449,8 @@ if (gex){ ref(gex.callWall, "Call wall (GEX)", "gex"); ref(gex.putWall, "Put wal
    the model's close distribution), so overpriced or underpaid premium shows. Delayed CBOE quotes: check live prices. */
 const MIN_CREDIT = 0.8, WIDTHS = [5, 10];
 const cdfP = (pc, x, step) => { const n = pc.length - 1; if (x <= pc[0]) return 0; if (x >= pc[n]) return 1; let i = 0; while (i < n - 1 && pc[i + 1] < x) i++; return Math.min(1, (i + (x - pc[i]) / ((pc[i + 1] - pc[i]) || 1e-9)) * step); };
-// 1DTE (owner's rule, Oct 2026): short strike at about 0.07 delta, 20 wide, at least $0.80, else skip.
-const RULES = { 1: { delta: 0.07, width: 20 } };
+// 1DTE and 2DTE (owner's rule, Oct 2026): short strike at about 0.07 delta, 20 wide, at least $0.80, else skip.
+const RULES = { 1: { delta: 0.07, width: 20 }, 2: { delta: 0.07, width: 20 } };
 function spreadIdeas(exp, view, rule){
   const list = chainByExp.get(exp); if (!list || !view) return null;
   const mid = o => o && o.bid > 0 && o.ask > 0 && o.ask >= o.bid ? (o.bid + o.ask) / 2 : null;

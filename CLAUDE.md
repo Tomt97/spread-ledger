@@ -44,8 +44,8 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
 - Strike odds (`dist` in market.json, "Strike odds" box): percentiles of the last 500 days' close move and dn/up excursion
   in each model's scale units; close-below/above and touch odds per strike for 1DTE/2DTE; rest of day uses `rodCal.abs`
   (touch ≈ 2 × finish).
-- Spread ideas (owner's rules, Oct 2026): 1DTE = short strike nearest 0.07 delta (not over), 20 wide, mid ≥ $0.80, else skip
-  (`RULES` in update-market.mjs; the owner finds this safer). Today (0DTE) and 2DTE: suggest a PCS and/or CCS only
+- Spread ideas (owner's rules, Oct 2026): 1DTE and 2DTE = short strike nearest 0.07 delta (not over), 20 wide, mid ≥ $0.80, else skip
+  (`RULES` in update-market.mjs; the owner finds this safer). Today (0DTE): suggest a PCS and/or CCS only
   if the short strike is outside the 84% range and the mid credit is ≥ $0.80 (5 then 10 wide, farthest strike that
   pays); else "skip" with what the closest safe spread pays. Both sides = iron condor. Each idea shows POP, touch odds and
   expected value from the model distribution (`spreadIdeas` in update-market.mjs; "Suggested setups" + card lines).
