@@ -114,7 +114,7 @@ if (chain?.data?.options){
     const exp = `20${m[2]}-${m[3]}-${m[4]}`, K = +m[6] / 1000, am = m[1] === "SPX";
     const T = (expirySec(exp, am) - nowSec) / (365 * 864e2);
     if (T <= 0 || T > 60 / 365) continue;
-    opts.push({ exp, am, K, type: m[5], T: Math.max(T, 1 / (365 * 24 * 4)), iv: +q.iv || 0, g: +q.gamma || 0, oi: +q.open_interest || 0, bid: +q.bid || 0, ask: +q.ask || 0 });
+    opts.push({ exp, am, K, type: m[5], T: Math.max(T, 1 / (365 * 24 * 4)), iv: +q.iv || 0, g: +q.gamma || 0, oi: +q.open_interest || 0, bid: +q.bid || 0, ask: +q.ask || 0, delta: +q.delta || 0 });
   }
   // Dealer gamma per 1% move, in $: calls +, puts - (the usual "dealers short puts, long calls" convention).
   const per = (g, oi, s) => g * oi * 100 * s * s * 0.01;
@@ -288,6 +288,13 @@ const finDays = spxD.filter(b => finished.has(ny(b.t).date)).map(dOf);
 const partial = spxD.filter(b => ny(b.t).date === nyNow.date && !finished.has(nyNow.date)).map(dOf);
 const vmap = bars => new Map(bars.map(b => [ny(b.t).date, { o: b.o, c: b.c }]));
 const VOL = { vix: vmap(vixD), vix9d: vmap(vix9dD), vix1d: vmap(vix1dD) };
+// During the session VIX1D measures only what's left of today and sinks toward the close, while the model is calibrated on
+// its closing value (which prices the next session). For predictions made before today's close, stand in tomorrow's VIX1D
+// with the live VIX9D × the usual closing VIX1D/VIX9D ratio (median of the last 120 sessions).
+if (!finished.has(nyNow.date) && VOL.vix1d.has(nyNow.date) && VOL.vix9d.has(nyNow.date)){
+  const ratios = [...VOL.vix1d.entries()].filter(([d]) => d < nyNow.date && VOL.vix9d.get(d)).slice(-120).map(([d, v]) => v.c / VOL.vix9d.get(d).c);
+  if (ratios.length >= 30){ const est = VOL.vix9d.get(nyNow.date).c * median(ratios); VOL.vix1d.set(nyNow.date, { o: VOL.vix1d.get(nyNow.date).o, c: est, est: true }); }
+}
 const evT = new Map([...evOn].map(([d, es]) => [d, es.map(e => e.type)]));
 const SRC = { 1: "vix1dPrev", 2: "vix9dPrev" };
 const rowsFor = h => buildRows(finDays, VOL, evT, h, { src: SRC[h] }).filter(r => r.move != null);
@@ -442,13 +449,30 @@ if (gex){ ref(gex.callWall, "Call wall (GEX)", "gex"); ref(gex.putWall, "Put wal
    the model's close distribution), so overpriced or underpaid premium shows. Delayed CBOE quotes: check live prices. */
 const MIN_CREDIT = 0.8, WIDTHS = [5, 10];
 const cdfP = (pc, x, step) => { const n = pc.length - 1; if (x <= pc[0]) return 0; if (x >= pc[n]) return 1; let i = 0; while (i < n - 1 && pc[i + 1] < x) i++; return Math.min(1, (i + (x - pc[i]) / ((pc[i + 1] - pc[i]) || 1e-9)) * step); };
-function spreadIdeas(exp, view){
+// 1DTE (owner's rule, Oct 2026): short strike at about 0.07 delta, 20 wide, at least $0.80, else skip.
+const RULES = { 1: { delta: 0.07, width: 20 } };
+function spreadIdeas(exp, view, rule){
   const list = chainByExp.get(exp); if (!list || !view) return null;
   const mid = o => o && o.bid > 0 && o.ask > 0 && o.ask >= o.bid ? (o.bid + o.ask) / 2 : null;
   const book = t => new Map(list.filter(o => o.type === t).map(o => [o.K, o]));
   const P = book("P"), C = book("C");
   const side = (isPut) => {
     const B = isPut ? P : C, edge = isPut ? view.lo84 : view.hi84;
+    if (rule){
+      // the strike nearest the target delta without going over it (|Δ| ≤ 0.07), fixed width
+      const pick = [...B.values()].filter(o => o.delta && Math.abs(o.delta) <= rule.delta && (isPut ? o.K < spot : o.K > spot)).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
+      if (!pick) return null;
+      const K = pick.K, w = rule.width, L = isPut ? K - w : K + w, ms = mid(pick), ml = mid(B.get(L)); if (ms == null || ml == null) return null;
+      const credit = ms - ml;
+      side.near = side.near || {}; side.near[isPut ? "P" : "C"] = { short: K, long: L, credit: r2(credit) };
+      if (credit < MIN_CREDIT) return null;
+      const pShort = isPut ? view.below(K) : 1 - view.below(K), pLong = isPut ? view.below(L) : 1 - view.below(L);
+      const loss = view.samples.reduce((a, S) => a + Math.max(0, Math.min(w, isPut ? K - S : S - K)), 0) / view.samples.length;
+      return { type: isPut ? "PCS" : "CCS", short: K, long: L, width: w, delta: r2(Math.abs(pick.delta)), credit: r2(credit), natural: r2(Math.max(0, pick.bid - B.get(L).ask)),
+               pop: Math.round((1 - (isPut ? view.below(K - credit) : 1 - view.below(K + credit))) * 100), pItm: Math.round(pShort * 100), pMax: Math.round(pLong * 100),
+               pTouch: Math.round(view.touch(K) * 100), ev: r2((credit - loss) * 100), maxLoss: r2((w - credit) * 100), ror: Math.round(credit / (w - credit) * 100), dist: r2(Math.abs(K - spot)),
+               outside84: isPut ? K <= edge : K >= edge };
+    }
     const shorts = [...B.keys()].filter(K => isPut ? K <= edge : K >= edge).sort((a, b) => isPut ? a - b : b - a);   // farthest first
     // what the safe strike nearest the range edge pays at the widest width, to show how far short a "skip" is
     const near = shorts.length ? (() => { const K = shorts[shorts.length - 1], w = WIDTHS[WIDTHS.length - 1], L = isPut ? K - w : K + w, a = mid(B.get(K)), b = mid(B.get(L));
@@ -470,7 +494,8 @@ function spreadIdeas(exp, view){
   const pcs = side(true), ccs = side(false), nr = side.near || {};
   const nearTxt = (n, t) => n ? `${t} ${n.short}/${n.long} pays $${n.credit.toFixed(2)}` : null;
   return { exp, pcs, ccs, nearPut: !pcs ? nearTxt(nr.P, "PCS") : null, nearCall: !ccs ? nearTxt(nr.C, "CCS") : null, ic: pcs && ccs ? { credit: r2(pcs.credit + ccs.credit), ev: r2(pcs.ev + ccs.ev), maxLoss: r2(Math.max(pcs.width, ccs.width) * 100 - (pcs.credit + ccs.credit) * 100) } : null,
-           why: !pcs && !ccs ? `no spread outside the 84% range pays $${MIN_CREDIT.toFixed(2)}${[nearTxt(nr.P, "PCS"), nearTxt(nr.C, "CCS")].filter(Boolean).length ? ` (closest: ${[nearTxt(nr.P, "PCS"), nearTxt(nr.C, "CCS")].filter(Boolean).join(", ")})` : ""}` : null };
+           rule: rule ? `Δ ${rule.delta} short, ${rule.width} wide` : "outside the 84% range",
+           why: !pcs && !ccs ? rule ? `no ${rule.width}-wide spread at ${rule.delta} delta pays $${MIN_CREDIT.toFixed(2)}${[nearTxt(nr.P, "PCS"), nearTxt(nr.C, "CCS")].filter(Boolean).length ? ` (${[nearTxt(nr.P, "PCS"), nearTxt(nr.C, "CCS")].filter(Boolean).join(", ")})` : ""}` : `no spread outside the 84% range pays $${MIN_CREDIT.toFixed(2)}${[nearTxt(nr.P, "PCS"), nearTxt(nr.C, "CCS")].filter(Boolean).length ? ` (closest: ${[nearTxt(nr.P, "PCS"), nearTxt(nr.C, "CCS")].filter(Boolean).join(", ")})` : ""}` : null };
 }
 // the model's view of a horizon: the 84% edges, the chance of closing below a price, touch odds, close samples
 function viewFor(r){
@@ -480,7 +505,7 @@ function viewFor(r){
   const samples = d.close.slice(0, 100).map((z, i) => r.center + (z + d.close[i + 1]) / 2 * r.sigma);   // 100 equal-probability points
   return { lo84: r.r84[0], hi84: r.r84[1], below, touch, samples };
 }
-for (const r of ranges) r.trade = spreadIdeas(r.exp, viewFor(r));
+for (const r of ranges) r.trade = spreadIdeas(r.exp, viewFor(r), RULES[r.h]);
 if (restOfDay){
   const cal = rodCal[restOfDay.hour], absP = cal.abs, sig = restOfDay.sigma, x = K => Math.abs(K - restOfDay.spot) / sig;
   const tail = K => 0.5 * (1 - cdfP(absP, x(K), 0.05));
