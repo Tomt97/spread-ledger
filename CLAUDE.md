@@ -102,6 +102,14 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   show as % of the owner's starting account size. Only those two are in % (owner's request, Oct 2026). The size isn't stored in the share record, but it can be worked out
   from the dollar figures; the share settings say so.
 
+## Rolls
+- A pasted "VERT ROLL" order (thinkorswim) is split by `splitRoll` in index.html: the first expiry/strike pair keeps the order's
+  action (the new spread), the second gets the opposite (the spread being closed). The preview asks for each half's price
+  (short leg fill − long leg fill); `addRoll` closes the matched open trade at the close price (splitting partial qty) and
+  opens the new spread at the open price. It also replaces an automatic expiration settlement (`exit.kind` "expired",
+  source auto/same-day), since a roll done on expiration day is otherwise settled at the close. A roll already saved as one
+  trade shows "Split this roll" in its trade sheet. The thinkorswim CSV import handles rolls through its fills.
+
 ## Conventions
 - Must work on any phone or iPad (360–1366 px wide, portrait and landscape) with no sideways page scrolling. Grids use
   `minmax(0,1fr)`, wide tables scroll inside their own box or become cards on phones. Check with the responsive audit

@@ -76,6 +76,8 @@ textarea#paste{width:100%;min-height:76px;resize:vertical;border:1px solid var(-
 a.btn{text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .linkish{background:none;border:none;color:var(--accent);cursor:pointer;padding:0;font-weight:600;font-size:13px}
 .previews{display:grid;gap:8px}
+.pv.roll .rollin{display:inline-flex;gap:6px;align-items:center;margin:6px 12px 0 0;font-size:13px}
+.pv.roll .rollin input{width:72px;font:inherit;padding:5px 7px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
 .pv{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;border:1px dashed var(--line);border-radius:8px;padding:9px 12px;font-size:13.5px}
 .pv.bad{border-color:var(--loss);background:var(--loss-soft)}
 .pv .tag{font-weight:700}
@@ -490,7 +492,24 @@ function parseOrder(line){
   if (need && strikes.length !== need) throw new Error(`${titleCase(strategy)} needs ${need} strike${need>1?"s":""}, found ${strikes.length}.`);
   const p = {action, qty, ratio, strategy, symbol, mult, tags:tagText, expiries, strikes, types, price, orderType};
   p.legs = buildLegs(p);
+  if (strategy === "VERT ROLL") p.roll = splitRoll(p);
   return p;
+}
+/* thinkorswim "VERT ROLL": two verticals in one order. "SELL -5 VERT ROLL RUT 100 21 OCT 26/19 OCT 26 2715/2705/2735/2725 PUT"
+   sells the first (21 Oct 2715/2705) and buys back the second (19 Oct 2735/2725). The order's limit price is the net of
+   the two, so each half's fill price is asked for when it's added. */
+function splitRoll(p){
+  if (p.expiries.length !== 2 || p.strikes.length !== 4) throw new Error("A vertical roll needs two expirations and four strikes, like “21 OCT 26/19 OCT 26 2715/2705/2735/2725 PUT”.");
+  const t = p.types[0], opp = p.action === "BUY" ? "SELL" : "BUY";
+  const mk = (action, exp, k1, k2) => { const v = {action, qty: p.qty, ratio: null, strategy: "VERTICAL", symbol: p.symbol, mult: p.mult, tags: p.tags, expiries: [exp], strikes: [k1, k2], types: [t], price: null, orderType: "LMT"}; v.legs = buildLegs(v); return v; };
+  const a = mk(p.action, p.expiries[0], p.strikes[0], p.strikes[1]), b = mk(opp, p.expiries[1], p.strikes[2], p.strikes[3]);
+  // the half that matches an open trade (same spread, opposite side) is the one being closed; else the second half
+  // open, or settled automatically at expiration (the app didn't know it was rolled before then)
+  const autoSettled = x => x.exit && x.exit.kind === "expired" && /^(auto|same-day)/.test(x.exit.source || "");
+  const closes = v => trades.find(x => (!x.exit || autoSettled(x)) && x.p && x.p.symbol === v.symbol && x.p.strategy === "VERTICAL" && x.p.action !== v.action && x.p.types[0] === v.types[0] &&
+    expiryOf(x.p) === v.expiries[0] && [...x.p.strikes].sort().join("/") === [...v.strikes].sort().join("/"));
+  const ta = closes(a), tb = closes(b);
+  return ta && !tb ? {open: b, close: a, match: ta} : {open: a, close: b, match: tb || null};
 }
 
 /* Legs describe the BUY-side structure ("the position you buy"), per 1 unit.
@@ -1335,6 +1354,7 @@ function updatePreview(){
   parsed = lines.map(line => { try { return {line, p:parseOrder(line)}; } catch(e){ return {line, err:e.message}; } });
   $("#previews").innerHTML = parsed.map(r => {
     if (r.err) return `<div class="pv bad"><span class="tag loss">Can't read</span><span class="meta">${esc(r.line)}<br><span style="color:var(--loss);font-family:var(--body)">${esc(r.err)}</span></span><span></span></div>`;
+    if (r.p.roll) return rollPreview(r);
     const t = {p:r.p, fees:0}, rp = riskProfile(t), cash = r.p.price==null ? null : openCash(t), addAcct = $("#addAcct").value || "main", autoFee = fillFee(r.p, addAcct);
     const dupe = trades.some(x => x.raw && x.raw.trim().toUpperCase() === r.line.toUpperCase());
     return `<div class="pv"><span class="tag">${esc(stratLabel(r.p))}</span>
@@ -1345,6 +1365,35 @@ function updatePreview(){
   $("#addBtn").disabled = !good;
   $("#addBtn").textContent = good > 1 ? `Add ${good} trades` : "Add to tracker";
 }
+let rollPx = {}, rollReplace = null;   // typed fill prices per pasted roll line; a saved roll trade being split
+function rollPreview(r){
+  const R = r.p.roll, m = R.match, px = rollPx[r.line] || {};
+  const d = v => `${v.action === "SELL" ? "Sell" : "Buy"} ${v.qty} ${esc(describe(v))}`;
+  return `<div class="pv roll"><span class="tag">Roll</span><span class="meta">
+      <b>Close:</b> ${d(R.close)}${m ? ` · <span class="gain">closes your ${esc(stratLabel(m.p))} from ${fmtShort(m.openDate)}${m.p.qty !== R.close.qty ? ` (${R.close.qty} of ${m.p.qty})` : ""}${m.exit ? ` · replaces the automatic expiration settlement (${m.exit.price.toFixed(2)})` : ""}</span>` : ` · <span style="color:var(--warn)">no matching open trade found, only the new spread will be added</span>`}<br>
+      <b>Open:</b> ${d(R.open)}<br>
+      <span class="rollin">Old spread closed at <input data-rollpx="close" data-line="${esc(r.line)}" inputmode="decimal" placeholder="2.65" value="${px.close ?? ""}" ${m ? "" : "disabled"}></span>
+      <span class="rollin">New spread opened at <input data-rollpx="open" data-line="${esc(r.line)}" inputmode="decimal" placeholder="2.70" value="${px.open ?? ""}"></span>
+      <span class="muted" style="display:block;margin-top:4px">Use each half's fill (in thinkorswim's order fills: short leg − long leg). The roll's limit price is only the net of the two.</span></span><span></span></div>`;
+}
+async function addRoll(r, date, notes){
+  const R = r.p.roll, px = rollPx[r.line] || {}, acctNew = R.match ? acctOf(R.match) : ($("#addAcct").value || "main");
+  const openPx = num(px.open), closePx = num(px.close);
+  if (openPx == null || (R.match && closePx == null)) { toastErr({message: "Enter both fill prices for the roll (old spread closed at, new spread opened at)."}); return false; }
+  if (R.match){
+    const t = R.match, part = R.close.qty < t.p.qty, q = Math.min(R.close.qty, t.p.qty), share = q / t.p.qty;
+    const closeFee = fillFee({...t.p, qty: q}, acctOf(t));
+    const closed = {...t, id: part ? uid() : t.id, p: {...t.p, qty: q}, fees: +(((t.fees || 0) - ((t.exit && t.exit.fee) || 0)) * share + closeFee).toFixed(2),
+      exit: {kind: "closed", price: closePx, date, fee: closeFee}, notes: [t.notes, `Rolled to ${describe(R.open)}`].filter(Boolean).join(" · ")};
+    if (part) closed.raw = rawFor(closed.p);
+    if (!await saveTrade(closed)) return false;
+    if (part && !await saveTrade({...t, p: {...t.p, qty: t.p.qty - q}, raw: rawFor({...t.p, qty: t.p.qty - q}), fees: +((t.fees || 0) * (1 - share)).toFixed(2)})) return false;
+  }
+  const np = {...R.open, price: openPx};
+  const nt = {id: uid(), raw: rawFor(np), p: np, openDate: date, fees: fillFee(np, acctNew), account: acctNew, exit: null, createdAt: Date.now(),
+    notes: [notes, R.match ? `Rolled from ${describe(R.close)}` : `Roll: ${r.line}`].filter(Boolean).join(" · ")};
+  return saveTrade(nt);
+}
 async function addParsed(){
   const good = parsed.filter(r=>r.p);
   if (!good.length) return;
@@ -1353,6 +1402,8 @@ async function addParsed(){
   const notes = $("#addNotes").value.trim();
   $("#addBtn").disabled = true;
   for (const [i,r] of good.entries()){
+    if (r.p.roll){ if (!await addRoll(r, date, notes)) { $("#addBtn").disabled = false; return; }
+      if (rollReplace){ await removeTrade(rollReplace); rollReplace = null; } delete rollPx[r.line]; continue; }
     const t = {id:uid(), raw:r.line, p:r.p, openDate:date, fees: typedFee != null ? typedFee : fillFee(r.p, $("#addAcct").value || "main"), notes, account:$("#addAcct").value || "main", exit:null, createdAt:Date.now()+i};
     if (!await saveTrade(t)) { $("#addBtn").disabled = false; return; }
   }
@@ -1469,11 +1520,12 @@ function renderSheet(){
       : `<div class="hint">${p.price==null?"Add a fill price to see the payoff graph.":"This structure spans more than one expiration, so its payoff can't be drawn from intrinsic value. OptionStrat models it with live prices."}</div>`}
     ${legs ? `<div class="scroll"><table><thead><tr><th>Leg</th><th class="r">Qty</th><th>Type</th><th class="r">Strike</th><th>Expiration</th></tr></thead><tbody>
       ${legs.map(l=>`<tr><td><span class="pill ${l.eff>0?"open":"lossp"}">${l.eff>0?"Long":"Short"}</span></td><td class="r num">${l.eff>0?"+":"−"}${Math.abs(l.eff)}</td><td>${l.t==="C"?"Call":"Put"}</td><td class="r num">${fmtK(l.k)}</td><td class="num">${fmtShort(l.exp)}</td></tr>`).join("")}
-    </tbody></table></div>` : `<div class="hint">Leg breakdown isn't available for ${esc(titleCase(p.strategy))} orders. Record the exit at a price.</div>`}
+    </tbody></table></div>` : p.strategy === "VERT ROLL" ? `<div class="hint">This is a roll: it closed one spread and opened another. <b>Split this roll</b> records it properly: the old spread closed at its fill price and the new spread as its own trade.</div>` : `<div class="hint">Leg breakdown isn't available for ${esc(titleCase(p.strategy))} orders. Record the exit at a price.</div>`}
     ${t.notes ? `<div><span class="label">Notes</span><div>${esc(t.notes)}</div></div>` : ""}
     ${exitBlock}
     <div class="actions">
       ${os ? `<a class="btn" href="${esc(os)}" target="_blank" rel="noopener">Open in OptionStrat ↗</a>` : ""}
+      ${p.strategy === "VERT ROLL" && !t.exit && !readOnly() ? `<button class="btn primary" type="button" data-act="splitRoll">Split this roll</button>` : ""}
       <button class="btn adm" type="button" data-act="edit">Edit</button>
       <span class="spacer"></span>
       <button class="btn danger adm ${delArmed?"armed":""}" type="button" data-act="delete">${delArmed?"Confirm delete":"Delete"}</button>
@@ -2779,6 +2831,14 @@ document.addEventListener("click", async ev => {
   if (act === "saveExit") return saveExit();
   if (act === "closeToday"){ if (!canRecordExit()) return; if (!closeArmed){ closeArmed = true; render(); return; } return closeAtTodaysClose(closeTodayCandidates().filter(t => curAcct === ALL || acctOf(t) === curAcct)); }
   if (act === "closeTodayOne"){ const t = trades.find(x => x.id === openId); if (t && canRecordExit() && await closeAtTodaysClose([t])) renderSheet(); return; }
+  if (act === "splitRoll"){
+    // put the roll back in the paste box, ask for the two fill prices there, and replace this record once it's added
+    const t = trades.find(x => x.id === openId); if (!t) return;
+    rollReplace = t.id; closeSheet(); $("#paste").value = t.raw; $("#addDate").value = t.openDate || todayISO(); if ($("#addAcct")) $("#addAcct").value = acctOf(t);
+    if (window.LedgerApp && location.hash !== "#trades") location.hash = "trades";
+    updatePreview(); setTimeout(() => { $("#paste").scrollIntoView({block: "center"}); document.querySelector("[data-rollpx]:not([disabled])")?.focus(); }, 200);
+    return;
+  }
   if (act === "reopen"){ const t = trades.find(x=>x.id===openId); if (t && await saveTrade({...t, exit:null, fees: +Math.max(0, (t.fees || 0) - ((t.exit && t.exit.fee) || 0)).toFixed(2)})){ exitTab = null; renderSheet(); } return; }
   if (act === "delete"){
     if (!delArmed){ delArmed = true; renderSheet(); setTimeout(() => { if (delArmed && openId){ delArmed = false; if (sheetMode==="view") renderSheet(); } }, 4000); return; }
@@ -2796,6 +2856,7 @@ document.addEventListener("keydown", ev => {
   if (ev.key === "Enter" && ev.target.matches("tr[data-member]")) viewMember(ev.target.dataset.member);
 });
 $("#paste").addEventListener("input", updatePreview);
+$("#previews").addEventListener("input", ev => { const i = ev.target.closest("[data-rollpx]"); if (!i) return; (rollPx[i.dataset.line] ||= {})[i.dataset.rollpx] = i.value; });
 $("#addBtn").addEventListener("click", addParsed);
 $("#importBtn").addEventListener("click", () => $("#tosFile").click());
 ["rangeFrom","rangeTo"].forEach(id => $("#" + id).addEventListener("change", ev => { range = {...range, [id === "rangeFrom" ? "from" : "to"]: ev.target.value}; saveRange(); calMonth = ""; dayFilter = ""; render(); }));
