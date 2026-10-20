@@ -514,6 +514,45 @@ if (restOfDay){
   restOfDay.trade = spreadIdeas(nyNow.date, { lo84: restOfDay.r84[0], hi84: restOfDay.r84[1], below, touch: K => Math.min(1, 2 * tail(K)), samples });
 }
 
+/* ---------- keep the suggested spreads with the predictions, and grade them ----------
+   The suggestion stands until the prediction locks (1DTE at the target day's open, 2DTE at the open the day before) and
+   is then frozen with it; each hour's rest-of-day forecast keeps that hour's 0DTE suggestion. After the expiration
+   closes: P&L per 1 contract held to expiration (credit − settlement value, at the mid credit shown), and whether
+   the short strike was touched on the way. */
+const keepIdea = x => x && { type: x.type, short: x.short, long: x.long, width: x.width, credit: x.credit, natural: x.natural, delta: x.delta ?? null, pop: x.pop, pTouch: x.pTouch, ev: x.ev };
+const keepTrade = T => T && { rule: T.rule || null, pcs: keepIdea(T.pcs), ccs: keepIdea(T.ccs), why: T.why || null };
+for (const r of ranges){
+  const rec = records.find(x => x.id === `${r.exp}|${r.h}` && !x.actual);
+  if (rec && rec.made && Date.parse(rec.made) / 1000 > nowSec - 120) rec.trade = keepTrade(r.trade);   // only a record this run just (re)wrote, i.e. still unlocked
+}
+if (restOfDay){ const rec = rod.find(x => x.d === nyNow.date && x.hour === Math.floor(nyNow.mins / 60)); if (rec && rec.trade === undefined) rec.trade = keepTrade(restOfDay.trade); }
+// highest high / lowest low of SPX between two session dates (inclusive), from the daily bars
+const windowHL = (from, to) => { const bs = spxD.filter(b => { const d = ny(b.t).date; return d >= from && d <= to; }); return bs.length ? { h: Math.max(...bs.map(b => b.h)), l: Math.min(...bs.map(b => b.l)) } : null; };
+const grade = (x, c, hl) => { if (!x || x.result) return; const put = x.type === "PCS", intr = Math.max(0, Math.min(x.width, put ? x.short - c : c - x.short));
+  x.result = { pnl: r2((x.credit - intr) * 100), touched: hl ? (put ? hl.l <= x.short : hl.h >= x.short) : null, close: r2(c) }; };
+for (const r of records){
+  if (!r.actual || !r.trade) continue;
+  const from = r.lockAt ? ny(Date.parse(r.lockAt) / 1000).date : r.target, hl = windowHL(from, r.target);
+  grade(r.trade.pcs, r.actual.c, hl); grade(r.trade.ccs, r.actual.c, hl);
+}
+for (const x of rod){
+  if (x.actual == null || !x.trade) continue;
+  const after = a15.filter(b => b.t >= Date.parse(x.at) / 1000 && sessionDate(b.t) === x.d && ny(b.t).mins < 16 * 60);
+  const hl = after.length ? { h: Math.max(...after.map(b => b.h)), l: Math.min(...after.map(b => b.l)) } : null;
+  grade(x.trade.pcs, x.actual, hl); grade(x.trade.ccs, x.actual, hl);
+}
+// running scorecard of the suggestions, per kind (1DTE, 2DTE, 0DTE hourly)
+const tradeStats = (() => {
+  const sum = (label, items, skips) => { const xs = items.filter(x => x.result); if (!xs.length && !skips) return null;
+    const pnl = xs.reduce((a, x) => a + x.result.pnl, 0);
+    return { label, ideas: xs.length, wins: xs.filter(x => x.result.pnl > 0).length, touched: xs.filter(x => x.result.touched).length, pnl: r2(pnl), worst: xs.length ? r2(Math.min(...xs.map(x => x.result.pnl))) : null, skipped: skips }; };
+  const of = rs => rs.flatMap(r => [r.trade.pcs, r.trade.ccs]).filter(Boolean);
+  const done = h => records.filter(r => r.h === h && r.actual && r.trade);
+  const rodDone = rod.filter(x => x.actual != null && x.trade);
+  return [sum("1DTE", of(done(1)), done(1).filter(r => !r.trade.pcs && !r.trade.ccs).length), sum("2DTE", of(done(2)), done(2).filter(r => !r.trade.pcs && !r.trade.ccs).length),
+          sum("0DTE (hourly)", of(rodDone), rodDone.filter(x => !x.trade.pcs && !x.trade.ccs).length)].filter(Boolean);
+})();
+
 /* ---------- how our levels hold up ----------
    The levels shown before a session's open are kept, and after the close each one near the open (within 1.5 ATR) is
    scored on the SPX session: below the open it's support, above it resistance. Tested = price came within 2 pts.
@@ -555,7 +594,7 @@ const out = {
           "4h": pack(a4h.filter(b => b.t > since(300))), "1d": pack(aD.filter(b => b.t > since(730))) },
   spxDaily: spxD.slice(-260).map(b => [ny(b.t).date, r2(b.o), r2(b.h), r2(b.l), r2(b.c)]),
   atr14: atrDaily, gex, expirations: expirations.slice(0, 6).map(({ T, ...e }) => e), ranges, calibration: { oneDay: cal1, twoDay: cal2 }, modelCheck,
-  predictions: { models, recent: records.slice(-60), rod: rod.slice(-60), rodStats },
+  predictions: { models, recent: records.slice(-60), rod: rod.slice(-60), rodStats, tradeStats },
   restOfDay, rodCal: Object.fromEntries(Object.entries(rodCal).map(([h, c]) => [h, { k68: r2(c.k68), k84: r2(c.k84), n: c.n, abs: c.abs }])), dist: DIST,
   events: { upcoming: EV.filter(e => e.d > nyNow.date || (e.d === nyNow.date && nyNow.mins < 16 * 60)).slice(0, 40),
             study: { all: allStats && { n: allStats.n, k68: allStats.k68, k84: allStats.k84, avgMove: allStats.avgMove, avgRange: allStats.avgRange }, quiet, types: study } },

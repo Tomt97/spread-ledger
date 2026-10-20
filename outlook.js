@@ -95,6 +95,9 @@
 #outlook .ol-pf.fail{background:var(--loss-soft);color:var(--loss)}
 @media (max-width:640px){ #outlook .ol-tr .o .ol-pfs{display:flex} }
 #outlook .ol-rest{border-color:var(--accent)}
+#outlook .ol-tr .ol-sug{grid-column:2 / -1;font-size:13px} #outlook .ol-tr .ol-sug b{font-family:var(--mono)}
+#outlook .ol-tr .ol-sug .lab{display:inline-block;width:76px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+@media (max-width:640px){ #outlook .ol-tr .ol-sug{grid-column:1 / -1} }
 #outlook .ol-odds{display:grid;gap:8px;min-width:0}
 #outlook .ol-setups{display:grid;gap:8px;min-width:0}
 #outlook .ol-setcards{display:none;gap:8px}
@@ -388,6 +391,20 @@
       <tr><td class="muted">Round numbers (baseline)</td><td class="num r">${S.round.tested}</td><td class="num r">${S.round.rate == null ? "—" : S.round.rate + "%"}</td></tr></tbody></table></div>
       <div class="ol-note">Tested = SPX came within 2 pts. Held = it went no more than 12 pts through and closed back on its side. A level type earns its place only if it holds more often than round numbers.${S.sessions < 20 ? " Too few sessions yet to judge." : ""}</div>`;
   }
+  // the spread suggested at lock time and how it did (graded at expiration, 1 contract, mid credit)
+  function sugLine(r){
+    const T = r.trade; if (!T) return "";
+    const ideas = [T.pcs, T.ccs].filter(Boolean);
+    const one = x => { const res = x.result; return `<b>${x.type} ${x.short}/${x.long}</b> $${x.credit.toFixed(2)}${res ? ` → <span class="${res.pnl > 0 ? "gain" : "loss"}">${res.pnl > 0 ? "✓ +" : "✗ −"}$${Math.abs(res.pnl).toFixed(0)}</span>${res.touched ? " · touched" : ""}` : ""}`; };
+    return `<div class="ol-sug"><span class="lab">Suggested</span>${ideas.length ? ideas.map(one).join(" · ") : `<span class="ol-note" style="display:inline;padding-left:0">skip (${esc(T.why || "nothing qualified")})</span>`}</div>`;
+  }
+  function tradeRecord(P){
+    const S = P.tradeStats || []; if (!S.length) return `<div class="ol-note">Suggested spreads are kept at each lock (and each hour for 0DTE) and graded at expiration; the first grades appear after the next close.</div>`;
+    return `<h3 style="margin-top:6px">How the suggested spreads did (1 contract each, held to expiration)</h3>
+      <div class="scroll"><table><thead><tr><th>Kind</th><th class="r">Spreads</th><th class="r">Won</th><th class="r">Touched</th><th class="r">Net</th><th class="r">Worst</th><th class="r">Skipped</th></tr></thead><tbody>
+      ${S.map(x => `<tr><td>${esc(x.label)}</td><td class="num r">${x.ideas}</td><td class="num r">${x.ideas ? Math.round(x.wins / x.ideas * 100) + "%" : "—"}</td><td class="num r">${x.touched}</td><td class="num r ${x.pnl >= 0 ? "gain" : "loss"}">${x.pnl >= 0 ? "+" : "−"}$${Math.abs(x.pnl).toFixed(0)}</td><td class="num r">${x.worst == null ? "—" : (x.worst >= 0 ? "+" : "−") + "$" + Math.abs(x.worst).toFixed(0)}</td><td class="num r">${x.skipped}</td></tr>`).join("")}
+      </tbody></table></div><div class="ol-note">At the mid credit shown when suggested; real fills, fees and early exits differ. A handful of results says little: one max loss outweighs many wins.</div>`;
+  }
   function restRecord(P){
     const S = P.rodStats || []; if (!S.length) return `<div class="ol-note">Rest-of-day forecasts (one kept each hour of the session) are scored at the close; the first scores appear after today's close.</div>`;
     const hr = h => h === 9 ? "9:30" : h < 12 ? `${h}:00 AM` : h === 12 ? "12:00 PM" : `${h - 12}:00 PM`;
@@ -404,13 +421,13 @@
     const row = r => {
       const day = `<div class="d"><b>${esc(dayLabel(r.target))}</b> <span class="ol-note">${r.h}DTE${r.actual ? "" : " · " + (Date.now() < Date.parse(r.lockAt || 0) ? "still updating" : "locked")}${staleNote(r)}</span>${(r.events || []).length ? `<div class="ol-evs" style="margin-top:3px">${r.events.map(t => evBadge({type: t, time: ""})).join("")}</div>` : ""}</div>`;
       const pred = `<div class="p"><span class="lab">Predicted</span><b>${px(r.center)}</b> <span class="ol-note">68% ${px0(r.r68[0])}–${px0(r.r68[1])} · ${OB(r).p}% ${px0(OB(r).b[0])}–${px0(OB(r).b[1])}</span></div>`;
-      if (!r.actual) return `<div class="ol-tr">${day}${pred}<div class="m"><span class="lab">Market</span><span class="ol-note" style="display:inline;padding-left:0">waiting for the close</span></div><div class="o"></div></div>`;
+      if (!r.actual) return `<div class="ol-tr">${day}${pred}<div class="m"><span class="lab">Market</span><span class="ol-note" style="display:inline;padding-left:0">waiting for the close</span></div><div class="o"></div>${sugLine(r)}</div>`;
       const ob = OB(r), held = r.actual.h <= ob.b[1] && r.actual.l >= ob.b[0];
       const mkt = `<div class="m"><span class="lab">Market</span><b>Close ${px(r.actual.c)}</b> <span class="ol-note">High ${px0(r.actual.h)} · Low ${px0(r.actual.l)} · ${held ? `day stayed inside ${ob.p}%` : `day traded outside ${ob.p}%`}</span></div>`;
       // pass/fail for each band on its own line: ✓ the close landed inside it, ✗ it missed
       const mark = (ok, p) => `<span class="ol-pf ${ok ? "pass" : "fail"}">${ok ? "✓" : "✗"} ${p}%</span>`;
       const res = `<div class="o"><b>${pts(r.err)}</b><span class="ol-pfs">${mark(!!r.in68, 68)}${mark(!!(r.r84 ? r.in84 : r.in90), r.r84 ? 84 : 90)}</span></div>`;
-      return `<div class="ol-tr">${day}${pred}${mkt}${res}</div>`;
+      return `<div class="ol-tr">${day}${pred}${mkt}${res}${sugLine(r)}</div>`;
     };
     const open = LS("track") === "1", n = done.length;
     return `<details class="ol-track" ${open ? "open" : ""}><summary><span class="chev"><span class="more">Prediction track record${n ? ` (${n} scored)` : ""}</span><span class="less">Hide prediction track record</span></span></summary>
@@ -419,6 +436,7 @@
         <div class="ol-note">Each range keeps updating until it locks (1DTE at the target day's 9:30 am open, 2DTE at the open the day before), then it's scored against that day's SPX close. Miss = actual close − predicted center.</div>
         ${all.length ? `<div class="ol-trs"><div class="ol-tr ol-trh"><div class="d label">Day</div><div class="p label">Predicted</div><div class="m label">Market</div><div class="o label">Off by</div></div>
           ${pending.slice().reverse().map(row).join("")}${done.map(row).join("")}</div>` : ""}
+        ${tradeRecord(P)}
         ${restRecord(P)}
       </div></details>`;
   }
