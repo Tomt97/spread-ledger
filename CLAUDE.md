@@ -49,6 +49,9 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   if the short strike is outside the 84% range and the mid credit is ≥ $0.80 (5 then 10 wide, farthest strike that
   pays); else "skip" with what the closest safe spread pays. Both sides = iron condor. Each idea shows POP, touch odds and
   expected value from the model distribution (`spreadIdeas` in update-market.mjs; "Suggested setups" + card lines).
+- Afternoon lock (owner's rule, Oct 2026): from 12:00 pm CT (1:00 pm ET) to the close the suggested setups don't change. The
+  suggestion from the last run before noon CT (else the first after) is kept in predictions.json `setupLock` and shown for the
+  rest of the session with `locked` (time) and each spread's current mid as `now`. The 0DTE hourly log doesn't keep it again.
 - Suggested spreads are kept and graded (owner's request): the suggestion standing at each 1DTE/2DTE lock is frozen in the
   record (`trade`), each hour's 0DTE suggestion in `rod`; after expiration each gets `result` {pnl per 1 contract at the
   mid credit held to expiration, touched}. `tradeStats` (market.json predictions) and the track record show them.

@@ -236,8 +236,8 @@ function eventFactor(dates){
    the day before. Once the target day closes, it's scored. The scores tune the model below. */
 const PRED_FILE = process.env.PRED_FILE || "predictions.json";
 let records = [];
-let rod = [], levelLog = [];
-try { const pf = JSON.parse(readFileSync(PRED_FILE, "utf8")); records = pf.records || []; rod = pf.rod || []; levelLog = pf.levelLog || []; } catch { console.log("No earlier predictions found; starting a new log."); }
+let rod = [], levelLog = [], setupLock = null;
+try { const pf = JSON.parse(readFileSync(PRED_FILE, "utf8")); records = pf.records || []; rod = pf.rod || []; levelLog = pf.levelLog || []; setupLock = pf.setupLock || null; } catch { console.log("No earlier predictions found; starting a new log."); }
 const nyNow = ny(nowSec);
 const finished = new Map(spxD.filter(b => ny(b.t).date < nyNow.date || nyNow.mins >= 16 * 60 + 15).map(b => [ny(b.t).date, b]));
 for (const r of records){
@@ -513,6 +513,24 @@ if (restOfDay){
   const samples = []; for (let i = 0; i < 20; i++){ const z = (absP[i] + absP[i + 1]) / 2; samples.push(restOfDay.spot + z * sig, restOfDay.spot - z * sig); }
   restOfDay.trade = spreadIdeas(nyNow.date, { lo84: restOfDay.r84[0], hi84: restOfDay.r84[1], below, touch: K => Math.min(1, 2 * tail(K)), samples });
 }
+/* ---------- afternoon lock (owner's rule, Oct 2026) ----------
+   From 12:00 pm CT (1:00 pm ET) to the 4:00 pm close the suggested setups stop changing: the suggestion standing at
+   noon CT (from the last run before it; the first run after if there was none) is shown for the rest of the session,
+   with each spread's current mid as `now`. Before noon every run replaces it. */
+const LOCK_AT = 13 * 60;
+if (restOfDay){
+  const fresh = { d: nyNow.date, at: restOfDay.at, today: restOfDay.trade || null, h: Object.fromEntries(ranges.map(r => [r.h, { exp: r.exp, trade: r.trade || null }])) };
+  if (nyNow.mins < LOCK_AT) setupLock = fresh;
+  else {
+    if (!setupLock || setupLock.d !== nyNow.date) setupLock = fresh;
+    const mid = o => o && o.bid > 0 && o.ask > 0 && o.ask >= o.bid ? (o.bid + o.ask) / 2 : null;
+    const nowOf = (exp, x) => { if (!x) return x; const B = (chainByExp.get(exp) || []).filter(o => o.type === (x.type === "PCS" ? "P" : "C"));
+      const a = mid(B.find(o => o.K === x.short)), b = mid(B.find(o => o.K === x.long)); return { ...x, now: a != null && b != null ? r2(a - b) : null }; };
+    const frozen = (exp, T) => T && { ...T, pcs: nowOf(exp, T.pcs), ccs: nowOf(exp, T.ccs), locked: setupLock.at };
+    restOfDay.trade = frozen(nyNow.date, setupLock.today);
+    for (const r of ranges){ const L = setupLock.h[r.h]; if (L && L.exp === r.exp) r.trade = frozen(r.exp, L.trade); }
+  }
+}
 
 /* ---------- keep the suggested spreads with the predictions, and grade them ----------
    The suggestion stands until the prediction locks (1DTE at the target day's open, 2DTE at the open the day before) and
@@ -525,7 +543,8 @@ for (const r of ranges){
   const rec = records.find(x => x.id === `${r.exp}|${r.h}` && !x.actual);
   if (rec && rec.made && Date.parse(rec.made) / 1000 > nowSec - 120) rec.trade = keepTrade(r.trade);   // only a record this run just (re)wrote, i.e. still unlocked
 }
-if (restOfDay){ const rec = rod.find(x => x.d === nyNow.date && x.hour === Math.floor(nyNow.mins / 60)); if (rec && rec.trade === undefined) rec.trade = keepTrade(restOfDay.trade); }
+// after the afternoon lock the 0DTE suggestion is the one already kept before noon CT, so it isn't kept (and graded) again
+if (restOfDay && !restOfDay.trade?.locked){ const rec = rod.find(x => x.d === nyNow.date && x.hour === Math.floor(nyNow.mins / 60)); if (rec && rec.trade === undefined) rec.trade = keepTrade(restOfDay.trade); }
 // highest high / lowest low of SPX between two session dates (inclusive), from the daily bars
 const windowHL = (from, to) => { const bs = spxD.filter(b => { const d = ny(b.t).date; return d >= from && d <= to; }); return bs.length ? { h: Math.max(...bs.map(b => b.h)), l: Math.min(...bs.map(b => b.l)) } : null; };
 const grade = (x, c, hl) => { if (!x || x.result) return; const put = x.type === "PCS", intr = Math.max(0, Math.min(x.width, put ? x.short - c : c - x.short));
@@ -582,7 +601,7 @@ const levelStats = (() => {
   for (const x of S){ for (const [g, v] of Object.entries(x.score.by)){ const k = sum[g] ||= { tested: 0, held: 0 }; k.tested += v.tested; k.held += v.held; } rn.tested += x.score.round.tested; rn.held += x.score.round.held; }
   return { sessions: S.length, groups: Object.entries(sum).map(([g, v]) => ({ g, ...v, rate: v.tested ? Math.round(v.held / v.tested * 100) : null })), round: { ...rn, rate: rn.tested ? Math.round(rn.held / rn.tested * 100) : null } };
 })();
-writeFileSync("predictions.json", JSON.stringify({ updated: new Date().toISOString(), records, rod, levelLog }));
+writeFileSync("predictions.json", JSON.stringify({ updated: new Date().toISOString(), records, rod, levelLog, setupLock }));
 
 const out = {
   updated: new Date().toISOString(),
