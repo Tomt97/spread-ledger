@@ -1399,16 +1399,18 @@ async function addParsed(){
   if (!good.length) return;
   const date = $("#addDate").value || todayISO();
   const typedFee = num($("#addFees").value);   // blank = use the fee schedule
-  const notes = $("#addNotes").value.trim();
-  $("#addBtn").disabled = true;
+  const notes = $("#addNotes").value.trim(), bad = parsed.filter(r=>r.err).map(r=>r.line), acct = $("#addAcct").value || "main";
+  // Clear the box right away, ready for the next entry: Firestore only confirms a write once the server has it, which on a
+  // phone can take a while after the trade already shows in the list. Lines that fail to save go back in the box.
+  const putBack = rest => { $("#paste").value = [...rest.map(r=>r.line), ...bad].join("\n"); $("#addNotes").value = notes; updatePreview(); };
+  $("#paste").value = bad.join("\n"); $("#addNotes").value = ""; $("#addFees").value = "";
+  updatePreview(); $("#addBtn").disabled = true;
   for (const [i,r] of good.entries()){
-    if (r.p.roll){ if (!await addRoll(r, date, notes)) { $("#addBtn").disabled = false; return; }
+    if (r.p.roll){ if (!await addRoll(r, date, notes)) return putBack(good.slice(i));
       if (rollReplace){ await removeTrade(rollReplace); rollReplace = null; } delete rollPx[r.line]; continue; }
-    const t = {id:uid(), raw:r.line, p:r.p, openDate:date, fees: typedFee != null ? typedFee : fillFee(r.p, $("#addAcct").value || "main"), notes, account:$("#addAcct").value || "main", exit:null, createdAt:Date.now()+i};
-    if (!await saveTrade(t)) { $("#addBtn").disabled = false; return; }
+    const t = {id:uid(), raw:r.line, p:r.p, openDate:date, fees: typedFee != null ? typedFee : fillFee(r.p, acct), notes, account:acct, exit:null, createdAt:Date.now()+i};
+    if (!await saveTrade(t)) return putBack(good.slice(i));
   }
-  $("#paste").value = parsed.filter(r=>r.err).map(r=>r.line).join("\n");
-  $("#addNotes").value = ""; $("#addFees").value = "";
   updatePreview();
 }
 
