@@ -124,6 +124,7 @@ tbody tr:last-child td{border-bottom:none}
 .pill.win{background:var(--gain-soft);color:var(--gain)}
 .pill.lossp{background:var(--loss-soft);color:var(--loss)}
 .pill.flat{background:var(--sunk);color:var(--muted)}
+.pill.roll{background:transparent;color:var(--accent);box-shadow:inset 0 0 0 1px currentColor;margin-left:4px}
 .strat{font-weight:700}
 .sub{font-family:var(--mono);font-size:12.5px;color:var(--muted);white-space:nowrap}
 .empty{padding:34px 16px;text-align:center;color:var(--muted)}
@@ -1287,6 +1288,16 @@ function statusPill(e){
   const cls = e.pnl > 0.005 ? "win" : e.pnl < -0.005 ? "lossp" : "flat";
   return `<span class="pill ${cls}">${e.status === "expired" ? "Expired" : "Closed"}</span>`;
 }
+// Rolls: the closed spread links to the new one (roll.to) and back (roll.from). Older roll trades only have the notes text.
+function rollInfo(t){
+  const n = t.notes || "", other = id => id && trades.find(x => x.id === id);
+  const byNote = (mine, theirs) => trades.find(x => x.id !== t.id && n.includes(mine + describe(x.p)) && (x.notes || "").includes(theirs + describe(t.p)));
+  if (t.roll?.to || /(^| · )Rolled to /.test(n)) return {dir: "out", other: other(t.roll?.to) || byNote("Rolled to ", "Rolled from ")};
+  if (t.roll?.from || /(^| · )Rolled from /.test(n)) return {dir: "in", other: other(t.roll?.from) || byNote("Rolled from ", "Rolled to ")};
+  if (t.p.strategy === "VERT ROLL" || /(^| · )Roll: /.test(n)) return {dir: "roll"};
+  return null;
+}
+function rollPill(t){ const r = rollInfo(t); return r ? `<span class="pill roll" title="${r.dir === "out" ? "Closed by rolling into a new spread" : r.dir === "in" ? "Opened by rolling an earlier spread" : "Roll order"}">↻ ${r.dir === "out" ? "Rolled out" : r.dir === "in" ? "Rolled in" : "Roll"}</span>` : ""; }
 
 function renderBlotter(S){
   const el = $("#blotter");
@@ -1312,7 +1323,7 @@ function renderBlotter(S){
   const cards = `<div class="tcards">${rows.map(({t,e}) => { const cash = openCash(t), rp = riskProfile(t);
     const cop = e.status === "open" ? chanceOfProfit(t) : null;
     return `<div class="tcard" data-id="${esc(t.id)}" tabindex="0" role="button">
-      <div class="tc-top"><span class="strat">${esc(e.label)}</span>${statusPill(e)}</div>
+      <div class="tc-top"><span class="strat">${esc(e.label)}${rollPill(t)}</span>${statusPill(e)}</div>
       <div class="sub" style="white-space:normal">${esc(describe(t.p))} · ${t.p.qty} lot${t.p.qty===1?"":"s"}${curAcct===ALL?` · ${esc(acctName(acctOf(t)))}`:""}</div>
       <div class="tc-grid">
         <div><span class="label">Entry</span><span class="num">${t.p.price==null?"—":t.p.price.toFixed(2)} <span class="muted">${t.p.price==null?"":(cash>=0?"cr ":"db ")+money0(Math.abs(cash))}</span></span></div>
@@ -1331,7 +1342,7 @@ function renderBlotter(S){
     const cash = openCash(t);
     return `<tr class="click" data-id="${esc(t.id)}" tabindex="0">
       <td class="num" style="white-space:nowrap">${fmtShort(t.openDate)}</td>
-      <td><div class="strat">${esc(e.label)}</div><div class="sub">${esc(describe(t.p))}${curAcct===ALL?` · ${esc(acctName(acctOf(t)))}`:""}</div></td>
+      <td><div class="strat">${esc(e.label)}${rollPill(t)}</div><div class="sub">${esc(describe(t.p))}${curAcct===ALL?` · ${esc(acctName(acctOf(t)))}`:""}</div></td>
       <td class="r num">${t.p.qty}</td>
       <td class="r num"><div>${t.p.price==null?"—":t.p.price.toFixed(2)}</div><div class="sub">${t.p.price==null?"":(cash>=0?"cr ":"db ")+money0(Math.abs(cash))}</div></td>
       <td class="num" style="white-space:nowrap">${fmtShort(e.exp)}</td>
@@ -1377,20 +1388,21 @@ function rollPreview(r){
       <span class="muted" style="display:block;margin-top:4px">Use each half's fill (in thinkorswim's order fills: short leg − long leg). The roll's limit price is only the net of the two.</span></span><span></span></div>`;
 }
 async function addRoll(r, date, notes){
-  const R = r.p.roll, px = rollPx[r.line] || {}, acctNew = R.match ? acctOf(R.match) : ($("#addAcct").value || "main");
-  const openPx = num(px.open), closePx = num(px.close);
+  const R = r.p.roll, px = rollPx[r.line] || {}, acctNew = R.match ? acctOf(R.match) : ($("#addAcct").value || "main"), newId = uid();
+  const openPx = num(px.open), closePx = num(px.close); let fromId = null;
   if (openPx == null || (R.match && closePx == null)) { toastErr({message: "Enter both fill prices for the roll (old spread closed at, new spread opened at)."}); return false; }
   if (R.match){
     const t = R.match, part = R.close.qty < t.p.qty, q = Math.min(R.close.qty, t.p.qty), share = q / t.p.qty;
     const closeFee = fillFee({...t.p, qty: q}, acctOf(t));
     const closed = {...t, id: part ? uid() : t.id, p: {...t.p, qty: q}, fees: +(((t.fees || 0) - ((t.exit && t.exit.fee) || 0)) * share + closeFee).toFixed(2),
-      exit: {kind: "closed", price: closePx, date, fee: closeFee}, notes: [t.notes, `Rolled to ${describe(R.open)}`].filter(Boolean).join(" · ")};
+      exit: {kind: "closed", price: closePx, date, fee: closeFee}, notes: [t.notes, `Rolled to ${describe(R.open)}`].filter(Boolean).join(" · "), roll: {to: newId}};
     if (part) closed.raw = rawFor(closed.p);
+    fromId = closed.id;
     if (!await saveTrade(closed)) return false;
     if (part && !await saveTrade({...t, p: {...t.p, qty: t.p.qty - q}, raw: rawFor({...t.p, qty: t.p.qty - q}), fees: +((t.fees || 0) * (1 - share)).toFixed(2)})) return false;
   }
   const np = {...R.open, price: openPx};
-  const nt = {id: uid(), raw: rawFor(np), p: np, openDate: date, fees: fillFee(np, acctNew), account: acctNew, exit: null, createdAt: Date.now(),
+  const nt = {id: newId, raw: rawFor(np), p: np, openDate: date, fees: fillFee(np, acctNew), account: acctNew, exit: null, createdAt: Date.now(), roll: fromId ? {from: fromId} : null,
     notes: [notes, R.match ? `Rolled from ${describe(R.close)}` : `Roll: ${r.line}`].filter(Boolean).join(" · ")};
   return saveTrade(nt);
 }
@@ -1523,6 +1535,9 @@ function renderSheet(){
     ${legs ? `<div class="scroll"><table><thead><tr><th>Leg</th><th class="r">Qty</th><th>Type</th><th class="r">Strike</th><th>Expiration</th></tr></thead><tbody>
       ${legs.map(l=>`<tr><td><span class="pill ${l.eff>0?"open":"lossp"}">${l.eff>0?"Long":"Short"}</span></td><td class="r num">${l.eff>0?"+":"−"}${Math.abs(l.eff)}</td><td>${l.t==="C"?"Call":"Put"}</td><td class="r num">${fmtK(l.k)}</td><td class="num">${fmtShort(l.exp)}</td></tr>`).join("")}
     </tbody></table></div>` : p.strategy === "VERT ROLL" ? `<div class="hint">This is a roll: it closed one spread and opened another. <b>Split this roll</b> records it properly: the old spread closed at its fill price and the new spread as its own trade.</div>` : `<div class="hint">Leg breakdown isn't available for ${esc(titleCase(p.strategy))} orders. Record the exit at a price.</div>`}
+    ${(() => { const r = rollInfo(t); if (!r || r.dir === "roll") return "";
+      const o = r.other, when = r.dir === "out" ? t.exit?.date : t.openDate;
+      return `<div class="hint"><b>↻ ${r.dir === "out" ? "Rolled out" : "Rolled in"}</b>${when ? ` on ${fmtShort(when)}` : ""}: ${r.dir === "out" ? "closed by rolling into" : "opened by rolling"} ${o ? `<a href="#" data-act="openRoll" data-id="${esc(o.id)}">${esc(stratLabel(o.p))} ${esc(describe(o.p))}</a>` : "another spread"}.</div>`; })()}
     ${t.notes ? `<div><span class="label">Notes</span><div>${esc(t.notes)}</div></div>` : ""}
     ${exitBlock}
     <div class="actions">
@@ -2630,7 +2645,7 @@ function renderImportSheet(){
   const items = P.items, nNew = items.filter(i => i.kind === "new").length, nUpd = items.filter(i => i.kind === "update").length;
   const S = computeStats(items.map(i => i.trade));
   const rows = items.slice(0, 300).map(i => { const e = evalTrade(i.trade); const t = i.trade;
-    return `<tr><td class="num" style="white-space:nowrap">${fmtShort(t.openDate)}</td><td><div class="strat">${esc(e.label)}</div><div class="sub">${esc(describe(t.p))}</div></td>
+    return `<tr><td class="num" style="white-space:nowrap">${fmtShort(t.openDate)}</td><td><div class="strat">${esc(e.label)}${rollPill(t)}</div><div class="sub">${esc(describe(t.p))}</div></td>
       <td class="r num">${t.p.qty}</td><td class="r num">${t.p.price.toFixed(2)}</td><td>${statusPill(e)}${i.kind === "update" ? ' <span class="pill open">update</span>' : ""}</td>
       <td class="r num">${e.exitPrice == null ? "—" : e.exitPrice.toFixed(2)}</td><td class="r num ${pnlClass(e.pnl)}" style="white-space:nowrap">${e.pnl == null ? "—" : money(e.pnl)}</td></tr>`; }).join("");
   const list = (arr, title) => arr.length ? `<details><summary class="hint" style="cursor:pointer">${title} (${arr.length})</summary><ul class="hint" style="margin:6px 0 0;padding-left:18px">${arr.slice(0,100).map(x => `<li>${fmtShort(x.when)} · ${esc(x.text)}${x.why ? ` (${esc(x.why)})` : ""}</li>`).join("")}</ul></details>` : "";
@@ -2833,6 +2848,7 @@ document.addEventListener("click", async ev => {
   if (act === "saveExit") return saveExit();
   if (act === "closeToday"){ if (!canRecordExit()) return; if (!closeArmed){ closeArmed = true; render(); return; } return closeAtTodaysClose(closeTodayCandidates().filter(t => curAcct === ALL || acctOf(t) === curAcct)); }
   if (act === "closeTodayOne"){ const t = trades.find(x => x.id === openId); if (t && canRecordExit() && await closeAtTodaysClose([t])) renderSheet(); return; }
+  if (act === "openRoll"){ ev.preventDefault(); openSheet(a.dataset.id); return; }
   if (act === "splitRoll"){
     // put the roll back in the paste box, ask for the two fill prices there, and replace this record once it's added
     const t = trades.find(x => x.id === openId); if (!t) return;

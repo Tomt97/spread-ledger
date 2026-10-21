@@ -109,6 +109,9 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   opens the new spread at the open price. It also replaces an automatic expiration settlement (`exit.kind` "expired",
   source auto/same-day), since a roll done on expiration day is otherwise settled at the close. A roll already saved as one
   trade shows "Split this roll" in its trade sheet. The thinkorswim CSV import handles rolls through its fills.
+- Both halves are marked as a roll (owner's request): the closed spread gets `roll: {to: id}` and a "↻ Rolled out" tag, the new
+  one `roll: {from: id}` and "↻ Rolled in"; each trade sheet links to the other. Older rolls are recognized from their
+  "Rolled to/from" notes (`rollInfo`).
 
 ## Conventions
 - Must work on any phone or iPad (360–1366 px wide, portrait and landscape) with no sideways page scrolling. Grids use
