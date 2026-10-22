@@ -116,6 +116,13 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   one `roll: {from: id}` and "↻ Rolled in"; each trade sheet links to the other. Older rolls are recognized from their
   "Rolled to/from" notes (`rollInfo`).
 
+## Closing one side of an iron condor
+- Trade sheet → Record exit → "Close one side" (iron condors and iron butterflies): `closeIronSide` splits the position
+  into its two verticals (as thinkorswim shows it). The closed side gets the exit; the other side stays open as its own
+  trade. The entry is split by "this side's share" (default half; total P&L is the same either way), opening fees half
+  each, the closing fee on the closed side. Partial contracts leave the rest as the iron condor. Imported trades keep
+  their thinkorswim legs per side (`tosLegs`) so a later CSV import still matches the open side.
+
 ## Conventions
 - Must work on any phone or iPad (360–1366 px wide, portrait and landscape) with no sideways page scrolling. Grids use
   `minmax(0,1fr)`, wide tables scroll inside their own box or become cards on phones. Check with the responsive audit
