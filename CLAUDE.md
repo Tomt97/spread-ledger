@@ -77,6 +77,10 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
 - What predicts the close (`backtest-center.mjs`, Oct 2026): 32 signals known at the open (gap, VIX, SKEW, other markets,
   calendar) gave no usable edge (−0.3 pt MAE, worse last year). Time of day matters: no-change MAE 31 pts at 10 am →
   12 pts at 3 pm (hourly ES, 2 years). The 10–20 pt goal is realistic only for afternoon re-forecasts.
+- Oct 25, 2026 review (10 1DTE / 9 2DTE scored): hit rates 60%/78% (1DTE) and 56%/88% (2DTE) are inside what a correct
+  range shows by chance at that size; misses 36/54 pts vs last-price 34/56 (no center edge, as expected). Center tuning
+  (gamma-pull weight, bias) now waits for 40 scored days: at 8 it had hit the 0.7 cap from a few outliers. Trade grades
+  show net at mid and at the natural fill. The track record shows the chance range of hit rates until 60 days.
 - The owner aims for misses within 10–20 SPX points. Report the real average miss honestly against the last-price
   baseline (~34 pts open→close for 1DTE, ~56 for 2DTE); never overstate accuracy.
 

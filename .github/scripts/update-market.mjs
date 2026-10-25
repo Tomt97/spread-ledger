@@ -255,7 +255,9 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 function fitModel(h){
   const hist = h === 1 ? cal1 : cal2, rs = records.filter(r => r.h === h && r.actual).slice(-60), n = rs.length;
   let w = 0, b = 0, k68 = hist ? hist.k68 : 1, k84 = hist ? hist.k84 : 1.405;
-  if (n >= 8){
+  // Center tuning waits for 40 scored days (Oct 2026 review): from 8-10 days the gamma-pull weight hit its 0.7 cap on a few
+  // outliers (Oct 16 opex) and the bias followed one down week, while 10 years of tests found nothing that beats "no change".
+  if (n >= 40){
     // How much of the gap to the biggest gamma strike the close actually closed (least squares), then any leftover bias.
     const errs = rs.map(r => r.actual.c - r.spotAt), pulls = rs.map(r => r.pull || 0), spp = pulls.reduce((a, p) => a + p * p, 0);
     if (spp > 0) w = clamp(pulls.reduce((a, p, i) => a + p * errs[i], 0) / spp, 0, 0.7);
@@ -548,7 +550,7 @@ if (restOfDay && !restOfDay.trade?.locked){ const rec = rod.find(x => x.d === ny
 // highest high / lowest low of SPX between two session dates (inclusive), from the daily bars
 const windowHL = (from, to) => { const bs = spxD.filter(b => { const d = ny(b.t).date; return d >= from && d <= to; }); return bs.length ? { h: Math.max(...bs.map(b => b.h)), l: Math.min(...bs.map(b => b.l)) } : null; };
 const grade = (x, c, hl) => { if (!x || x.result) return; const put = x.type === "PCS", intr = Math.max(0, Math.min(x.width, put ? x.short - c : c - x.short));
-  x.result = { pnl: r2((x.credit - intr) * 100), touched: hl ? (put ? hl.l <= x.short : hl.h >= x.short) : null, close: r2(c) }; };
+  x.result = { pnl: r2((x.credit - intr) * 100), pnlFill: x.natural != null ? r2((x.natural - intr) * 100) : null, touched: hl ? (put ? hl.l <= x.short : hl.h >= x.short) : null, close: r2(c) }; };
 for (const r of records){
   if (!r.actual || !r.trade) continue;
   const from = r.lockAt ? ny(Date.parse(r.lockAt) / 1000).date : r.target, hl = windowHL(from, r.target);
@@ -564,7 +566,9 @@ for (const x of rod){
 const tradeStats = (() => {
   const sum = (label, items, skips) => { const xs = items.filter(x => x.result); if (!xs.length && !skips) return null;
     const pnl = xs.reduce((a, x) => a + x.result.pnl, 0);
-    return { label, ideas: xs.length, wins: xs.filter(x => x.result.pnl > 0).length, touched: xs.filter(x => x.result.touched).length, pnl: r2(pnl), worst: xs.length ? r2(Math.min(...xs.map(x => x.result.pnl))) : null, skipped: skips }; };
+    // at the natural fill (sell at the bid, buy at the ask): the conservative price, since real fills land between it and the mid
+    const pnlFill = xs.reduce((a, x) => a + (x.result.pnlFill ?? (x.natural != null ? (x.natural - x.credit) * 100 + x.result.pnl : x.result.pnl)), 0);
+    return { label, ideas: xs.length, wins: xs.filter(x => x.result.pnl > 0).length, pnlFill: r2(pnlFill), touched: xs.filter(x => x.result.touched).length, pnl: r2(pnl), worst: xs.length ? r2(Math.min(...xs.map(x => x.result.pnl))) : null, skipped: skips }; };
   const of = rs => rs.flatMap(r => [r.trade.pcs, r.trade.ccs]).filter(Boolean);
   const done = h => records.filter(r => r.h === h && r.actual && r.trade);
   const rodDone = rod.filter(x => x.actual != null && x.trade);

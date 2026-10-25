@@ -406,9 +406,9 @@
   function tradeRecord(P){
     const S = P.tradeStats || []; if (!S.length) return `<div class="ol-note">Suggested spreads are kept at each lock (and each hour for 0DTE) and graded at expiration; the first grades appear after the next close.</div>`;
     return `<h3 style="margin-top:6px">How the suggested spreads did (1 contract each, held to expiration)</h3>
-      <div class="scroll"><table><thead><tr><th>Kind</th><th class="r">Spreads</th><th class="r">Won</th><th class="r">Touched</th><th class="r">Net</th><th class="r">Worst</th><th class="r">Skipped</th></tr></thead><tbody>
-      ${S.map(x => `<tr><td>${esc(x.label)}</td><td class="num r">${x.ideas}</td><td class="num r">${x.ideas ? Math.round(x.wins / x.ideas * 100) + "%" : "—"}</td><td class="num r">${x.touched}</td><td class="num r ${x.pnl >= 0 ? "gain" : "loss"}">${x.pnl >= 0 ? "+" : "−"}$${Math.abs(x.pnl).toFixed(0)}</td><td class="num r">${x.worst == null ? "—" : (x.worst >= 0 ? "+" : "−") + "$" + Math.abs(x.worst).toFixed(0)}</td><td class="num r">${x.skipped}</td></tr>`).join("")}
-      </tbody></table></div><div class="ol-note">At the mid credit shown when suggested; real fills, fees and early exits differ. A handful of results says little: one max loss outweighs many wins.</div>`;
+      <div class="scroll"><table><thead><tr><th>Kind</th><th class="r">Spreads</th><th class="r">Won</th><th class="r">Touched</th><th class="r">Net at mid</th><th class="r">Net at fill</th><th class="r">Worst</th><th class="r">Skipped</th></tr></thead><tbody>
+      ${S.map(x => `<tr><td>${esc(x.label)}</td><td class="num r">${x.ideas}</td><td class="num r">${x.ideas ? Math.round(x.wins / x.ideas * 100) + "%" : "—"}</td><td class="num r">${x.touched}</td><td class="num r ${x.pnl >= 0 ? "gain" : "loss"}">${x.pnl >= 0 ? "+" : "−"}$${Math.abs(x.pnl).toFixed(0)}</td><td class="num r ${(x.pnlFill ?? x.pnl) >= 0 ? "gain" : "loss"}">${x.pnlFill == null ? "—" : (x.pnlFill >= 0 ? "+" : "−") + "$" + Math.abs(x.pnlFill).toFixed(0)}</td><td class="num r">${x.worst == null ? "—" : (x.worst >= 0 ? "+" : "−") + "$" + Math.abs(x.worst).toFixed(0)}</td><td class="num r">${x.skipped}</td></tr>`).join("")}
+      </tbody></table></div><div class="ol-note">Mid = the mid credit shown when suggested; fill = selling at the bid and buying at the ask (real fills land between the two). Fees and early exits aren't included. At ~95% chance of profit about 1 in 20 spreads loses close to the max (~$1,900 on 20 wide), so a few dozen wins say little until that first loss is in.</div>`;
   }
   function restRecord(P){
     const S = P.rodStats || []; if (!S.length) return `<div class="ol-note">Rest-of-day forecasts (one kept each hour of the session) are scored at the close; the first scores appear after today's close.</div>`;
@@ -421,7 +421,9 @@
   function trackRecord(P){
     const all = (P.recent || []), done = all.filter(r => r.actual).slice().reverse(), pending = all.filter(r => !r.actual);
     const models = (P.models || []).filter(m => m.n);
-    const head = models.length ? models.map(m => `${m.h}DTE: ${m.n} scored · avg miss ${m.mae.toFixed(1)} pts (last-price guess ${m.maeRaw.toFixed(1)}) · close inside 68% range ${m.hit68}% ${m.hit84 != null ? ` · inside 84% ${m.hit84}%` : ""}`).join("<br>")
+    // how far a correctly calibrated range's hit rate can stray by chance at this sample size (90% of the time)
+    const band = (p, n) => { const d = 1.645 * Math.sqrt(p * (1 - p) / n) * 100; return `${Math.max(0, Math.round(p * 100 - d))}–${Math.min(100, Math.round(p * 100 + d))}%`; };
+    const head = models.length ? models.map(m => `${m.h}DTE: ${m.n} scored · avg miss ${m.mae.toFixed(1)} pts (last-price guess ${m.maeRaw.toFixed(1)}) · close inside 68% range ${m.hit68}% ${m.hit84 != null ? ` · inside 84% ${m.hit84}%` : ""}${m.n < 60 ? ` <span class="ol-note" style="display:inline">(too early to judge: with ${m.n} days a correct range lands anywhere in ${band(0.68, m.n)} / ${band(0.84, m.n)})</span>` : ""}`).join("<br>")
       : "Nothing scored yet. The first prediction is scored after its target day closes.";
     const row = r => {
       const day = `<div class="d"><b>${esc(dayLabel(r.target))}</b> <span class="ol-note">${r.h}DTE${r.actual ? "" : " · " + (Date.now() < Date.parse(r.lockAt || 0) ? "still updating" : "locked")}${staleNote(r)}</span>${(r.events || []).length ? `<div class="ol-evs" style="margin-top:3px">${r.events.map(t => evBadge({type: t, time: ""})).join("")}</div>` : ""}</div>`;
