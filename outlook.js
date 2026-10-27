@@ -182,18 +182,25 @@
     window.addEventListener("resize", () => { clearTimeout(mount.rt); mount.rt = setTimeout(() => { if (isOpen()) drawCharts(); }, 150); });
   }
   const isOpen = () => !!document.querySelector("#outlook > details[open]");
-  async function load(){
-    if (loading) return; loading = true;
-    try { const r = await fetch(host, {cache: "no-cache"}); if (!r.ok) throw 0; M = await r.json(); failed = false; window.dispatchEvent(new Event("ledger:market")); }
-    catch { failed = !M; }
-    loading = false; render();
-  }
+  // One download at a time; a call while one is running waits for it. A stalled request (phone networks) is cut off after
+  // 20 s and retried once, so it can't block every later refresh. `failed` = the last attempt failed (old data may show).
+  let inflight = null;
+  function load(){ return inflight ||= (async () => {
+    loading = true;
+    for (let a = 0; a < 2; a++){
+      const ac = new AbortController(), to = setTimeout(() => ac.abort(), 20000);
+      try { const r = await fetch(host, {cache: "no-cache", signal: ac.signal}); if (!r.ok) throw 0; M = await r.json(); failed = false; window.dispatchEvent(new Event("ledger:market")); break; }
+      catch { failed = true; }
+      finally { clearTimeout(to); }
+    }
+    loading = false; inflight = null; render();
+  })(); }
 
   function render(){
     const el = document.getElementById("outlook"); if (!el) return;
     const open = LS("open") === "1";
     if (!M){
-      el.innerHTML = `<details ${open ? "open" : ""}><summary><span class="label">SPX outlook</span><span class="ol-sum muted">${failed ? "Market data isn't available yet. It appears after the Update option quotes Action has run." : "Loading market data…"}</span><span class="chev"><span class="more">Show</span><span class="less">Hide</span></span></summary></details>`;
+      el.innerHTML = `<details ${open ? "open" : ""}><summary><span class="label">SPX outlook</span><span class="ol-sum muted">${failed ? `Couldn't download the market data. Check your connection, then pull down to refresh or <a href="#" data-olretry>retry</a>.` : "Loading market data…"}</span><span class="chev"><span class="more">Show</span><span class="less">Hide</span></span></summary></details>`;
       wire(el); return;
     }
     const R = M.ranges || [], g = M.gex, P = M.predictions || {models: [], recent: []};
@@ -214,7 +221,7 @@
         <div class="ol-lv"><span class="label" style="color:var(--gain)">Support</span><span>${k.sup.map(lvl).join(" · ") || "—"}</span></div>
         ${tradeLine(r.trade)}</div>`; }).join("");
     el.innerHTML = `<div class="ol-top">
-        <div class="ol-top-h"><span class="label">SPX outlook</span><span class="muted">${inES ? "ES" : "SPX"} ≈ <b style="color:var(--ink);font-family:var(--mono)">${px(M.spot)}</b> · likely (68%) close range · ${esc(timeLabel(Date.parse(M.updated) / 1000))}</span></div>
+        <div class="ol-top-h"><span class="label">SPX outlook</span><span class="muted">${inES ? "ES" : "SPX"} ≈ <b style="color:var(--ink);font-family:var(--mono)">${px(M.spot)}</b> · likely (68%) close range · ${esc(timeLabel(Date.parse(M.updated) / 1000))}${failed ? ` · <span class="loss">couldn't refresh, showing this older data · <a href="#" data-olretry>retry</a></span>` : ""}</span></div>
         <div class="ol-minis">${restCard()}${compact || `<span class="ol-note">No upcoming SPX expirations in the data right now.</span>`}</div>
         <button class="linkish ol-golink" type="button" data-goview="market">Charts, news &amp; track record →</button></div>
       <details ${open ? "open" : ""}>
@@ -449,6 +456,7 @@
   }
 
   function wire(el){
+    el.querySelectorAll("[data-olretry]").forEach(a => a.addEventListener("click", ev => { ev.preventDefault(); ev.stopPropagation(); a.textContent = "loading…"; load(); }));
     const det = el.querySelector("details");
     det.addEventListener("toggle", () => { LSset("open", det.open ? "1" : "0"); if (det.open && M) drawCharts(); });
     const tr = el.querySelector("details.ol-track"); if (tr) tr.addEventListener("toggle", () => LSset("track", tr.open ? "1" : "0"));
