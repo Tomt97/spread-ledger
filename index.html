@@ -719,8 +719,8 @@ function subscribeTo(uid){
   loadError = null; clearTimeout(loadTimer);
   loadTimer = setTimeout(() => { if (!loaded){ loadError = {code: "slow"}; render(); } }, 15000);
   const failed = e => { loadError = e || {code: "unavailable"}; loaded = true; render(); };
-  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; loadError = null; clearTimeout(loadTimer); scheduleRender(); autoSettle(); scheduleShareSync(); }, failed));
-  unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); scheduleRender(); scheduleShareSync(); }, failed));
+  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; loadError = null; clearTimeout(loadTimer); scheduleRender(); autoSettle(); scheduleShareSync(); maybeOpenApply(); }, failed));
+  unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); scheduleRender(); scheduleShareSync(); applyAcctHint(); }, failed));
   feeCfg = JSON.parse(JSON.stringify(FEE_DEFAULTS));
   priceBook = {};
   unsubs.push(col("settings").onSnapshot(snap => { const pb = snap.docs.find(x => x.id === "prices"); priceBook = pb ? (pb.data().books || {}) : {}; if (settleSheet) renderSettleSheet(); autoSettle();
@@ -1451,6 +1451,83 @@ async function addParsed(){
     if (!await saveTrade(t)) return putBack(good.slice(i));
   }
   updatePreview();
+}
+
+/* ---------- fix links (?apply=…) ----------
+   A link can carry a few ledger changes (add a trade, close one side of an iron condor, record a roll) worked out outside
+   the app, for the signed-in person to review and apply to their own ledger. Nothing is written until they press Apply,
+   only to their own ledger, and steps already done are skipped, so opening the link twice changes nothing. */
+let applySheet = null, applyOps = (() => { try { const v = new URLSearchParams(location.search).get("apply"); if (!v) return null;
+  const o = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(v.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0))));
+  return o && Array.isArray(o.steps) && o.steps.length <= 20 ? o : null; } catch { return null; } })();
+function maybeOpenApply(){
+  if (!applyOps || applySheet || mode !== "db" || viewUid !== me || readOnly()) return;
+  const hint = applyOps.acct ? accounts().find(a => a.name.toLowerCase().includes(String(applyOps.acct).toLowerCase())) : null;
+  applySheet = {ops: applyOps, acct: hint ? hint.id : (curAcct === ALL ? "main" : curAcct), picked: !!hint, log: null, busy: false}; applyOps = null;
+  closeSheet(); renderApplySheet();
+}
+// the account list can arrive after the trades: pick the hinted account once it's there (unless the person chose one)
+function applyAcctHint(){
+  const S = applySheet; if (!S || S.log || S.busy) return;
+  const hint = !S.picked && S.ops.acct ? accounts().find(a => a.name.toLowerCase().includes(String(S.ops.acct).toLowerCase())) : null;
+  if (hint){ S.acct = hint.id; S.picked = true; } renderApplySheet();
+}
+function applyStepText(st){
+  try { const p = parseOrder(st.line);
+    if (st.op === "add") return `Add ${esc(stratLabel(p))} ${esc(describe(p))}, ${p.qty} at ${p.price}, opened ${fmtShort(st.date)} (skipped if it's already there)`;
+    if (st.op === "side") return `Close the ${st.side === "C" ? "call" : "put"} side of that ${esc(stratLabel(p).toLowerCase())} at ${st.price} on ${fmtShort(st.date)} (its share of the entry: ${st.entry})`;
+    if (st.op === "roll") return `Roll: close ${esc(describe(p.roll.close))} at ${st.close}, open ${esc(describe(p.roll.open))} at ${st.open} (${fmtShort(st.date)})`;
+  } catch (e) { return `Can't read: ${esc(e.message)}`; }
+  return "Unknown step";
+}
+function renderApplySheet(){
+  const S = applySheet; if (!S) return; document.body.style.overflow = "hidden";
+  $("#sheetRoot").innerHTML = `<div class="overlay"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="apTitle">
+    <div class="sheet-head"><div style="display:grid;gap:4px"><h2 id="apTitle">${S.log && !S.busy ? "Changes applied" : "Apply these changes?"}</h2><span class="sub">${esc(S.ops.title || "From a link. Nothing changes until you press Apply.")}</span></div></div>
+    <label class="field" style="max-width:320px"><span class="label">Account</span><select id="apAcct" ${S.log ? "disabled" : ""}>${accounts().map(a => `<option value="${esc(a.id)}" ${a.id === S.acct ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>
+    <ol style="display:grid;gap:8px;padding-left:20px;margin:0">${S.ops.steps.map((st, i) => `<li>${applyStepText(st)}${S.log && S.log[i] ? `<div class="${S.log[i].ok === false ? "loss" : S.log[i].ok ? "gain" : "muted"}" style="font-weight:600">${S.log[i].ok === false ? "✗" : S.log[i].ok ? "✓" : "–"} ${esc(S.log[i].msg)}</div>` : ""}</li>`).join("")}</ol>
+    <div class="actions"><span class="spacer"></span>${S.log && !S.busy ? `<button class="btn primary" type="button" data-act="apDone">Done</button>`
+      : `<button class="btn" type="button" data-act="apCancel" ${S.busy ? "disabled" : ""}>Cancel</button><button class="btn primary" type="button" data-act="apApply" ${S.busy ? "disabled" : ""}>${S.busy ? "Applying…" : "Apply"}</button>`}</div>
+  </div></div>`;
+  $("#apAcct")?.addEventListener("change", ev => { S.acct = ev.target.value; S.picked = true; });
+}
+function endApply(){ applySheet = null; closeSheet(); try { history.replaceState(null, "", location.pathname + location.hash); } catch {} }
+async function runApply(){
+  const S = applySheet; if (!S || S.busy) return; const acct = S.acct; S.busy = true; S.log = []; renderApplySheet();
+  // same position whatever order the strikes were typed in
+  const key = p => p && [p.symbol, p.action, p.strategy, [...p.expiries].sort().join(","), [...p.strikes].sort((a, b) => a - b).join(","), [...new Set(p.types)].sort().join("")].join("|");
+  const same = (a, b) => a && b && key(a) === key(b);
+  const mentioned = p => trades.some(x => acctOf(x) === acct && (x.notes || "").includes(stratLabel(p).toLowerCase() + " " + p.symbol) && (x.notes || "").includes(fmtShort(expiryOf(p))) && [...new Set(p.strikes)].every(k => (x.notes || "").includes(fmtK(k))));
+  const waitFor = async f => { for (let i = 0; i < 25 && !f(); i++) await new Promise(r => setTimeout(r, 300)); return f(); };
+  const autoSettled = x => x.exit && x.exit.kind === "expired" && /^(auto|same-day)/.test(x.exit.source || "");
+  for (const [i, st] of S.ops.steps.entries()){
+    const log = (ok, msg) => { S.log[i] = {ok, msg}; renderApplySheet(); };
+    try {
+      const p = parseOrder(st.line);
+      if (st.op === "add"){
+        if (trades.some(x => acctOf(x) === acct && same(x.p, p)) || mentioned(p)) { log(null, "Already in the ledger, skipped."); continue; }
+        const t = {id: uid(), raw: st.line, p, openDate: st.date, fees: fillFee(p, acct), notes: "", account: acct, exit: null, createdAt: Date.now()};
+        if (!await saveTrade(t)) { log(false, "Couldn't save. Stopped here."); break; }
+        await waitFor(() => trades.some(x => x.id === t.id)); log(true, "Added.");
+      } else if (st.op === "side"){
+        const t = trades.find(x => acctOf(x) === acct && same(x.p, p) && (!x.exit || autoSettled(x)));
+        if (!t){ if (mentioned(p)) { log(null, "Already split, skipped."); continue; } log(false, "That iron condor isn't in this account. Stopped here."); break; }
+        const open = t.exit ? {...t, exit: null, fees: +((t.fees || 0) - (t.exit.fee || 0)).toFixed(2)} : t;
+        if (!await closeIronSide(open, st.side, Math.min(st.qty || t.p.qty, t.p.qty), st.price, st.date, st.entry)) { log(false, "Couldn't save. Stopped here."); break; }
+        await waitFor(() => !trades.some(x => x.id === t.id)); log(true, `${st.side === "C" ? "Call" : "Put"} side closed; the other side is its own open trade.`);
+      } else if (st.op === "roll"){
+        const R = p.roll;
+        if (!R.match || acctOf(R.match) !== acct){
+          if (trades.some(x => acctOf(x) === acct && x.roll && x.roll.from && describe(x.p) === describe(R.open))) { log(null, "Already recorded, skipped."); continue; }
+          log(false, "The spread being rolled isn't open in this account. Stopped here."); break; }
+        rollPx[st.line] = {close: String(st.close), open: String(st.open)};
+        const ok = await addRoll({line: st.line, p}, st.date, ""); delete rollPx[st.line];
+        if (!ok) { log(false, "Couldn't save. Stopped here."); break; }
+        log(true, "Old spread closed, new spread opened.");
+      } else { log(false, "Unknown step. Stopped here."); break; }
+    } catch (e) { log(false, (e && e.message || "Error") + " Stopped here."); break; }
+  }
+  S.busy = false; renderApplySheet();
 }
 
 /* ---------- trade sheet ---------- */
@@ -2903,6 +2980,8 @@ document.addEventListener("click", async ev => {
   if (act === "saveSide") return saveSide();
   if (act === "closeToday"){ if (!canRecordExit()) return; if (!closeArmed){ closeArmed = true; render(); return; } return closeAtTodaysClose(closeTodayCandidates().filter(t => curAcct === ALL || acctOf(t) === curAcct)); }
   if (act === "closeTodayOne"){ const t = trades.find(x => x.id === openId); if (t && canRecordExit() && await closeAtTodaysClose([t])) renderSheet(); return; }
+  if (act === "apApply") return runApply();
+  if (act === "apCancel" || act === "apDone") return endApply();
   if (act === "openRoll"){ ev.preventDefault(); openSheet(a.dataset.id); return; }
   if (act === "splitRoll"){
     // put the roll back in the paste box, ask for the two fill prices there, and replace this record once it's added

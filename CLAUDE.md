@@ -127,6 +127,13 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   each, the closing fee on the closed side. Partial contracts leave the rest as the iron condor. Imported trades keep
   their thinkorswim legs per side (`tosLegs`) so a later CSV import still matches the open side.
 
+## Fix links (`?apply=`)
+- Claude can't write to anyone's ledger (no sign-in or admin keys). For corrections worked out in chat, send a link:
+  `https://tomt97.github.io/spread-ledger/?apply=<base64url JSON>` with `{title, acct (name hint), steps: [...]}`. Steps:
+  `{op:"add", line, date}`, `{op:"side", line (the iron condor), side:"C"|"P", price, entry, date, qty?}`,
+  `{op:"roll", line (VERT ROLL), close, open, date}`. The signed-in owner sees the steps and an account picker and must press
+  Apply; it writes only to their own ledger, and steps already done are skipped (`runApply`, `maybeOpenApply`).
+
 ## Conventions
 - Must work on any phone or iPad (360–1366 px wide, portrait and landscape) with no sideways page scrolling. Grids use
   `minmax(0,1fr)`, wide tables scroll inside their own box or become cards on phones. Check with the responsive audit
