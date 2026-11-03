@@ -1879,7 +1879,8 @@ function legQuote(p, exp, type, k){
   const sym = quoteSym(p.symbol), book = quotes && quotes.u && quotes.u[sym]; if (!book) return null;
   const ymd = exp.slice(2).replace(/-/g, ""), alt = WEEKLY_ROOT[sym] || sym + "W";
   const roots = WEEKLY_ROOT[sym] && !(/WEEKLY|QUARTERLY|EOM/.test(p.tags || "") || !thirdFriday(exp)) ? [sym, alt] : [alt, sym];
-  for (const r of roots){ const q = book.o[`${r}${ymd}${type}${k}`]; if (q) return q; }
+  // 0/0 = no quote (e.g. the feed right after the open), not a worthless option: leave the trade unpriced
+  for (const r of roots){ const q = book.o[`${r}${ymd}${type}${k}`]; if (q && (q[0] > 0 || q[1] > 0)) return q; }
   return null;
 }
 var midOf = q => q[1] > 0 ? (q[0] + q[1]) / 2 : q[0];

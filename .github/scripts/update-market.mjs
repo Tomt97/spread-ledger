@@ -98,6 +98,11 @@ const spot = esLast.c - basisNow;            // SPX equivalent now (ES trades ne
 let chain = null;
 try { const res = await fetch("https://cdn.cboe.com/api/global/delayed_quotes/options/_SPX.json", UA); if (res.ok) chain = await res.json(); else console.error(`SPX chain HTTP ${res.status}`); }
 catch (e) { console.error(`SPX chain: ${e.message}`); }
+// Right after the open the delayed feed has every bid, ask and gamma at 0 (its 15-minute delay still sits before 9:30).
+// Building from that gave no ranges and no GEX, so this run stops and the previous market.json and predictions.json stay.
+{ const os = chain?.data?.options || [];
+  if (os.length > 100 && os.filter(q => +q.bid > 0 || +q.ask > 0).length < os.length * 0.05){
+    console.log("SPX chain has no quotes yet (all bids/asks 0); keeping the previous market.json and predictions.json."); process.exit(0); } }
 const nowSec = Date.now() / 1000;
 const normPdf = x => Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI);
 // Seconds since epoch of a New York clock time (minutes after midnight) on a date.

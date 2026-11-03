@@ -29,6 +29,10 @@ async function listedTickers(){
 const symbols = [...new Set([...ALWAYS, ...(await listedTickers())])].filter(s => /^[A-Z0-9.]{1,8}$/.test(s)).slice(0, MAX_TICKERS);
 console.log("Tickers:", symbols.join(", "));
 
+// Right after the open CBOE's delayed feed has every bid and ask at 0 (its 15-minute delay still sits before 9:30), which made
+// every open trade look worthless (full profit). A symbol whose quotes are almost all 0/0 keeps the previous run's quotes.
+let prev = {}; try { prev = JSON.parse(readFileSync(process.env.PREV_QUOTES || "prev/quotes.json", "utf8")).u || {}; } catch {}
+const dead = o => { const v = Object.values(o); return v.length > 20 && v.filter(q => q[0] > 0 || q[1] > 0).length < v.length * 0.05; };
 const today = new Date(); today.setUTCHours(0, 0, 0, 0);
 let total = 0;
 for (const sym of symbols) {
@@ -49,6 +53,11 @@ for (const sym of symbols) {
     const days = (exp - today) / 864e5;
     if (days < 0 || days > maxDays || Math.abs(k / px - 1) > band) continue;
     o[`${m[1]}${m[2]}${m[3]}${k}`] = [+q.bid || 0, +q.ask || 0];
+  }
+  if (dead(o)){
+    if (prev[sym]){ out.u[sym] = { ...prev[sym], stale: true }; total += Object.keys(prev[sym].o || {}).length; console.log(`${sym}: quotes all 0/0 (feed not open yet); kept the previous run's`); }
+    else console.error(`${sym}: quotes all 0/0 and no earlier quotes; skipped`);
+    continue;
   }
   out.u[sym] = { px, iv: isFinite(+d.iv30) ? +d.iv30 : null, t: json.timestamp || null, o };
   total += Object.keys(o).length;

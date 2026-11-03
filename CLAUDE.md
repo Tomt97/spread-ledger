@@ -88,6 +88,10 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
 - `.github/workflows/quotes.yml` ("Update option quotes") runs `update-quotes.mjs` (CBOE delayed option quotes for every
   ticker in the public `tickers` collection + SPX/XSP/RUT/NDX), `update-events.mjs` and `update-market.mjs` (Yahoo ES/SPX/VIX bars, CBOE SPX
   chain → GEX, levels, ranges). It force-pushes a single commit to the `quotes` branch, keeping files not rebuilt in that run.
+- Right after the 9:30 open CBOE's delayed feed has every bid/ask/gamma at 0 (its 15-minute delay still sits before the open).
+  Since DST ended (Nov 2026) the :45 UTC run lands at 9:45 EST and caught it: every open trade showed full profit and the
+  ranges vanished. Now update-quotes keeps the previous quotes for a symbol that is all 0/0 (`stale: true`), update-market
+  exits without writing when the SPX chain is all 0 (previous files stay), and the app treats a 0/0 quote as missing.
 - Started hourly by the owner's cron-job.org job (workflow_dispatch); GitHub's own schedule is only a backup (it runs ~2×/day).
 - This session's proxy blocks CBOE/Yahoo and Actions logs. Research runs go through `.github/workflows/research.yml`
   (workflow_dispatch only: `gh workflow run research.yml`), which force-pushes results to the `research` branch (result
