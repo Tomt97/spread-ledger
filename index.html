@@ -444,7 +444,7 @@ const uid = () => "t" + Date.now().toString(36) + Math.random().toString(36).sli
 
 /* ---------- order parser (thinkorswim style) ---------- */
 const STRATS = ["IRON CONDOR","IRON BUTTERFLY","BUTTERFLY","CONDOR","VERTICAL","STRADDLE","STRANGLE","CALENDAR","DIAGONAL","DBL DIAG","DOUBLE DIAGONAL","BACKRATIO","VERT ROLL","COVERED","COLLAR","COMBO","CUSTOM"];
-const NEED = {SINGLE:1,VERTICAL:2,BUTTERFLY:3,CONDOR:4,"IRON CONDOR":4,"IRON BUTTERFLY":3,STRADDLE:1,STRANGLE:2,CALENDAR:1,DIAGONAL:2};
+const NEED = {SINGLE:1,VERTICAL:2,BUTTERFLY:3,CONDOR:4,"IRON CONDOR":4,"IRON BUTTERFLY":3,STRADDLE:1,STRANGLE:2,CALENDAR:1,DIAGONAL:2,"DBL DIAG":4,"DOUBLE DIAGONAL":4};
 const DATE_RE = "\\d{1,2} [A-Z]{3} \\d{2,4}";
 const TAGS = "((?:[\\(\\[][^\\)\\]]*[\\)\\]]\\s*)*)";
 const BODY_RE = new RegExp(`^(\\S+)\\s+(?:(\\d+)\\s+)?${TAGS}(${DATE_RE}(?:\\s*\\/\\s*${DATE_RE})*)\\s+${TAGS}([\\d.]+(?:\\/[\\d.]+)*)\\s+((?:CALL|PUT)(?:\\/(?:CALL|PUT))*)\\s*(?:@\\s*(-?[\\d.]+|MKT))?(.*)$`);
@@ -532,6 +532,12 @@ function buildLegs(p){
     case "STRANGLE": return [L(1,T[0],K[0]), L(1,T[1]||(T[0]==="C"?"P":"C"),K[1])];
     case "CALENDAR": { if (E.length < 2) return null; const d=[...E].sort(); return [L(-1,t0,K[0],d[0]), L(1,t0,K[0],d[1])]; }
     case "DIAGONAL": { if (E.length < 2) return null; return [L(1,t0,K[0],E[0]), L(-1,t0,K[1],E[1])]; }
+    // thinkorswim "DBL DIAG exp1/exp2 K1/K2/K3/K4 CALL/PUT/CALL/PUT": the BUY side owns the exp1 options (K1, K2) and is
+    // short the exp2 ones (K3, K4), same as DIAGONAL. e.g. BUY +5 … 9 NOV/6 NOV 7680/7440/7655/7465 = long Nov 9 7680C and
+    // 7440P, short Nov 6 7655C and 7465P (opened for a credit, shown as a negative price).
+    case "DBL DIAG": case "DOUBLE DIAGONAL": { if (E.length < 2 || K.length !== 4) return null;
+      const ty = i => T.length === 4 ? T[i] : T.length === 2 ? T[i % 2] : (i % 2 ? "P" : "C");
+      return [L(1,ty(0),K[0],E[0]), L(1,ty(1),K[1],E[0]), L(-1,ty(2),K[2],E[1]), L(-1,ty(3),K[3],E[1])]; }
     default: return null;
   }
 }
@@ -563,6 +569,7 @@ function stratLabel(p){
     case "STRANGLE": return `${LS} strangle`;
     case "CALENDAR": return `${LS} ${tn(p.types[0])} calendar`;
     case "DIAGONAL": return `${LS} ${tn(p.types[0])} diagonal`;
+    case "DBL DIAG": case "DOUBLE DIAGONAL": return `Double diagonal${p.price != null && p.price !== 0 ? (dir * p.price < 0 ? " (credit)" : " (debit)") : ""}`;
     default: return `${p.action === "BUY" ? "Bought" : "Sold"} ${titleCase(p.strategy)}`;
   }
 }
@@ -597,6 +604,21 @@ function riskProfile(t){
   return {maxP, maxL, be, ks};
 }
 
+/* Multi-expiration structures (calendars, diagonals, double diagonals) can't be valued at intrinsic, because the later
+   legs still have time value when the first ones expire. Valuing every leg at intrinsic gives a floor instead: the
+   later legs are worth at least that, so the worst case here is a true max loss bound and the profit a minimum. */
+function multiRisk(t){
+  const p = t.p; if (!p.legs || !multiExpiry(p) || p.price == null) return null;
+  const ks = [...new Set(p.legs.map(l => l.k))].sort((a, b) => a - b), xs = [0, ...ks, ks[ks.length - 1] * 10];
+  const ys = xs.map(S => pnlAt(t, structValue(p, S)));
+  if (p.legs.filter(l => l.t === "C").reduce((a, l) => a + l.q, 0) * dirOf(p) < 0) return null;   // net short calls: no bound
+  const be = [];
+  for (let i = 0; i < xs.length - 1; i++){ const [x0, x1, y0, y1] = [xs[i], xs[i + 1], ys[i], ys[i + 1]];
+    if ((y0 < 0 && y1 > 0) || (y0 > 0 && y1 < 0)) be.push(x0 + (x1 - x0) * (-y0) / (y1 - y0)); }
+  const front = [...p.legs.map(l => l.exp)].sort()[0], best = Math.max(...ys), at = ks.filter(k => pnlAt(t, structValue(p, k)) >= best - 0.005);
+  return {minP: best, maxL: Math.min(...ys), be, front, zone: at.length ? [at[0], at[at.length - 1]] : null};
+}
+
 /* status + realized P&L */
 function evalTrade(t){
   const p = t.p, exp = expiryOf(p), today = todayISO();
@@ -619,6 +641,8 @@ let trades = [], mode = "loading", accountsDb = [], market = {}, loaded = false;
 let loadError = null, loadTimer = null;
 let DB = null, USER = null, me = null, isOwnerView = false, viewUid = null, unsubs = [], canWrite = true;
 const LS_KEY = "spread-ledger-trades", LS_ACCT = "spread-ledger-accounts", LS_MKT = "spread-ledger-market";
+// trades saved before the app could break a structure into legs (e.g. double diagonals) get them rebuilt on load
+const withLegs = t => { if (t.p && !t.p.legs && t.p.strikes && t.p.expiries){ try { const L = buildLegs(t.p); if (L) return {...t, p: {...t.p, legs: L}}; } catch {} } return t; };
 const lsRead = k => { try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch { return []; } };
 const lsWrite = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(trades)); localStorage.setItem(LS_ACCT, JSON.stringify(accountsDb)); localStorage.setItem(LS_MKT, JSON.stringify(market)); } catch {} };
 const col = (name, uid = viewUid) => DB.collection(`members/${uid}/${name}`);
@@ -719,7 +743,7 @@ function subscribeTo(uid){
   loadError = null; clearTimeout(loadTimer);
   loadTimer = setTimeout(() => { if (!loaded){ loadError = {code: "slow"}; render(); } }, 15000);
   const failed = e => { loadError = e || {code: "unavailable"}; loaded = true; render(); };
-  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => ({...d.data(), id:d.id})); loaded = true; loadError = null; clearTimeout(loadTimer); scheduleRender(); autoSettle(); scheduleShareSync(); maybeOpenApply(); }, failed));
+  unsubs.push(col("trades").onSnapshot(snap => { trades = snap.docs.map(d => withLegs({...d.data(), id:d.id})); loaded = true; loadError = null; clearTimeout(loadTimer); scheduleRender(); autoSettle(); scheduleShareSync(); maybeOpenApply(); }, failed));
   unsubs.push(col("accounts").onSnapshot(snap => { accountsDb = snap.docs.map(d => ({...d.data(), id:d.id})); scheduleRender(); scheduleShareSync(); applyAcctHint(); }, failed));
   feeCfg = JSON.parse(JSON.stringify(FEE_DEFAULTS));
   priceBook = {};
@@ -777,7 +801,7 @@ async function boot(){
     if (isOwnerView){ await migrateLegacy(); if (window.LEDGER_APPROVAL){ loadMembers(); watchSignups(); } }
     subscribeTo(me);
   } else {
-    mode = "local"; trades = lsRead(LS_KEY); accountsDb = lsRead(LS_ACCT);
+    mode = "local"; trades = lsRead(LS_KEY).map(withLegs); accountsDb = lsRead(LS_ACCT);
     try { const fc = JSON.parse(localStorage.getItem(LS_FEES) || "null"); if (fc) feeCfg = fc; } catch {}
     try { priceBook = JSON.parse(localStorage.getItem("spread-ledger-prices") || "{}") || {}; } catch {}
     try { market = JSON.parse(localStorage.getItem(LS_MKT) || "{}"); if (Array.isArray(market)) market = {}; } catch {}
@@ -1623,6 +1647,7 @@ function renderSheet(){
       ${exitTab==="side" && isIron(p) ? sideForm(t) : exitTab==="close" ? `
         <div class="grid2">
           <label class="field"><span class="label">Close price (per spread)</span><input type="number" step="0.01" id="exPrice" placeholder="${(() => { const m = markOf(t); return m ? `now about ${fmtMark(m.V)} (mid)` : p.action==="SELL"?"debit paid to close, e.g. 0.10":"credit received, e.g. 1.20"; })()}"></label>
+          ${p.price != null && p.price < 0 ? `<div class="hint" style="grid-column:1/-1">Use thinkorswim's sign for the closing order's price, as when you opened it: a positive price means you receive that much, a negative one means you pay it (@-0.40 = paid 0.40, enter -0.40). The P&amp;L below shows the result.</div>` : ""}
           <label class="field"><span class="label">Close date</span><input type="date" id="exDate" value="${todayISO() < e.exp ? todayISO() : e.exp}"></label>
         </div>` : `
         <div class="grid2">
@@ -1640,9 +1665,14 @@ function renderSheet(){
     <div class="raw">${esc(t.raw)}</div>
     <div class="facts">
       <div><span class="label">${cash==null?"Entry":cash>=0?"Credit":"Debit"}</span><span class="v">${cash==null?"—":money0(Math.abs(cash))}</span><span class="hint">${p.price==null?"set a fill price":p.price.toFixed(2)+" × "+p.qty+" × "+p.mult}</span></div>
+      ${(() => { const mr = !rp && multiRisk(t); if (mr) return `
+      <div><span class="label">Profit at ${fmtShort(mr.front)}</span><span class="v gain">${mr.minP >= 0 ? "at least " : ""}${money(mr.minP)}</span><span class="hint">${mr.zone ? `SPX between ${fmtK(mr.zone[0])} and ${fmtK(mr.zone[1])}` : ""}, plus whatever the later legs are still worth</span></div>
+      <div><span class="label">Max loss</span><span class="v loss">no more than ${money(mr.maxL)}</span><span class="hint">if the later legs had no time value left</span></div>
+      <div><span class="label">Breakeven at ${fmtShort(mr.front)}</span><span class="v">${mr.be.length ? mr.be.map(b => "≈ " + fmtK(+b.toFixed(2))).join(" / ") : "—"}</span><span class="hint">conservative: the later legs' time value widens it</span></div>`;
+      return `
       <div><span class="label">Max profit</span><span class="v gain">${rp?(isFinite(rp.maxP)?money(rp.maxP):"Unlimited"):"—"}</span></div>
       <div><span class="label">Max loss</span><span class="v loss">${rp?(isFinite(rp.maxL)?money(rp.maxL):"Unlimited"):"—"}</span></div>
-      <div><span class="label">Breakeven</span><span class="v">${rp&&rp.be.length?rp.be.map(b=>fmtK(+b.toFixed(2))).join(" / "):"—"}</span></div>
+      <div><span class="label">Breakeven</span><span class="v">${rp&&rp.be.length?rp.be.map(b=>fmtK(+b.toFixed(2))).join(" / "):"—"}</span></div>`; })()}
       <div><span class="label">Expires</span><span class="v">${fmtShort(e.exp)}</span></div>
       ${e.status === "open" ? (() => { const m = markOf(t); return m ? `<div><span class="label">P&amp;L now</span><span class="v ${pnlClass(m.pnl)}">${money(m.pnl)}</span><span class="hint">mark ${fmtMark(m.V)} (mid) · 15-min delayed, ${esc(quoteTime(m.at))}</span></div>` : ""; })() : ""}
       ${e.status === "open" ? (() => { const c = chanceOfProfit(t); return `<div><span class="label">Chance of profit</span><span class="v">${c ? fmtPct(c.prob) : "—"}</span><span class="hint">${c ? `${esc(p.symbol)} ${c.S0} · IV ${c.iv}% · ${c.days < 1 ? (c.days*24).toFixed(1)+" h" : c.days.toFixed(1)+" d"} left` : "add price + IV under Market inputs"}</span></div>`; })() : ""}

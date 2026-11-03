@@ -120,6 +120,13 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   one `roll: {from: id}` and "↻ Rolled in"; each trade sheet links to the other. Older rolls are recognized from their
   "Rolled to/from" notes (`rollInfo`).
 
+## Multi-expiration structures
+- `buildLegs` knows calendars, diagonals and double diagonals (thinkorswim `DBL DIAG exp1/exp2 K1/K2/K3/K4 CALL/PUT/CALL/PUT`:
+  the BUY side owns the exp1 options and is short the exp2 ones). Trades saved without legs get them rebuilt on load
+  (`withLegs`). These can't be valued at intrinsic, so the trade sheet shows `multiRisk` bounds instead: profit at the first
+  expiration (a minimum), max loss "no more than" (later legs worth only intrinsic) and conservative breakevens. P&L now,
+  the leg table and the OptionStrat link come from the legs and the delayed quotes.
+
 ## Closing one side of an iron condor
 - Trade sheet → Record exit → "Close one side" (iron condors and iron butterflies): `closeIronSide` splits the position
   into its two verticals (as thinkorswim shows it). The closed side gets the exit; the other side stays open as its own
