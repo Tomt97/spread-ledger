@@ -141,6 +141,11 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   expiration (a minimum), max loss "no more than" (later legs worth only intrinsic) and conservative breakevens. P&L now,
   the leg table and the OptionStrat link come from the legs and the delayed quotes.
 
+## Closing part of a position
+- Record exit → Closed early has "Contracts closed (of N)" when qty > 1 (not for imported trades already partly closed,
+  `tosPartial`). Fewer than all: the closed contracts become their own closed trade (`split.from`, their share of the
+  opening fees plus the closing fee); the rest stays open under the original trade with the remaining fees.
+
 ## Closing one side of an iron condor
 - Trade sheet → Record exit → "Close one side" (iron condors and iron butterflies): `closeIronSide` splits the position
   into its two verticals (as thinkorswim shows it). The closed side gets the exit; the other side stays open as its own

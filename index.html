@@ -1595,8 +1595,9 @@ function payoffSVG(t, settle){
   </svg>`, X, Y, lo, hi, W, ml, mr};
 }
 
-function exitPreviewPnl(t, tab, price, settle){
-  if (tab === "close") return price == null ? null : pnlAt(t, price) - fillFee(t.p, acctOf(t));
+function exitPreviewPnl(t, tab, price, settle, q = t.p.qty){
+  if (tab === "close"){ if (price == null) return null; const part = {...t, p: {...t.p, qty: q}, fees: (t.fees || 0) * q / t.p.qty};
+    return pnlAt(part, price) - fillFee(part.p, acctOf(t)); }
   if (settle == null) return null;
   return pnlAt(t, settledValue(t, settle));
 }
@@ -1649,6 +1650,7 @@ function renderSheet(){
           <label class="field"><span class="label">Close price (per spread)</span><input type="number" step="0.01" id="exPrice" placeholder="${(() => { const m = markOf(t); return m ? `now about ${fmtMark(m.V)} (mid)` : p.action==="SELL"?"debit paid to close, e.g. 0.10":"credit received, e.g. 1.20"; })()}"></label>
           ${p.price != null && p.price < 0 ? `<div class="hint" style="grid-column:1/-1">Use thinkorswim's sign for the closing order's price, as when you opened it: a positive price means you receive that much, a negative one means you pay it (@-0.40 = paid 0.40, enter -0.40). The P&amp;L below shows the result.</div>` : ""}
           <label class="field"><span class="label">Close date</span><input type="date" id="exDate" value="${todayISO() < e.exp ? todayISO() : e.exp}"></label>
+          ${p.qty > 1 && !t.tosPartial ? `<label class="field"><span class="label">Contracts closed (of ${p.qty})</span><input type="number" id="exQty" min="1" max="${p.qty}" step="1" value="${p.qty}" inputmode="numeric"></label>` : ""}
         </div>` : `
         <div class="grid2">
           <label class="field"><span class="label">${esc(p.symbol)} settlement price</span><input type="number" step="0.01" id="exSettle" placeholder="e.g. 7792.40"></label>
@@ -1705,12 +1707,14 @@ function wireSheet(t, chart){
       if (!(q >= 1 && q <= t.p.qty) || px == null || en == null){ el.innerHTML = ""; sheetDirty = px != null; return; }
       const side = $("#sdSide").value, x = {...ironSides(t.p)[side], qty: q, price: en}, v = dirOf(x) * (px - en) * q * x.mult - (t.fees || 0) * q / t.p.qty / 2 - fillFee(x, acctOf(t));
       el.innerHTML = `${side === "P" ? "Put" : "Call"} side P&amp;L after fees <span class="${pnlClass(v)}" style="font-weight:700">${money(v)}</span>`; sheetDirty = true; return; }
-    const price = num($("#exPrice")?.value), settle = num($("#exSettle")?.value);
-    const v = exitPreviewPnl(t, exitTab, price, settle);
-    el.innerHTML = v == null ? "" : `P&amp;L after fees <span class="${pnlClass(v)}" style="font-weight:700">${money(v)}</span>`;
+    const price = num($("#exPrice")?.value), settle = num($("#exSettle")?.value), qn = Math.round(num($("#exQty")?.value) || t.p.qty);
+    const q = exitTab === "close" && qn >= 1 && qn < t.p.qty ? qn : t.p.qty;
+    const v = exitPreviewPnl(t, exitTab, price, settle, q);
+    el.innerHTML = v == null ? "" : `${q < t.p.qty ? `${q} of ${t.p.qty} contracts: ` : ""}P&amp;L after fees <span class="${pnlClass(v)}" style="font-weight:700">${money(v)}</span>${q < t.p.qty ? ` <span class="muted">· ${t.p.qty - q} stay open</span>` : ""}`;
     sheetDirty = (price != null || settle != null);
   };
   $("#exPrice")?.addEventListener("input", prev);
+  $("#exQty")?.addEventListener("input", prev);
   $("#exSettle")?.addEventListener("input", prev);
   ["#sdSide", "#sdQty", "#sdPrice", "#sdEntry"].forEach(k => $(k)?.addEventListener("input", prev));
   const hov = $("#hov");
@@ -1813,6 +1817,21 @@ async function saveExit(){
   let exit;
   if (exitTab === "close"){
     const price = num($("#exPrice").value); if (price == null){ $("#exErr").textContent = "Enter the price you closed at."; return; }
+    const q = $("#exQty") ? Math.round(num($("#exQty").value) || 0) : t.p.qty;
+    if (!(q >= 1 && q <= t.p.qty)){ $("#exErr").textContent = `Contracts closed must be 1 to ${t.p.qty}.`; return; }
+    if (q < t.p.qty){
+      // Part of the position closed early: the closed contracts become their own trade (with this exit and their share of the
+      // opening fees); the rest stays open under this trade. Imported trades keep their thinkorswim legs per piece.
+      const share = q / t.p.qty, date = $("#exDate").value || todayISO(), cp = {...t.p, qty: q}, rp = {...t.p, qty: t.p.qty - q}, fee = fillFee(cp, acctOf(t));
+      const scale = f => t.tosLegs ? t.tosLegs.map(l => ({...l, q: l.q * f})) : t.tosLegs;
+      const closed = {...t, id: uid(), p: cp, raw: rawFor(cp), fees: +((t.fees || 0) * share + fee).toFixed(2), exit: {kind: "closed", price, date, fee},
+        tosLegs: scale(share), split: {from: t.id}, createdAt: Date.now(), notes: [t.notes, `Closed ${q} of ${t.p.qty} early`].filter(Boolean).join(" · ")};
+      const rest = {...t, p: rp, raw: rawFor(rp), fees: +((t.fees || 0) * (1 - share)).toFixed(2), tosLegs: scale(1 - share),
+        notes: [t.notes, `${q} closed ${fmtShort(date)} at ${price}`].filter(Boolean).join(" · ")};
+      sheetDirty = false;
+      if (await saveTrade(closed) && await saveTrade(rest)) renderSheet();
+      return;
+    }
     exit = {kind:"closed", price, date:$("#exDate").value || todayISO(), fee: fillFee(t.p, acctOf(t))};
   } else {
     const st = num($("#exSettle").value); if (st == null){ $("#exErr").textContent = "Enter the settlement price."; return; }
