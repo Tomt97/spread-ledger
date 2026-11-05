@@ -239,10 +239,10 @@ function renderCal(days){
   const month = calMonth || (days.length ? days[days.length - 1][0].slice(0, 7) : todayISO().slice(0, 7));
   const [y, m] = month.split("-").map(Number);
   $("#calM").textContent = `${MON[m - 1]} ${y}`; $("#calM").dataset.month = month;
-  const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7, dim = new Date(y, m, 0).getDate();
+  const lead = new Date(y, m - 1, 1).getDay(), dim = new Date(y, m, 0).getDate();
   const inMonth = days.filter(r => r[0].startsWith(month)), max = Math.max(1, ...inMonth.map(r => Math.abs(r[1])));
   const tone = v => { if (Math.abs(v) < 0.005) return ""; const k = Math.abs(v) / max > 0.66 ? 3 : Math.abs(v) / max > 0.33 ? 2 : 1; return (v > 0 ? "g" : "l") + k; };
-  const cells = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => `<div class="dow">${d}</div>`);
+  const cells = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => `<div class="dow">${d}</div>`);
   for (let i = 0; i < Math.ceil((lead + dim) / 7) * 7; i++){
     const d = i - lead + 1;
     if (d < 1 || d > dim){ cells.push('<div class="cday out"></div>'); continue; }

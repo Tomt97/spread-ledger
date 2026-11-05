@@ -1014,13 +1014,13 @@ function renderCalendar(){
   const [y, m] = month.split("-").map(Number);
   $("#calMonth").textContent = `${MON_N[m-1]} ${y}`; $("#calMonth").dataset.month = shown;
   const first = new Date(y, m - 1, 1), daysIn = new Date(y, m, 0).getDate();
-  const lead = (first.getDay() + 6) % 7;                 // Monday first
+  const lead = first.getDay();                           // Sunday first (owner's preference)
   const monthDays = Object.entries(byDay).filter(([d]) => d.startsWith(shown));
   const maxAbs = Math.max(1, ...monthDays.map(([, v]) => Math.abs(v.pnl)));
   const tone = v => { if (Math.abs(v) < 0.005) return ""; const r = Math.abs(v) / maxAbs, k = r > 0.66 ? 3 : r > 0.33 ? 2 : 1; return (v > 0 ? "g" : "l") + k; };
   const today = todayISO();
   const cells = [];
-  ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].forEach(d => cells.push(`<div class="dow">${d}</div>`));
+  ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach(d => cells.push(`<div class="dow">${d}</div>`));
   cells.push(`<div class="dow wk">Week</div>`);
   let week = {pnl: 0, n: 0};
   const total = lead + daysIn, rows = Math.ceil(total / 7);
