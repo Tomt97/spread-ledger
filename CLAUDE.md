@@ -52,6 +52,15 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
 - Afternoon lock (owner's rule, Oct 2026): from 12:00 pm CT (1:00 pm ET) to the close the suggested setups don't change. The
   suggestion from the last run before noon CT (else the first after) is kept in predictions.json `setupLock` and shown for the
   rest of the session with `locked` (time) and each spread's current mid as `now`. The 0DTE hourly log doesn't keep it again.
+- Other setups (owner's request, Nov 2026): selling the credit spread stays the main idea. `otherIdeas` adds at most two
+  alternatives per 1DTE/2DTE: an iron butterfly (short straddle at the strike nearest the center, wings at the 84% edges)
+  and a double diagonal (short this expiration at the 84% edges, long the next expiration 25 points further out; long
+  legs valued with Black-Scholes at their current IV, an estimate). Shown only when the model's expected value at the mid
+  is positive and the credit is at least $0.80; kept in the record (`trade.other`) and graded at expiration
+  (`tradeStats` rows "Iron butterfly", "Double diagonal (est.)").
+- Rest of day, last hour: the width never shrinks below the full last hour's (`Math.max(minutes left, 60)`). Forecasts at
+  3:45 with 15 minutes left missed the 84% range 5 of 13 days (Oct-Nov 2026); the closing imbalance moves more than
+  the square-root-of-time rule says. With the floor the same days hold 11 of 13.
 - Suggested spreads are kept and graded (owner's request): the suggestion standing at each 1DTE/2DTE lock is frozen in the
   record (`trade`), each hour's 0DTE suggestion in `rod`; after expiration each gets `result` {pnl per 1 contract at the
   mid credit held to expiration, touched}. `tradeStats` (market.json predictions) and the track record show them.

@@ -386,7 +386,9 @@ let restOfDay = null;
 { const m = nyNow.mins, live = partial.length && m >= 9 * 60 + 30 && m < 16 * 60, v = vixBefore(nyNow.date);
   const H = Math.min(15, Math.max(10, Math.floor(m / 60) + (m % 60 ? 1 : 0))), cal = rodCal[H];
   if (live && v && cal){
-    const rem = (16 * 60 - m) / 390, sig = spot * v / 100 / Math.sqrt(252) * Math.sqrt(rem);
+    // In the last hour the width never shrinks below the full last hour's: the close (imbalance orders) moves far more than
+    // √time says. Live record Oct-Nov 2026: forecasts at 3:45 with 15 min left missed the 84% range 5 of 13 days.
+    const rem = Math.max(16 * 60 - m, 60) / 390, sig = spot * v / 100 / Math.sqrt(252) * Math.sqrt(rem);
     restOfDay = { d: nyNow.date, at: new Date().toISOString(), spot: r2(spot), minsLeft: 16 * 60 - m, sigma: r2(sig), hour: H,
                   r68: [r2(spot - cal.k68 * sig), r2(spot + cal.k68 * sig)], r84: [r2(spot - cal.k84 * sig), r2(spot + cal.k84 * sig)] };
     const id = `${nyNow.date}|${Math.floor(m / 60)}`;      // one kept forecast per clock hour
@@ -513,6 +515,55 @@ function viewFor(r){
   return { lo84: r.r84[0], hi84: r.r84[1], below, touch, samples };
 }
 for (const r of ranges) r.trade = spreadIdeas(r.exp, viewFor(r), RULES[r.h]);
+
+/* ---------- other setups for 1DTE/2DTE (owner's request, Nov 2026) ----------
+   Selling the credit spread above stays the main idea; these are at most two alternatives, each priced from the chain
+   and judged on the same model distribution (POP, expected value, max loss), shown only when the model gives them a
+   positive expected value at the mid price.
+   Iron butterfly: short the straddle at the strike nearest the center, wings at the 84% range edges.
+   Double diagonal: short this expiration's options at the 84% edges, long the next expiration's 25 points further out
+   (like the owner's Nov 2026 SPX trade). At the front expiration the long legs still have time value: Black-Scholes with
+   their current IV (an estimate; IV can move). Max loss is bounded by the width minus the credit. */
+const ncdf = x => { const t = 1 / (1 + 0.2316419 * Math.abs(x)), d = 0.3989423 * Math.exp(-x * x / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x > 0 ? 1 - p : p; };
+const bs = (isCall, S, K, T, iv) => { if (!(T > 0) || !(iv > 0)) return Math.max(0, isCall ? S - K : K - S);
+  const v = iv * Math.sqrt(T), d1 = (Math.log(S / K) + v * v / 2) / v, d2 = d1 - v;
+  return isCall ? S * ncdf(d1) - K * ncdf(d2) : K * ncdf(-d2) - S * ncdf(-d1); };
+function otherIdeas(r, view){
+  const list = chainByExp.get(r.exp); if (!list || !view) return [];
+  const mid = o => o && o.bid > 0 && o.ask > 0 && o.ask >= o.bid ? (o.bid + o.ask) / 2 : null;
+  const get = (L, t, K) => L.find(o => o.type === t && o.K === K);
+  const evOf = f => r2(view.samples.reduce((a, S) => a + f(S), 0) / view.samples.length * 100);
+  const popOf = f => Math.round(view.samples.filter(S => f(S) > 0).length / view.samples.length * 100);
+  const strikes = [...new Set(list.map(o => o.K))].sort((a, b) => a - b), near = x => strikes.reduce((a, k) => Math.abs(k - x) < Math.abs(a - x) ? k : a, strikes[0]);
+  const out = [];
+  { // iron butterfly
+    const K0 = near(r.center), w = Math.max(10, Math.round((view.hi84 - view.lo84) / 2 / 5) * 5);
+    const sc = get(list, "C", K0), sp = get(list, "P", K0), lc = get(list, "C", K0 + w), lp = get(list, "P", K0 - w);
+    const ms = [sc, sp, lc, lp].map(mid);
+    if (ms.every(v => v != null)){
+      const credit = ms[0] + ms[1] - ms[2] - ms[3], natural = sc.bid + sp.bid - lc.ask - lp.ask, pl = S => credit - Math.min(w, Math.abs(S - K0));
+      if (credit >= MIN_CREDIT && credit < w) out.push({ type: "IB", label: `Iron butterfly ${K0 - w}/${K0}/${K0 + w}`, exp: r.exp, center: K0, width: w, credit: r2(credit), natural: r2(natural),
+        pop: popOf(pl), ev: evOf(pl), maxLoss: r2((w - credit) * 100), be: [r2(K0 - credit), r2(K0 + credit)] });
+    }
+  }
+  { // double diagonal
+    const back = [...chainByExp.keys()].sort().find(e => e > r.exp), BL = back && chainByExp.get(back);
+    if (BL){
+      const W = 25, kp = Math.max(...strikes.filter(k => k <= view.lo84)), kc = Math.min(...strikes.filter(k => k >= view.hi84));
+      const sp = get(list, "P", kp), sc = get(list, "C", kc), lp = get(BL, "P", kp - W), lc = get(BL, "C", kc + W), ms = [sp, sc, lp, lc].map(mid);
+      if (isFinite(kp) && isFinite(kc) && ms.every(v => v != null) && lp.iv > 0 && lc.iv > 0){
+        const credit = ms[0] + ms[1] - ms[2] - ms[3], natural = sp.bid + sc.bid - lp.ask - lc.ask, dT = Math.max(lp.T - sp.T, 1 / 365);
+        const pl = S => credit - Math.max(0, kp - S) - Math.max(0, S - kc) + bs(false, S, kp - W, dT, lp.iv) + bs(true, S, kc + W, dT, lc.iv);
+        if (credit >= MIN_CREDIT) out.push({ type: "DD", label: `Double diagonal ${kp}/${kc} short ${r.exp.slice(5)}, ${kp - W}/${kc + W} long ${back.slice(5)}`, exp: r.exp, back,
+          shortP: kp, shortC: kc, longP: kp - W, longC: kc + W, width: W, ivP: r2(lp.iv), ivC: r2(lc.iv), dT, credit: r2(credit), natural: r2(natural),
+          pop: popOf(pl), ev: evOf(pl), maxLoss: r2((W - credit) * 100) });
+      }
+    }
+  }
+  return out.filter(x => x.ev > 0).sort((a, b) => b.ev - a.ev).slice(0, 2);
+}
+for (const r of ranges) if (r.trade) r.trade.other = otherIdeas(r, viewFor(r));
 if (restOfDay){
   const cal = rodCal[restOfDay.hour], absP = cal.abs, sig = restOfDay.sigma, x = K => Math.abs(K - restOfDay.spot) / sig;
   const tail = K => 0.5 * (1 - cdfP(absP, x(K), 0.05));
@@ -545,7 +596,8 @@ if (restOfDay){
    closes: P&L per 1 contract held to expiration (credit − settlement value, at the mid credit shown), and whether
    the short strike was touched on the way. */
 const keepIdea = x => x && { type: x.type, short: x.short, long: x.long, width: x.width, credit: x.credit, natural: x.natural, delta: x.delta ?? null, pop: x.pop, pTouch: x.pTouch, ev: x.ev };
-const keepTrade = T => T && { rule: T.rule || null, pcs: keepIdea(T.pcs), ccs: keepIdea(T.ccs), why: T.why || null };
+const keepOther = x => { const { label, ...rest } = x; return { label, ...rest }; };
+const keepTrade = T => T && { rule: T.rule || null, pcs: keepIdea(T.pcs), ccs: keepIdea(T.ccs), why: T.why || null, ...(T.other ? { other: T.other.map(keepOther) } : {}) };
 for (const r of ranges){
   const rec = records.find(x => x.id === `${r.exp}|${r.h}` && !x.actual);
   if (rec && rec.made && Date.parse(rec.made) / 1000 > nowSec - 120) rec.trade = keepTrade(r.trade);   // only a record this run just (re)wrote, i.e. still unlocked
@@ -560,6 +612,11 @@ for (const r of records){
   if (!r.actual || !r.trade) continue;
   const from = r.lockAt ? ny(Date.parse(r.lockAt) / 1000).date : r.target, hl = windowHL(from, r.target);
   grade(r.trade.pcs, r.actual.c, hl); grade(r.trade.ccs, r.actual.c, hl);
+  // other setups, held to this record's expiration (double diagonal: the long legs valued with Black-Scholes at the close)
+  for (const x of r.trade.other || []){ if (x.result || x.exp !== r.target) continue; const c = r.actual.c;
+    const pl = x.type === "IB" ? x.credit - Math.min(x.width, Math.abs(c - x.center))
+      : x.credit - Math.max(0, x.shortP - c) - Math.max(0, c - x.shortC) + bs(false, c, x.longP, x.dT, x.ivP) + bs(true, c, x.longC, x.dT, x.ivC);
+    x.result = { pnl: r2(pl * 100), pnlFill: r2((pl - x.credit + x.natural) * 100), close: r2(c), estimated: x.type === "DD" }; }
 }
 for (const x of rod){
   if (x.actual == null || !x.trade) continue;
@@ -578,7 +635,8 @@ const tradeStats = (() => {
   const done = h => records.filter(r => r.h === h && r.actual && r.trade);
   const rodDone = rod.filter(x => x.actual != null && x.trade);
   return [sum("1DTE", of(done(1)), done(1).filter(r => !r.trade.pcs && !r.trade.ccs).length), sum("2DTE", of(done(2)), done(2).filter(r => !r.trade.pcs && !r.trade.ccs).length),
-          sum("0DTE (hourly)", of(rodDone), rodDone.filter(x => !x.trade.pcs && !x.trade.ccs).length)].filter(Boolean);
+          sum("0DTE (hourly)", of(rodDone), rodDone.filter(x => !x.trade.pcs && !x.trade.ccs).length),
+          ...[["IB", "Iron butterfly (1-2DTE)"], ["DD", "Double diagonal (1-2DTE, est.)"]].map(([t, label]) => sum(label, records.filter(r => r.actual && r.trade).flatMap(r => (r.trade.other || []).filter(x => x.type === t)), 0))].filter(Boolean);
 })();
 
 /* ---------- how our levels hold up ----------
