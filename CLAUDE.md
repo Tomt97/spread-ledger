@@ -57,7 +57,8 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   and a double diagonal (short this expiration at the 84% edges, long the next expiration 25 points further out; long
   legs valued with Black-Scholes at their current IV, an estimate). Shown only when the model's expected value at the mid
   is positive and the credit is at least $0.80; kept in the record (`trade.other`) and graded at expiration
-  (`tradeStats` rows "Iron butterfly", "Double diagonal (est.)").
+  (`tradeStats` rows "Iron butterfly", "Double diagonal (est.)"). Owner: skip anything uncertain, so the app shows a kind
+  only after 20+ graded results that made money at the fill (`proven` in outlook.js); until then it is only tracked.
 - Rest of day, last hour: the width never shrinks below the full last hour's (`Math.max(minutes left, 60)`). Forecasts at
   3:45 with 15 minutes left missed the 84% range 5 of 13 days (Oct-Nov 2026); the closing imbalance moves more than
   the square-root-of-time rule says. With the floor the same days hold 11 of 13.
