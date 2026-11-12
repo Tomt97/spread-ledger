@@ -1,0 +1,626 @@
+ES 15m 4581 bars, 60m 13710 bars
+[
+ {
+  "label": "15m k=4",
+  "bars": 4581,
+  "from": "2026-09-02",
+  "to": "2026-11-12",
+  "signals": {
+   "n": 151,
+   "t1Hit": 56.95,
+   "avgR": -0.05,
+   "avgPts": -1.06,
+   "winRate": 57.62,
+   "profitFactor": 0.82
+  },
+  "randomSameTrade": {
+   "n": 3020,
+   "t1Hit": 55.63,
+   "avgR": -0.04,
+   "avgPts": -0.87,
+   "winRate": 56.42,
+   "profitFactor": 0.85
+  },
+  "edgeRPerTrade": -0.01,
+  "tStat": -0.1,
+  "medianRiskPts": 11.39,
+  "regularHours": {
+   "n": 52,
+   "t1Hit": 57.69,
+   "avgR": -0.04,
+   "avgPts": -4.16,
+   "winRate": 59.62,
+   "profitFactor": 0.55
+  },
+  "overnight": {
+   "n": 99,
+   "t1Hit": 56.57,
+   "avgR": -0.06,
+   "avgPts": 0.57,
+   "winRate": 56.57,
+   "profitFactor": 1.14
+  },
+  "afterVolSpike": {
+   "n": 39,
+   "t1Hit": 61.54,
+   "avgR": 0.16,
+   "avgPts": 1.3,
+   "winRate": 64.1,
+   "profitFactor": 1.22
+  },
+  "calm": {
+   "n": 112,
+   "t1Hit": 55.36,
+   "avgR": -0.12,
+   "avgPts": -1.88,
+   "winRate": 55.36,
+   "profitFactor": 0.68
+  },
+  "firstHalf": {
+   "n": 75,
+   "t1Hit": 57.33,
+   "avgR": -0.05,
+   "avgPts": -0.36,
+   "winRate": 57.33,
+   "profitFactor": 0.93
+  },
+  "secondHalf": {
+   "n": 76,
+   "t1Hit": 56.58,
+   "avgR": -0.05,
+   "avgPts": -1.75,
+   "winRate": 57.89,
+   "profitFactor": 0.73
+  },
+  "deepFlush": {
+   "n": 53,
+   "t1Hit": 58.49,
+   "avgR": -0.08,
+   "avgPts": -4.22,
+   "winRate": 60.38,
+   "profitFactor": 0.56
+  },
+  "shallowFlush": {
+   "n": 98,
+   "t1Hit": 56.12,
+   "avgR": -0.04,
+   "avgPts": 0.65,
+   "winRate": 56.12,
+   "profitFactor": 1.17
+  }
+ },
+ {
+  "label": "15m k=8",
+  "bars": 4581,
+  "from": "2026-09-02",
+  "to": "2026-11-12",
+  "signals": {
+   "n": 80,
+   "t1Hit": 51.25,
+   "avgR": -0.07,
+   "avgPts": -0.87,
+   "winRate": 51.25,
+   "profitFactor": 0.87
+  },
+  "randomSameTrade": {
+   "n": 1600,
+   "t1Hit": 50.19,
+   "avgR": -0.03,
+   "avgPts": -0.81,
+   "winRate": 51.06,
+   "profitFactor": 0.89
+  },
+  "edgeRPerTrade": -0.04,
+  "tStat": -0.3,
+  "medianRiskPts": 13.37,
+  "regularHours": {
+   "n": 32,
+   "t1Hit": 56.25,
+   "avgR": -0.03,
+   "avgPts": -3.28,
+   "winRate": 56.25,
+   "profitFactor": 0.64
+  },
+  "overnight": {
+   "n": 48,
+   "t1Hit": 47.92,
+   "avgR": -0.09,
+   "avgPts": 0.74,
+   "winRate": 47.92,
+   "profitFactor": 1.14
+  },
+  "afterVolSpike": {
+   "n": 22,
+   "t1Hit": 50,
+   "avgR": -0.1,
+   "avgPts": -0.69,
+   "winRate": 50,
+   "profitFactor": 0.91
+  },
+  "calm": {
+   "n": 58,
+   "t1Hit": 51.72,
+   "avgR": -0.05,
+   "avgPts": -0.94,
+   "winRate": 51.72,
+   "profitFactor": 0.85
+  },
+  "firstHalf": {
+   "n": 40,
+   "t1Hit": 55,
+   "avgR": 0.08,
+   "avgPts": 2.17,
+   "winRate": 55,
+   "profitFactor": 1.46
+  },
+  "secondHalf": {
+   "n": 40,
+   "t1Hit": 47.5,
+   "avgR": -0.21,
+   "avgPts": -3.91,
+   "winRate": 47.5,
+   "profitFactor": 0.56
+  },
+  "deepFlush": {
+   "n": 26,
+   "t1Hit": 57.69,
+   "avgR": -0.12,
+   "avgPts": -4.35,
+   "winRate": 57.69,
+   "profitFactor": 0.59
+  },
+  "shallowFlush": {
+   "n": 54,
+   "t1Hit": 48.15,
+   "avgR": -0.04,
+   "avgPts": 0.81,
+   "winRate": 48.15,
+   "profitFactor": 1.16
+  }
+ },
+ {
+  "label": "15m k=8 STRICT (shelf + elevator down)",
+  "bars": 4581,
+  "from": "2026-09-02",
+  "to": "2026-11-12",
+  "signals": {
+   "n": 55,
+   "t1Hit": 50.91,
+   "avgR": -0.16,
+   "avgPts": -2.38,
+   "winRate": 50.91,
+   "profitFactor": 0.68
+  },
+  "randomSameTrade": {
+   "n": 1100,
+   "t1Hit": 52.18,
+   "avgR": -0.07,
+   "avgPts": -0.65,
+   "winRate": 53.55,
+   "profitFactor": 0.9
+  },
+  "edgeRPerTrade": -0.1,
+  "tStat": -0.75,
+  "medianRiskPts": 14.45,
+  "regularHours": {
+   "n": 29,
+   "t1Hit": 58.62,
+   "avgR": -0.09,
+   "avgPts": -3.37,
+   "winRate": 58.62,
+   "profitFactor": 0.61
+  },
+  "overnight": {
+   "n": 26,
+   "t1Hit": 42.31,
+   "avgR": -0.25,
+   "avgPts": -1.28,
+   "winRate": 42.31,
+   "profitFactor": 0.79
+  },
+  "afterVolSpike": {
+   "n": 13,
+   "t1Hit": 53.85,
+   "avgR": -0.24,
+   "avgPts": -2.02,
+   "winRate": 53.85,
+   "profitFactor": 0.73
+  },
+  "calm": {
+   "n": 42,
+   "t1Hit": 50,
+   "avgR": -0.14,
+   "avgPts": -2.49,
+   "winRate": 50,
+   "profitFactor": 0.66
+  },
+  "firstHalf": {
+   "n": 27,
+   "t1Hit": 55.56,
+   "avgR": 0.02,
+   "avgPts": 1.62,
+   "winRate": 55.56,
+   "profitFactor": 1.32
+  },
+  "secondHalf": {
+   "n": 28,
+   "t1Hit": 46.43,
+   "avgR": -0.35,
+   "avgPts": -6.24,
+   "winRate": 46.43,
+   "profitFactor": 0.36
+  },
+  "deepFlush": {
+   "n": 20,
+   "t1Hit": 50,
+   "avgR": -0.33,
+   "avgPts": -7.98,
+   "winRate": 50,
+   "profitFactor": 0.33
+  },
+  "shallowFlush": {
+   "n": 35,
+   "t1Hit": 51.43,
+   "avgR": -0.07,
+   "avgPts": 0.81,
+   "winRate": 51.43,
+   "profitFactor": 1.17
+  }
+ },
+ {
+  "label": "60m k=3",
+  "bars": 13710,
+  "from": "2024-06-21",
+  "to": "2026-11-12",
+  "signals": {
+   "n": 554,
+   "t1Hit": 57.58,
+   "avgR": -0.03,
+   "avgPts": 0.9,
+   "winRate": 59.39,
+   "profitFactor": 1.09
+  },
+  "randomSameTrade": {
+   "n": 11080,
+   "t1Hit": 58.32,
+   "avgR": -0.01,
+   "avgPts": -0.04,
+   "winRate": 60.83,
+   "profitFactor": 1
+  },
+  "edgeRPerTrade": -0.03,
+  "tStat": -0.68,
+  "medianRiskPts": 26.79,
+  "regularHours": {
+   "n": 235,
+   "t1Hit": 59.15,
+   "avgR": -0.02,
+   "avgPts": 1.35,
+   "winRate": 62.13,
+   "profitFactor": 1.12
+  },
+  "overnight": {
+   "n": 319,
+   "t1Hit": 56.43,
+   "avgR": -0.05,
+   "avgPts": 0.57,
+   "winRate": 57.37,
+   "profitFactor": 1.06
+  },
+  "afterVolSpike": {
+   "n": 113,
+   "t1Hit": 53.98,
+   "avgR": 0.02,
+   "avgPts": 4.27,
+   "winRate": 56.64,
+   "profitFactor": 1.29
+  },
+  "calm": {
+   "n": 441,
+   "t1Hit": 58.5,
+   "avgR": -0.05,
+   "avgPts": 0.04,
+   "winRate": 60.09,
+   "profitFactor": 1
+  },
+  "firstHalf": {
+   "n": 277,
+   "t1Hit": 54.15,
+   "avgR": -0.1,
+   "avgPts": -1.13,
+   "winRate": 56.68,
+   "profitFactor": 0.9
+  },
+  "secondHalf": {
+   "n": 277,
+   "t1Hit": 61.01,
+   "avgR": 0.03,
+   "avgPts": 2.93,
+   "winRate": 62.09,
+   "profitFactor": 1.29
+  },
+  "deepFlush": {
+   "n": 202,
+   "t1Hit": 66.34,
+   "avgR": 0.07,
+   "avgPts": 4.73,
+   "winRate": 70.3,
+   "profitFactor": 1.49
+  },
+  "shallowFlush": {
+   "n": 352,
+   "t1Hit": 52.56,
+   "avgR": -0.09,
+   "avgPts": -1.3,
+   "winRate": 53.13,
+   "profitFactor": 0.88
+  }
+ },
+ {
+  "label": "60m k=6",
+  "bars": 13710,
+  "from": "2024-06-21",
+  "to": "2026-11-12",
+  "signals": {
+   "n": 306,
+   "t1Hit": 56.54,
+   "avgR": 0.01,
+   "avgPts": 1.76,
+   "winRate": 57.52,
+   "profitFactor": 1.15
+  },
+  "randomSameTrade": {
+   "n": 6120,
+   "t1Hit": 53.51,
+   "avgR": 0.01,
+   "avgPts": 0.42,
+   "winRate": 57.37,
+   "profitFactor": 1.04
+  },
+  "edgeRPerTrade": -0.01,
+  "tStat": -0.12,
+  "medianRiskPts": 28.68,
+  "regularHours": {
+   "n": 128,
+   "t1Hit": 56.25,
+   "avgR": -0.05,
+   "avgPts": -0.07,
+   "winRate": 57.03,
+   "profitFactor": 0.99
+  },
+  "overnight": {
+   "n": 178,
+   "t1Hit": 56.74,
+   "avgR": 0.05,
+   "avgPts": 3.07,
+   "winRate": 57.87,
+   "profitFactor": 1.29
+  },
+  "afterVolSpike": {
+   "n": 62,
+   "t1Hit": 59.68,
+   "avgR": 0.23,
+   "avgPts": 8.79,
+   "winRate": 59.68,
+   "profitFactor": 1.58
+  },
+  "calm": {
+   "n": 244,
+   "t1Hit": 55.74,
+   "avgR": -0.05,
+   "avgPts": -0.03,
+   "winRate": 56.97,
+   "profitFactor": 1
+  },
+  "firstHalf": {
+   "n": 153,
+   "t1Hit": 51.63,
+   "avgR": -0.1,
+   "avgPts": -2.18,
+   "winRate": 53.59,
+   "profitFactor": 0.84
+  },
+  "secondHalf": {
+   "n": 153,
+   "t1Hit": 61.44,
+   "avgR": 0.12,
+   "avgPts": 5.69,
+   "winRate": 61.44,
+   "profitFactor": 1.57
+  },
+  "deepFlush": {
+   "n": 111,
+   "t1Hit": 63.96,
+   "avgR": 0.04,
+   "avgPts": 3.46,
+   "winRate": 63.96,
+   "profitFactor": 1.27
+  },
+  "shallowFlush": {
+   "n": 195,
+   "t1Hit": 52.31,
+   "avgR": -0.01,
+   "avgPts": 0.78,
+   "winRate": 53.85,
+   "profitFactor": 1.07
+  }
+ },
+ {
+  "label": "60m k=3 STRICT (shelf + elevator down)",
+  "bars": 13710,
+  "from": "2024-06-21",
+  "to": "2026-11-12",
+  "signals": {
+   "n": 333,
+   "t1Hit": 60.06,
+   "avgR": -0.02,
+   "avgPts": 0.53,
+   "winRate": 61.56,
+   "profitFactor": 1.05
+  },
+  "randomSameTrade": {
+   "n": 6660,
+   "t1Hit": 61.26,
+   "avgR": 0.01,
+   "avgPts": 0.33,
+   "winRate": 63.11,
+   "profitFactor": 1.03
+  },
+  "edgeRPerTrade": -0.04,
+  "tStat": -0.72,
+  "medianRiskPts": 28.51,
+  "regularHours": {
+   "n": 155,
+   "t1Hit": 57.42,
+   "avgR": -0.07,
+   "avgPts": -0.43,
+   "winRate": 60,
+   "profitFactor": 0.96
+  },
+  "overnight": {
+   "n": 178,
+   "t1Hit": 62.36,
+   "avgR": 0.02,
+   "avgPts": 1.38,
+   "winRate": 62.92,
+   "profitFactor": 1.14
+  },
+  "afterVolSpike": {
+   "n": 70,
+   "t1Hit": 57.14,
+   "avgR": 0.02,
+   "avgPts": 4.64,
+   "winRate": 58.57,
+   "profitFactor": 1.34
+  },
+  "calm": {
+   "n": 263,
+   "t1Hit": 60.84,
+   "avgR": -0.03,
+   "avgPts": -0.56,
+   "winRate": 62.36,
+   "profitFactor": 0.94
+  },
+  "firstHalf": {
+   "n": 166,
+   "t1Hit": 59.64,
+   "avgR": -0.04,
+   "avgPts": -0.04,
+   "winRate": 62.05,
+   "profitFactor": 1
+  },
+  "secondHalf": {
+   "n": 167,
+   "t1Hit": 60.48,
+   "avgR": 0,
+   "avgPts": 1.1,
+   "winRate": 61.08,
+   "profitFactor": 1.1
+  },
+  "deepFlush": {
+   "n": 135,
+   "t1Hit": 60.74,
+   "avgR": -0.07,
+   "avgPts": -0.47,
+   "winRate": 62.96,
+   "profitFactor": 0.96
+  },
+  "shallowFlush": {
+   "n": 198,
+   "t1Hit": 59.6,
+   "avgR": 0.01,
+   "avgPts": 1.22,
+   "winRate": 60.61,
+   "profitFactor": 1.12
+  }
+ },
+ {
+  "label": "60m k=6 STRICT (shelf + elevator down)",
+  "bars": 13710,
+  "from": "2024-06-21",
+  "to": "2026-11-12",
+  "signals": {
+   "n": 204,
+   "t1Hit": 60.29,
+   "avgR": 0.05,
+   "avgPts": 2.19,
+   "winRate": 61.27,
+   "profitFactor": 1.2
+  },
+  "randomSameTrade": {
+   "n": 4080,
+   "t1Hit": 55.27,
+   "avgR": 0.01,
+   "avgPts": 0.24,
+   "winRate": 58.43,
+   "profitFactor": 1.02
+  },
+  "edgeRPerTrade": 0.04,
+  "tStat": 0.6,
+  "medianRiskPts": 28.73,
+  "regularHours": {
+   "n": 90,
+   "t1Hit": 60,
+   "avgR": 0.01,
+   "avgPts": 1.27,
+   "winRate": 61.11,
+   "profitFactor": 1.1
+  },
+  "overnight": {
+   "n": 114,
+   "t1Hit": 60.53,
+   "avgR": 0.08,
+   "avgPts": 2.92,
+   "winRate": 61.4,
+   "profitFactor": 1.29
+  },
+  "afterVolSpike": {
+   "n": 48,
+   "t1Hit": 58.33,
+   "avgR": 0.08,
+   "avgPts": 4.36,
+   "winRate": 58.33,
+   "profitFactor": 1.31
+  },
+  "calm": {
+   "n": 156,
+   "t1Hit": 60.9,
+   "avgR": 0.04,
+   "avgPts": 1.52,
+   "winRate": 62.18,
+   "profitFactor": 1.15
+  },
+  "firstHalf": {
+   "n": 102,
+   "t1Hit": 56.86,
+   "avgR": 0,
+   "avgPts": 0.01,
+   "winRate": 58.82,
+   "profitFactor": 1
+  },
+  "secondHalf": {
+   "n": 102,
+   "t1Hit": 63.73,
+   "avgR": 0.11,
+   "avgPts": 4.38,
+   "winRate": 63.73,
+   "profitFactor": 1.45
+  },
+  "deepFlush": {
+   "n": 77,
+   "t1Hit": 62.34,
+   "avgR": 0,
+   "avgPts": 0.71,
+   "winRate": 62.34,
+   "profitFactor": 1.05
+  },
+  "shallowFlush": {
+   "n": 127,
+   "t1Hit": 59.06,
+   "avgR": 0.09,
+   "avgPts": 3.09,
+   "winRate": 60.63,
+   "profitFactor": 1.32
+  }
+ }
+]

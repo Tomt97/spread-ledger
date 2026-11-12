@@ -1,0 +1,64 @@
+SPX 3016 days 2014-11-12..2026-11-10
+
+SPX 7619.3799 · ~7 DTE = 2026-11-18 (7 days, 5 sessions) · VIX9D 16.040000915527344 · 1σ 172.15
+  Δ0.05 7240/7230 w10 dist 379.38 (4.98%, z 2.2) credit 0.97 (fill 0, 9.75% of width) | 12y: ITM 1.43% touch 2.49% full 1.26% EV $82.3 (fill $-15.2) | 3y: ITM 0.67% EV $89.95
+  Δ0.05 7240/7220 w20 dist 379.38 (4.98%, z 2.2) credit 1.2 (fill 0.3, 6% of width) | 12y: ITM 1.43% touch 2.49% full 1.13% EV $92.87 (fill $2.87) | 3y: ITM 0.67% EV $107.12
+  Δ0.07 7315/7305 w10 dist 304.38 (3.99%, z 1.77) credit 0.35 (fill -1.7, 3.5% of width) | 12y: ITM 2.49% touch 4.95% full 2.29% EV $8.26 (fill $-196.74) | 3y: ITM 1.73% EV $16.25
+  Δ0.07 7315/7295 w20 dist 304.38 (3.99%, z 1.77) credit 0.7 (fill -1.4, 3.5% of width) | 12y: ITM 2.49% touch 4.95% full 2.19% EV $20.81 (fill $-189.19) | 3y: ITM 1.73% EV $38.21
+  Δ0.1 7350/7340 w10 dist 269.38 (3.54%, z 1.56) credit 2.15 (fill 0.9, 21.5% of width) | 12y: ITM 3.35% touch 7.47% full 2.96% EV $181.53 (fill $56.53) | 3y: ITM 2.4% EV $191.2
+  Δ0.1 7350/7330 w20 dist 269.38 (3.54%, z 1.56) credit 2.65 (fill 1.4, 13.25% of width) | 12y: ITM 3.35% touch 7.47% full 2.66% EV $203.05 (fill $78.05) | 3y: ITM 2.4% EV $220.28
+  Δ0.12 7390/7380 w10 dist 229.38 (3.01%, z 1.33) credit 0.75 (fill -2.7, 7.5% of width) | 12y: ITM 5.15% touch 11.72% full 4.58% EV $24.82 (fill $-320.18) | 3y: ITM 3.46% EV $38.99
+  Δ0.12 7390/7370 w20 dist 229.38 (3.01%, z 1.33) credit 1.5 (fill -1.9, 7.5% of width) | 12y: ITM 5.15% touch 11.72% full 4.09% EV $56.05 (fill $-283.95) | 3y: ITM 3.46% EV $82.62
+  Δ0.14 7400/7390 w10 dist 219.38 (2.88%, z 1.27) credit 2.9 (fill 1.1, 29% of width) | 12y: ITM 5.88% touch 13.15% full 5.15% EV $232.63 (fill $52.63) | 3y: ITM 4.79% EV $246.38
+  Δ0.14 7400/7380 w20 dist 219.38 (2.88%, z 1.27) credit 3.65 (fill 1.8, 18.25% of width) | 12y: ITM 5.88% touch 13.15% full 4.58% EV $259.61 (fill $74.61) | 3y: ITM 4.79% EV $287.52
+  Δ0.16 7420/7410 w10 dist 199.38 (2.62%, z 1.16) credit 3.35 (fill 1.3, 33.5% of width) | 12y: ITM 7.14% touch 16.04% full 6.51% EV $265.02 (fill $60.02) | 3y: ITM 6.26% EV $275.56
+  Δ0.16 7420/7400 w20 dist 199.38 (2.62%, z 1.16) credit 4.2 (fill 2.2, 21% of width) | 12y: ITM 7.14% touch 16.04% full 5.88% EV $288.32 (fill $88.32) | 3y: ITM 6.26% EV $309.5
+  Δ0.2 7455/7445 w10 dist 164.38 (2.16%, z 0.95) credit 3.9 (fill 1.9, 39% of width) | 12y: ITM 10.03% touch 22.28% full 9% EV $292.9 (fill $92.9) | 3y: ITM 9.19% EV $303.1
+  Δ0.2 7455/7435 w20 dist 164.38 (2.16%, z 0.95) credit 5.35 (fill 3.2, 26.75% of width) | 12y: ITM 10.03% touch 22.28% full 8.04% EV $353.02 (fill $138.02) | 3y: ITM 9.19% EV $372.3
+
+SPX 7619.3799 · ~14 DTE = 2026-11-25 (14 days, 10 sessions) · VIX 17.489999771118164 · 1σ 265.47
+  Δ0.05 7050/7040 w10 dist 569.38 (7.47%, z 2.14) credit 0.2 (fill -0.2, 2% of width) | 12y: ITM 1.43% touch 3.29% full 1.36% EV $4.03 (fill $-35.97) | 3y: ITM 0.54% EV $12.48
+  Δ0.05 7050/7030 w20 dist 569.38 (7.47%, z 2.14) credit 0.4 (fill 0, 2% of width) | 12y: ITM 1.43% touch 3.29% full 1.3% EV $10.76 (fill $-29.24) | 3y: ITM 0.54% EV $27.12
+  Δ0.07 7140/7130 w10 dist 479.38 (6.29%, z 1.81) credit 0.35 (fill -0.1, 3.5% of width) | 12y: ITM 2.3% touch 4.72% full 2.26% EV $9.92 (fill $-35.08) | 3y: ITM 1.07% EV $22.12
+  Δ0.07 7140/7120 w20 dist 479.38 (6.29%, z 1.81) credit 0.7 (fill 0.3, 3.5% of width) | 12y: ITM 2.3% touch 4.72% full 2.16% EV $22.62 (fill $-17.38) | 3y: ITM 1.07% EV $46.61
+  Δ0.1 7235/7225 w10 dist 384.38 (5.04%, z 1.45) credit 0.55 (fill 0.1, 5.5% of width) | 12y: ITM 4.03% touch 7.82% full 3.79% EV $13.36 (fill $-31.64) | 3y: ITM 2.01% EV $33.2
+  Δ0.12 7280/7270 w10 dist 339.38 (4.45%, z 1.28) credit 0.7 (fill 0.2, 7% of width) | 12y: ITM 5.12% touch 10.41% full 4.96% EV $17.18 (fill $-32.82) | 3y: ITM 2.82% EV $40.71
+  Δ0.12 7280/7260 w20 dist 339.38 (4.45%, z 1.28) credit 1.4 (fill 0.9, 7% of width) | 12y: ITM 5.12% touch 10.41% full 4.69% EV $39.18 (fill $-10.82) | 3y: ITM 2.82% EV $85.24
+  Δ0.14 7315/7305 w10 dist 304.38 (3.99%, z 1.15) credit 0.9 (fill 0.4, 9% of width) | 12y: ITM 6.15% touch 13.34% full 5.92% EV $27.04 (fill $-22.96) | 3y: ITM 3.89% EV $49.58
+  Δ0.14 7315/7295 w20 dist 304.38 (3.99%, z 1.15) credit 1.7 (fill 1.2, 8.5% of width) | 12y: ITM 6.15% touch 13.34% full 5.56% EV $49.98 (fill $-0.02) | 3y: ITM 3.89% EV $93.21
+  Δ0.16 7345/7335 w10 dist 274.38 (3.6%, z 1.03) credit 1 (fill 0.4, 10% of width) | 12y: ITM 7.32% touch 16.17% full 6.95% EV $26.68 (fill $-33.32) | 3y: ITM 5.09% EV $48.26
+  Δ0.16 7345/7325 w20 dist 274.38 (3.6%, z 1.03) credit 1.95 (fill 1.4, 9.75% of width) | 12y: ITM 7.32% touch 16.17% full 6.59% EV $53.48 (fill $-1.52) | 3y: ITM 5.09% EV $96.82
+  Δ0.2 7395/7385 w10 dist 224.38 (2.94%, z 0.85) credit 1.3 (fill 0.7, 13% of width) | 12y: ITM 9.88% touch 23.82% full 9.31% EV $31.57 (fill $-28.43) | 3y: ITM 7.24% EV $58.03
+  Δ0.2 7395/7375 w20 dist 224.38 (2.94%, z 0.85) credit 2.6 (fill 2, 13% of width) | 12y: ITM 9.88% touch 23.82% full 8.82% EV $70.9 (fill $10.9) | 3y: ITM 7.24% EV $123.02
+
+XSP 761.94 · ~7 DTE = 2026-11-18 (7 days, 5 sessions) · VIX9D 16.040000915527344 · 1σ 17.22
+  Δ0.05 728/727 w1 dist 33.94 (4.45%, z 1.97) credit 0.03 (fill 0, 2.5% of width) | 12y: ITM 1.89% touch 3.49% full 1.69% EV $-0.21 (fill $-2.71) | 3y: ITM 1.2% EV $0.43
+  Δ0.05 728/726 w2 dist 33.94 (4.45%, z 1.97) credit 0.04 (fill 0.02, 2.25% of width) | 12y: ITM 1.89% touch 3.49% full 1.56% EV $0.18 (fill $-2.32) | 3y: ITM 1.2% EV $1.48
+  Δ0.07 733/732 w1 dist 28.94 (3.8%, z 1.68) credit 0.04 (fill 0.02, 4% of width) | 12y: ITM 2.66% touch 5.98% full 2.49% EV $0.5 (fill $-1.5) | 3y: ITM 2% EV $1.2
+  Δ0.07 733/731 w2 dist 28.94 (3.8%, z 1.68) credit 0.07 (fill 0.05, 3.5% of width) | 12y: ITM 2.66% touch 5.98% full 2.49% EV $1.01 (fill $-0.99) | 3y: ITM 2% EV $2.47
+  Δ0.1 738/737 w1 dist 23.94 (3.14%, z 1.39) credit 0.05 (fill 0.03, 5% of width) | 12y: ITM 4.58% touch 10.36% full 4.09% EV $-0.3 (fill $-2.3) | 3y: ITM 3.33% EV $0.94
+  Δ0.1 738/736 w2 dist 23.94 (3.14%, z 1.39) credit 0.1 (fill 0.08, 5% of width) | 12y: ITM 4.58% touch 10.36% full 3.72% EV $0.81 (fill $-1.19) | 3y: ITM 3.33% EV $3.07
+  Δ0.12 741/740 w1 dist 20.94 (2.75%, z 1.22) credit 0.07 (fill 0.05, 7% of width) | 12y: ITM 6.51% touch 14.41% full 5.88% EV $-0.09 (fill $-2.09) | 3y: ITM 5.46% EV $0.98
+  Δ0.12 741/739 w2 dist 20.94 (2.75%, z 1.22) credit 0.14 (fill 0.11, 6.75% of width) | 12y: ITM 6.51% touch 14.41% full 5.15% EV $0.89 (fill $-1.61) | 3y: ITM 5.46% EV $3.33
+  Δ0.14 743/742 w1 dist 18.94 (2.49%, z 1.1) credit 0.08 (fill 0.06, 8.5% of width) | 12y: ITM 7.67% touch 17.7% full 7.14% EV $0.2 (fill $-2.3) | 3y: ITM 7.06% EV $0.96
+  Δ0.14 743/741 w2 dist 18.94 (2.49%, z 1.1) credit 0.16 (fill 0.14, 8.25% of width) | 12y: ITM 7.67% touch 17.7% full 6.51% EV $1.42 (fill $-1.08) | 3y: ITM 7.06% EV $3.23
+  Δ0.16 745/744 w1 dist 16.94 (2.22%, z 0.98) credit 0.1 (fill 0.08, 10% of width) | 12y: ITM 9.5% touch 21.29% full 8.44% EV $0.09 (fill $-1.91) | 3y: ITM 8.52% EV $1.08
+  Δ0.16 745/743 w2 dist 16.94 (2.22%, z 0.98) credit 0.2 (fill 0.17, 9.75% of width) | 12y: ITM 9.5% touch 21.29% full 7.67% EV $1.56 (fill $-0.94) | 3y: ITM 8.52% EV $3.29
+  Δ0.2 748/747 w1 dist 13.94 (1.83%, z 0.81) credit 0.13 (fill 0.1, 13% of width) | 12y: ITM 12.79% touch 28% full 11.76% EV $-0.22 (fill $-3.22) | 3y: ITM 11.45% EV $1.12
+  Δ0.2 748/746 w2 dist 13.94 (1.83%, z 0.81) credit 0.25 (fill 0.22, 12.5% of width) | 12y: ITM 12.79% touch 28% full 10.69% EV $0.59 (fill $-2.41) | 3y: ITM 11.45% EV $3.22
+
+XSP 761.94 · ~14 DTE = 2026-11-25 (14 days, 10 sessions) · VIX 17.489999771118164 · 1σ 26.55
+  Δ0.05 709/708 w1 dist 52.94 (6.95%, z 1.99) credit 0.02 (fill -0.04, 2% of width) | 12y: ITM 1.8% touch 3.69% full 1.63% EV $-0.65 (fill $-6.65) | 3y: ITM 0.67% EV $0.5
+  Δ0.05 709/707 w2 dist 52.94 (6.95%, z 1.99) credit 0.03 (fill -0.02, 1.75% of width) | 12y: ITM 1.8% touch 3.69% full 1.63% EV $-0.78 (fill $-6.28) | 3y: ITM 0.67% EV $1.46
+  Δ0.07 719/718 w1 dist 42.94 (5.64%, z 1.62) credit 0.03 (fill -0.03, 3.5% of width) | 12y: ITM 3.19% touch 5.82% full 2.93% EV $-0.44 (fill $-6.94) | 3y: ITM 1.47% EV $1.3
+  Δ0.07 719/717 w2 dist 42.94 (5.64%, z 1.62) credit 0.07 (fill 0.01, 3.5% of width) | 12y: ITM 3.19% touch 5.82% full 2.89% EV $0.16 (fill $-5.84) | 3y: ITM 1.47% EV $3.7
+  Δ0.1 727/726 w1 dist 34.94 (4.59%, z 1.32) credit 0.05 (fill -0.02, 5% of width) | 12y: ITM 4.96% touch 9.48% full 4.69% EV $-0.72 (fill $-7.72) | 3y: ITM 2.55% EV $1.53
+  Δ0.1 727/725 w2 dist 34.94 (4.59%, z 1.32) credit 0.1 (fill 0.03, 5% of width) | 12y: ITM 4.96% touch 9.48% full 4.49% EV $-0.31 (fill $-7.31) | 3y: ITM 2.55% EV $4.16
+  Δ0.12 732/731 w1 dist 29.94 (3.93%, z 1.13) credit 0.07 (fill -0.01, 7.5% of width) | 12y: ITM 6.32% touch 13.94% full 6.12% EV $0.39 (fill $-8.11) | 3y: ITM 4.29% EV $2.6
+  Δ0.12 732/730 w2 dist 29.94 (3.93%, z 1.13) credit 0.14 (fill 0.06, 7% of width) | 12y: ITM 6.32% touch 13.94% full 5.69% EV $0.99 (fill $-7.01) | 3y: ITM 4.29% EV $5.38
+  Δ0.14 735/734 w1 dist 26.94 (3.54%, z 1.01) credit 0.08 (fill 0, 8% of width) | 12y: ITM 7.58% touch 16.57% full 7.12% EV $-0.23 (fill $-8.23) | 3y: ITM 5.36% EV $1.97
+  Δ0.14 735/733 w2 dist 26.94 (3.54%, z 1.01) credit 0.16 (fill 0.08, 8% of width) | 12y: ITM 7.58% touch 16.57% full 6.82% EV $0.8 (fill $-7.2) | 3y: ITM 5.36% EV $5.15
+  Δ0.16 738/737 w1 dist 23.94 (3.14%, z 0.9) credit 0.1 (fill 0, 10% of width) | 12y: ITM 9.12% touch 21.06% full 8.52% EV $0.32 (fill $-9.68) | 3y: ITM 6.57% EV $2.89
+  Δ0.16 738/736 w2 dist 23.94 (3.14%, z 0.9) credit 0.2 (fill 0.11, 10% of width) | 12y: ITM 9.12% touch 21.06% full 8.02% EV $2.03 (fill $-6.97) | 3y: ITM 6.57% EV $7.05
+  Δ0.2 743/742 w1 dist 18.94 (2.49%, z 0.71) credit 0.14 (fill 0.03, 14% of width) | 12y: ITM 12.31% touch 30.67% full 11.48% EV $1.22 (fill $-9.78) | 3y: ITM 8.58% EV $4.82
+  Δ0.2 743/741 w2 dist 18.94 (2.49%, z 0.71) credit 0.25 (fill 0.14, 12.5% of width) | 12y: ITM 12.31% touch 30.67% full 10.75% EV $1.22 (fill $-9.78) | 3y: ITM 8.58% EV $7.85

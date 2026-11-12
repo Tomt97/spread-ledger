@@ -1,0 +1,1692 @@
+{
+ "made": "2026-11-12T04:29:03.454Z",
+ "runs": [
+  {
+   "label": "15m k=4",
+   "bars": 4581,
+   "from": "2026-09-02",
+   "to": "2026-11-12",
+   "signals": {
+    "n": 151,
+    "t1Hit": 56.95,
+    "avgR": -0.05,
+    "avgPts": -1.06,
+    "winRate": 57.62,
+    "profitFactor": 0.82
+   },
+   "randomSameTrade": {
+    "n": 3020,
+    "t1Hit": 55.63,
+    "avgR": -0.04,
+    "avgPts": -0.87,
+    "winRate": 56.42,
+    "profitFactor": 0.85
+   },
+   "edgeRPerTrade": -0.01,
+   "tStat": -0.1,
+   "medianRiskPts": 11.39,
+   "regularHours": {
+    "n": 52,
+    "t1Hit": 57.69,
+    "avgR": -0.04,
+    "avgPts": -4.16,
+    "winRate": 59.62,
+    "profitFactor": 0.55
+   },
+   "overnight": {
+    "n": 99,
+    "t1Hit": 56.57,
+    "avgR": -0.06,
+    "avgPts": 0.57,
+    "winRate": 56.57,
+    "profitFactor": 1.14
+   },
+   "afterVolSpike": {
+    "n": 39,
+    "t1Hit": 61.54,
+    "avgR": 0.16,
+    "avgPts": 1.3,
+    "winRate": 64.1,
+    "profitFactor": 1.22
+   },
+   "calm": {
+    "n": 112,
+    "t1Hit": 55.36,
+    "avgR": -0.12,
+    "avgPts": -1.88,
+    "winRate": 55.36,
+    "profitFactor": 0.68
+   },
+   "firstHalf": {
+    "n": 75,
+    "t1Hit": 57.33,
+    "avgR": -0.05,
+    "avgPts": -0.36,
+    "winRate": 57.33,
+    "profitFactor": 0.93
+   },
+   "secondHalf": {
+    "n": 76,
+    "t1Hit": 56.58,
+    "avgR": -0.05,
+    "avgPts": -1.75,
+    "winRate": 57.89,
+    "profitFactor": 0.73
+   },
+   "deepFlush": {
+    "n": 53,
+    "t1Hit": 58.49,
+    "avgR": -0.08,
+    "avgPts": -4.22,
+    "winRate": 60.38,
+    "profitFactor": 0.56
+   },
+   "shallowFlush": {
+    "n": 98,
+    "t1Hit": 56.12,
+    "avgR": -0.04,
+    "avgPts": 0.65,
+    "winRate": 56.12,
+    "profitFactor": 1.17
+   },
+   "recent": [
+    {
+     "when": "2026-11-03T06:15",
+     "level": 7558.25,
+     "entry": 7559.5,
+     "stop": 7553.58,
+     "t1": 7647.75,
+     "t2": 7652,
+     "got1": false,
+     "pts": -5.92
+    },
+    {
+     "when": "2026-11-03T21:15",
+     "level": 7597,
+     "entry": 7606.75,
+     "stop": 7586.19,
+     "t1": 7618.25,
+     "t2": 7623.75,
+     "got1": true,
+     "pts": 12.88
+    },
+    {
+     "when": "2026-11-04T21:00",
+     "level": 7724.5,
+     "entry": 7732.25,
+     "stop": 7711.38,
+     "t1": 7739.75,
+     "t2": 7749.25,
+     "got1": false,
+     "pts": -20.87
+    },
+    {
+     "when": "2026-11-05T02:15",
+     "level": 7712.75,
+     "entry": 7716.5,
+     "stop": 7694.76,
+     "t1": 7739.75,
+     "t2": 7746.25,
+     "got1": false,
+     "pts": -21.74
+    },
+    {
+     "when": "2026-11-05T06:00",
+     "level": 7695.75,
+     "entry": 7705,
+     "stop": 7690.24,
+     "t1": 7710,
+     "t2": 7723,
+     "got1": true,
+     "pts": 3.75
+    },
+    {
+     "when": "2026-11-05T16:00",
+     "level": 7490,
+     "entry": 7494,
+     "stop": 7418.13,
+     "t1": 7577,
+     "t2": 7604.75,
+     "got1": false,
+     "pts": -75.87
+    },
+    {
+     "when": "2026-11-05T19:00",
+     "level": 7421,
+     "entry": 7429.25,
+     "stop": 7385.09,
+     "t1": 7577,
+     "t2": 7604.75,
+     "got1": false,
+     "pts": -44.16
+    },
+    {
+     "when": "2026-11-06T06:15",
+     "level": 7377.75,
+     "entry": 7379.25,
+     "stop": 7369.77,
+     "t1": 7392.5,
+     "t2": 7403.75,
+     "got1": false,
+     "pts": -9.48
+    },
+    {
+     "when": "2026-11-09T00:00",
+     "level": 7397,
+     "entry": 7404,
+     "stop": 7383.95,
+     "t1": 7417,
+     "t2": 7427.25,
+     "got1": true,
+     "pts": 9.75
+    },
+    {
+     "when": "2026-11-09T01:15",
+     "level": 7396.5,
+     "entry": 7400.25,
+     "stop": 7383.79,
+     "t1": 7411.5,
+     "t2": 7420.75,
+     "got1": true,
+     "pts": 13.56
+    },
+    {
+     "when": "2026-11-10T03:45",
+     "level": 7569.75,
+     "entry": 7574.25,
+     "stop": 7566.46,
+     "t1": 7585.75,
+     "t2": 7600.5,
+     "got1": true,
+     "pts": 8.63
+    },
+    {
+     "when": "2026-11-10T09:15",
+     "level": 7568.75,
+     "entry": 7582.25,
+     "stop": 7565.14,
+     "t1": 7594.25,
+     "t2": 7598.75,
+     "got1": false,
+     "pts": -17.11
+    },
+    {
+     "when": "2026-11-10T16:00",
+     "level": 7509,
+     "entry": 7520,
+     "stop": 7501.94,
+     "t1": 7564.5,
+     "t2": 7576,
+     "got1": false,
+     "pts": -18.06
+    },
+    {
+     "when": "2026-11-11T14:45",
+     "level": 7604.75,
+     "entry": 7608.25,
+     "stop": 7592.46,
+     "t1": 7615.75,
+     "t2": 7620,
+     "got1": true,
+     "pts": 8.56
+    },
+    {
+     "when": "2026-11-11T21:00",
+     "level": 7642.75,
+     "entry": 7647,
+     "stop": 7635.82,
+     "t1": 7671.5,
+     "t2": 7687.75,
+     "got1": false,
+     "pts": -11.18
+    }
+   ]
+  },
+  {
+   "label": "15m k=8",
+   "bars": 4581,
+   "from": "2026-09-02",
+   "to": "2026-11-12",
+   "signals": {
+    "n": 80,
+    "t1Hit": 51.25,
+    "avgR": -0.07,
+    "avgPts": -0.87,
+    "winRate": 51.25,
+    "profitFactor": 0.87
+   },
+   "randomSameTrade": {
+    "n": 1600,
+    "t1Hit": 50.19,
+    "avgR": -0.03,
+    "avgPts": -0.81,
+    "winRate": 51.06,
+    "profitFactor": 0.89
+   },
+   "edgeRPerTrade": -0.04,
+   "tStat": -0.3,
+   "medianRiskPts": 13.37,
+   "regularHours": {
+    "n": 32,
+    "t1Hit": 56.25,
+    "avgR": -0.03,
+    "avgPts": -3.28,
+    "winRate": 56.25,
+    "profitFactor": 0.64
+   },
+   "overnight": {
+    "n": 48,
+    "t1Hit": 47.92,
+    "avgR": -0.09,
+    "avgPts": 0.74,
+    "winRate": 47.92,
+    "profitFactor": 1.14
+   },
+   "afterVolSpike": {
+    "n": 22,
+    "t1Hit": 50,
+    "avgR": -0.1,
+    "avgPts": -0.69,
+    "winRate": 50,
+    "profitFactor": 0.91
+   },
+   "calm": {
+    "n": 58,
+    "t1Hit": 51.72,
+    "avgR": -0.05,
+    "avgPts": -0.94,
+    "winRate": 51.72,
+    "profitFactor": 0.85
+   },
+   "firstHalf": {
+    "n": 40,
+    "t1Hit": 55,
+    "avgR": 0.08,
+    "avgPts": 2.17,
+    "winRate": 55,
+    "profitFactor": 1.46
+   },
+   "secondHalf": {
+    "n": 40,
+    "t1Hit": 47.5,
+    "avgR": -0.21,
+    "avgPts": -3.91,
+    "winRate": 47.5,
+    "profitFactor": 0.56
+   },
+   "deepFlush": {
+    "n": 26,
+    "t1Hit": 57.69,
+    "avgR": -0.12,
+    "avgPts": -4.35,
+    "winRate": 57.69,
+    "profitFactor": 0.59
+   },
+   "shallowFlush": {
+    "n": 54,
+    "t1Hit": 48.15,
+    "avgR": -0.04,
+    "avgPts": 0.81,
+    "winRate": 48.15,
+    "profitFactor": 1.16
+   },
+   "recent": [
+    {
+     "when": "2026-10-28T23:00",
+     "level": 7752.25,
+     "entry": 7756.25,
+     "stop": 7741.8,
+     "t1": 7764.5,
+     "t2": 7772,
+     "got1": true,
+     "pts": 6.19
+    },
+    {
+     "when": "2026-10-29T00:15",
+     "level": 7751.5,
+     "entry": 7760.5,
+     "stop": 7740.94,
+     "t1": 7768.5,
+     "t2": 7778.25,
+     "got1": false,
+     "pts": -19.56
+    },
+    {
+     "when": "2026-10-29T13:45",
+     "level": 7742.25,
+     "entry": 7746.75,
+     "stop": 7731.29,
+     "t1": 7752.25,
+     "t2": 7764.5,
+     "got1": true,
+     "pts": 4.13
+    },
+    {
+     "when": "2026-10-29T15:00",
+     "level": 7740,
+     "entry": 7760,
+     "stop": 7731.04,
+     "t1": 7766.5,
+     "t2": 7772.75,
+     "got1": true,
+     "pts": 4.88
+    },
+    {
+     "when": "2026-10-29T18:00",
+     "level": 7732.25,
+     "entry": 7736.75,
+     "stop": 7724.1,
+     "t1": 7742.5,
+     "t2": 7748.25,
+     "got1": true,
+     "pts": 4.31
+    },
+    {
+     "when": "2026-10-29T23:15",
+     "level": 7699.75,
+     "entry": 7705.25,
+     "stop": 7692.67,
+     "t1": 7711.5,
+     "t2": 7731,
+     "got1": false,
+     "pts": -12.58
+    },
+    {
+     "when": "2026-10-30T13:45",
+     "level": 7660.75,
+     "entry": 7667,
+     "stop": 7648.96,
+     "t1": 7683.5,
+     "t2": 7693,
+     "got1": false,
+     "pts": -18.04
+    },
+    {
+     "when": "2026-11-02T17:45",
+     "level": 7636.25,
+     "entry": 7637.5,
+     "stop": 7622.39,
+     "t1": 7656.25,
+     "t2": 7683.5,
+     "got1": false,
+     "pts": -15.11
+    },
+    {
+     "when": "2026-11-03T06:15",
+     "level": 7558.25,
+     "entry": 7559.5,
+     "stop": 7553.58,
+     "t1": 7656.25,
+     "t2": 7683.5,
+     "got1": false,
+     "pts": -5.92
+    },
+    {
+     "when": "2026-11-05T02:15",
+     "level": 7712.75,
+     "entry": 7716.5,
+     "stop": 7694.76,
+     "t1": 7731,
+     "t2": 7739.5,
+     "got1": false,
+     "pts": -21.74
+    },
+    {
+     "when": "2026-11-05T06:00",
+     "level": 7695.75,
+     "entry": 7705,
+     "stop": 7690.24,
+     "t1": 7731,
+     "t2": 7739.5,
+     "got1": true,
+     "pts": 19.5
+    },
+    {
+     "when": "2026-11-05T16:00",
+     "level": 7490,
+     "entry": 7494,
+     "stop": 7418.13,
+     "t1": 7577,
+     "t2": 7623.75,
+     "got1": false,
+     "pts": -75.87
+    },
+    {
+     "when": "2026-11-09T00:00",
+     "level": 7397,
+     "entry": 7404,
+     "stop": 7383.95,
+     "t1": 7417,
+     "t2": 7427.25,
+     "got1": true,
+     "pts": 9.75
+    },
+    {
+     "when": "2026-11-10T09:15",
+     "level": 7568.75,
+     "entry": 7582.25,
+     "stop": 7565.14,
+     "t1": 7598.75,
+     "t2": 7623.75,
+     "got1": false,
+     "pts": -17.11
+    },
+    {
+     "when": "2026-11-10T16:00",
+     "level": 7509,
+     "entry": 7520,
+     "stop": 7501.94,
+     "t1": 7577,
+     "t2": 7586.5,
+     "got1": false,
+     "pts": -18.06
+    }
+   ]
+  },
+  {
+   "label": "15m k=8 STRICT (shelf + elevator down)",
+   "bars": 4581,
+   "from": "2026-09-02",
+   "to": "2026-11-12",
+   "signals": {
+    "n": 55,
+    "t1Hit": 50.91,
+    "avgR": -0.16,
+    "avgPts": -2.38,
+    "winRate": 50.91,
+    "profitFactor": 0.68
+   },
+   "randomSameTrade": {
+    "n": 1100,
+    "t1Hit": 52.18,
+    "avgR": -0.07,
+    "avgPts": -0.65,
+    "winRate": 53.55,
+    "profitFactor": 0.9
+   },
+   "edgeRPerTrade": -0.1,
+   "tStat": -0.75,
+   "medianRiskPts": 14.45,
+   "regularHours": {
+    "n": 29,
+    "t1Hit": 58.62,
+    "avgR": -0.09,
+    "avgPts": -3.37,
+    "winRate": 58.62,
+    "profitFactor": 0.61
+   },
+   "overnight": {
+    "n": 26,
+    "t1Hit": 42.31,
+    "avgR": -0.25,
+    "avgPts": -1.28,
+    "winRate": 42.31,
+    "profitFactor": 0.79
+   },
+   "afterVolSpike": {
+    "n": 13,
+    "t1Hit": 53.85,
+    "avgR": -0.24,
+    "avgPts": -2.02,
+    "winRate": 53.85,
+    "profitFactor": 0.73
+   },
+   "calm": {
+    "n": 42,
+    "t1Hit": 50,
+    "avgR": -0.14,
+    "avgPts": -2.49,
+    "winRate": 50,
+    "profitFactor": 0.66
+   },
+   "firstHalf": {
+    "n": 27,
+    "t1Hit": 55.56,
+    "avgR": 0.02,
+    "avgPts": 1.62,
+    "winRate": 55.56,
+    "profitFactor": 1.32
+   },
+   "secondHalf": {
+    "n": 28,
+    "t1Hit": 46.43,
+    "avgR": -0.35,
+    "avgPts": -6.24,
+    "winRate": 46.43,
+    "profitFactor": 0.36
+   },
+   "deepFlush": {
+    "n": 20,
+    "t1Hit": 50,
+    "avgR": -0.33,
+    "avgPts": -7.98,
+    "winRate": 50,
+    "profitFactor": 0.33
+   },
+   "shallowFlush": {
+    "n": 35,
+    "t1Hit": 51.43,
+    "avgR": -0.07,
+    "avgPts": 0.81,
+    "winRate": 51.43,
+    "profitFactor": 1.17
+   },
+   "recent": [
+    {
+     "when": "2026-10-27T09:30",
+     "level": 7702.75,
+     "entry": 7719,
+     "stop": 7699.08,
+     "t1": 7731,
+     "t2": 7739.5,
+     "got1": true,
+     "pts": 14.13
+    },
+    {
+     "when": "2026-10-28T14:00",
+     "level": 7753.5,
+     "entry": 7769.25,
+     "stop": 7750.84,
+     "t1": 7772.75,
+     "t2": 7785.5,
+     "got1": true,
+     "pts": 2.63
+    },
+    {
+     "when": "2026-10-28T15:15",
+     "level": 7757.25,
+     "entry": 7769.75,
+     "stop": 7750.76,
+     "t1": 7778.25,
+     "t2": 7785.5,
+     "got1": true,
+     "pts": 10.31
+    },
+    {
+     "when": "2026-10-28T23:00",
+     "level": 7752.25,
+     "entry": 7756.25,
+     "stop": 7741.8,
+     "t1": 7764.5,
+     "t2": 7772,
+     "got1": true,
+     "pts": 6.19
+    },
+    {
+     "when": "2026-10-29T00:15",
+     "level": 7751.5,
+     "entry": 7760.5,
+     "stop": 7740.94,
+     "t1": 7768.5,
+     "t2": 7778.25,
+     "got1": false,
+     "pts": -19.56
+    },
+    {
+     "when": "2026-10-29T13:45",
+     "level": 7742.25,
+     "entry": 7746.75,
+     "stop": 7731.29,
+     "t1": 7752.25,
+     "t2": 7764.5,
+     "got1": true,
+     "pts": 4.13
+    },
+    {
+     "when": "2026-10-29T15:00",
+     "level": 7745,
+     "entry": 7760,
+     "stop": 7731.04,
+     "t1": 7766.5,
+     "t2": 7772.75,
+     "got1": true,
+     "pts": 4.88
+    },
+    {
+     "when": "2026-10-29T18:00",
+     "level": 7732.25,
+     "entry": 7736.75,
+     "stop": 7724.1,
+     "t1": 7742.5,
+     "t2": 7748.25,
+     "got1": true,
+     "pts": 4.31
+    },
+    {
+     "when": "2026-10-29T23:15",
+     "level": 7699.75,
+     "entry": 7705.25,
+     "stop": 7692.67,
+     "t1": 7711.5,
+     "t2": 7731,
+     "got1": false,
+     "pts": -12.58
+    },
+    {
+     "when": "2026-10-30T13:45",
+     "level": 7660.75,
+     "entry": 7667,
+     "stop": 7648.96,
+     "t1": 7683.5,
+     "t2": 7693,
+     "got1": false,
+     "pts": -18.04
+    },
+    {
+     "when": "2026-11-02T17:45",
+     "level": 7636.25,
+     "entry": 7637.5,
+     "stop": 7622.39,
+     "t1": 7656.25,
+     "t2": 7683.5,
+     "got1": false,
+     "pts": -15.11
+    },
+    {
+     "when": "2026-11-03T06:15",
+     "level": 7558.25,
+     "entry": 7559.5,
+     "stop": 7553.58,
+     "t1": 7656.25,
+     "t2": 7683.5,
+     "got1": false,
+     "pts": -5.92
+    },
+    {
+     "when": "2026-11-05T02:15",
+     "level": 7712.75,
+     "entry": 7716.5,
+     "stop": 7694.76,
+     "t1": 7731,
+     "t2": 7739.5,
+     "got1": false,
+     "pts": -21.74
+    },
+    {
+     "when": "2026-11-05T16:00",
+     "level": 7490,
+     "entry": 7494,
+     "stop": 7418.13,
+     "t1": 7577,
+     "t2": 7623.75,
+     "got1": false,
+     "pts": -75.87
+    },
+    {
+     "when": "2026-11-10T09:15",
+     "level": 7568.75,
+     "entry": 7582.25,
+     "stop": 7565.14,
+     "t1": 7598.75,
+     "t2": 7623.75,
+     "got1": false,
+     "pts": -17.11
+    }
+   ]
+  },
+  {
+   "label": "60m k=3",
+   "bars": 13710,
+   "from": "2024-06-21",
+   "to": "2026-11-12",
+   "signals": {
+    "n": 554,
+    "t1Hit": 57.58,
+    "avgR": -0.03,
+    "avgPts": 0.9,
+    "winRate": 59.39,
+    "profitFactor": 1.09
+   },
+   "randomSameTrade": {
+    "n": 11080,
+    "t1Hit": 58.32,
+    "avgR": -0.01,
+    "avgPts": -0.04,
+    "winRate": 60.83,
+    "profitFactor": 1
+   },
+   "edgeRPerTrade": -0.03,
+   "tStat": -0.68,
+   "medianRiskPts": 26.79,
+   "regularHours": {
+    "n": 235,
+    "t1Hit": 59.15,
+    "avgR": -0.02,
+    "avgPts": 1.35,
+    "winRate": 62.13,
+    "profitFactor": 1.12
+   },
+   "overnight": {
+    "n": 319,
+    "t1Hit": 56.43,
+    "avgR": -0.05,
+    "avgPts": 0.57,
+    "winRate": 57.37,
+    "profitFactor": 1.06
+   },
+   "afterVolSpike": {
+    "n": 113,
+    "t1Hit": 53.98,
+    "avgR": 0.02,
+    "avgPts": 4.27,
+    "winRate": 56.64,
+    "profitFactor": 1.29
+   },
+   "calm": {
+    "n": 441,
+    "t1Hit": 58.5,
+    "avgR": -0.05,
+    "avgPts": 0.04,
+    "winRate": 60.09,
+    "profitFactor": 1
+   },
+   "firstHalf": {
+    "n": 277,
+    "t1Hit": 54.15,
+    "avgR": -0.1,
+    "avgPts": -1.13,
+    "winRate": 56.68,
+    "profitFactor": 0.9
+   },
+   "secondHalf": {
+    "n": 277,
+    "t1Hit": 61.01,
+    "avgR": 0.03,
+    "avgPts": 2.93,
+    "winRate": 62.09,
+    "profitFactor": 1.29
+   },
+   "deepFlush": {
+    "n": 202,
+    "t1Hit": 66.34,
+    "avgR": 0.07,
+    "avgPts": 4.73,
+    "winRate": 70.3,
+    "profitFactor": 1.49
+   },
+   "shallowFlush": {
+    "n": 352,
+    "t1Hit": 52.56,
+    "avgR": -0.09,
+    "avgPts": -1.3,
+    "winRate": 53.13,
+    "profitFactor": 0.88
+   },
+   "recent": [
+    {
+     "when": "2026-10-20T15:00",
+     "level": 7727.5,
+     "entry": 7767,
+     "stop": 7702.58,
+     "t1": 7801.75,
+     "t2": 7850,
+     "got1": true,
+     "pts": 26.06
+    },
+    {
+     "when": "2026-10-21T11:00",
+     "level": 7769,
+     "entry": 7774.5,
+     "stop": 7755.48,
+     "t1": 7791.5,
+     "t2": 7801.75,
+     "got1": false,
+     "pts": -19.02
+    },
+    {
+     "when": "2026-10-21T16:00",
+     "level": 7757,
+     "entry": 7801.75,
+     "stop": 7749.38,
+     "t1": 7850,
+     "t2": 7859.5,
+     "got1": false,
+     "pts": -52.37
+    },
+    {
+     "when": "2026-10-22T15:00",
+     "level": 7704.5,
+     "entry": 7712.5,
+     "stop": 7684.19,
+     "t1": 7752.75,
+     "t2": 7768.5,
+     "got1": false,
+     "pts": -28.31
+    },
+    {
+     "when": "2026-10-22T20:00",
+     "level": 7686,
+     "entry": 7703.75,
+     "stop": 7674.66,
+     "t1": 7742.5,
+     "t2": 7768.5,
+     "got1": false,
+     "pts": -29.09
+    },
+    {
+     "when": "2026-10-23T11:00",
+     "level": 7685,
+     "entry": 7687.75,
+     "stop": 7676.32,
+     "t1": 7711.5,
+     "t2": 7742.5,
+     "got1": false,
+     "pts": -11.43
+    },
+    {
+     "when": "2026-10-26T02:00",
+     "level": 7657.75,
+     "entry": 7666,
+     "stop": 7649.73,
+     "t1": 7697.25,
+     "t2": 7711.5,
+     "got1": true,
+     "pts": 34.81
+    },
+    {
+     "when": "2026-10-28T14:00",
+     "level": 7756.25,
+     "entry": 7762.25,
+     "stop": 7750.22,
+     "t1": 7772.75,
+     "t2": 7791.5,
+     "got1": true,
+     "pts": 7.88
+    },
+    {
+     "when": "2026-10-29T00:00",
+     "level": 7752.25,
+     "entry": 7759.5,
+     "stop": 7740.24,
+     "t1": 7772.75,
+     "t2": 7791.5,
+     "got1": false,
+     "pts": -19.26
+    },
+    {
+     "when": "2026-10-29T05:00",
+     "level": 7751.5,
+     "entry": 7763.5,
+     "stop": 7738.17,
+     "t1": 7772.75,
+     "t2": 7791.5,
+     "got1": false,
+     "pts": -25.33
+    },
+    {
+     "when": "2026-10-29T14:00",
+     "level": 7740,
+     "entry": 7746.25,
+     "stop": 7730.39,
+     "t1": 7766.5,
+     "t2": 7778.25,
+     "got1": true,
+     "pts": 15.19
+    },
+    {
+     "when": "2026-10-29T19:00",
+     "level": 7745,
+     "entry": 7754.25,
+     "stop": 7723.31,
+     "t1": 7766.5,
+     "t2": 7778.25,
+     "got1": false,
+     "pts": -30.94
+    },
+    {
+     "when": "2026-11-03T07:00",
+     "level": 7558.25,
+     "entry": 7561.75,
+     "stop": 7544.17,
+     "t1": 7656.25,
+     "t2": 7693.75,
+     "got1": false,
+     "pts": -17.58
+    },
+    {
+     "when": "2026-11-04T05:00",
+     "level": 7546,
+     "entry": 7568.5,
+     "stop": 7487.21,
+     "t1": 7623.75,
+     "t2": 7656.25,
+     "got1": true,
+     "pts": 63.38
+    },
+    {
+     "when": "2026-11-05T02:00",
+     "level": 7712.75,
+     "entry": 7716.5,
+     "stop": 7693.05,
+     "t1": 7731,
+     "t2": 7746.25,
+     "got1": false,
+     "pts": -23.45
+    }
+   ]
+  },
+  {
+   "label": "60m k=6",
+   "bars": 13710,
+   "from": "2024-06-21",
+   "to": "2026-11-12",
+   "signals": {
+    "n": 306,
+    "t1Hit": 56.54,
+    "avgR": 0.01,
+    "avgPts": 1.76,
+    "winRate": 57.52,
+    "profitFactor": 1.15
+   },
+   "randomSameTrade": {
+    "n": 6120,
+    "t1Hit": 53.51,
+    "avgR": 0.01,
+    "avgPts": 0.42,
+    "winRate": 57.37,
+    "profitFactor": 1.04
+   },
+   "edgeRPerTrade": -0.01,
+   "tStat": -0.12,
+   "medianRiskPts": 28.68,
+   "regularHours": {
+    "n": 128,
+    "t1Hit": 56.25,
+    "avgR": -0.05,
+    "avgPts": -0.07,
+    "winRate": 57.03,
+    "profitFactor": 0.99
+   },
+   "overnight": {
+    "n": 178,
+    "t1Hit": 56.74,
+    "avgR": 0.05,
+    "avgPts": 3.07,
+    "winRate": 57.87,
+    "profitFactor": 1.29
+   },
+   "afterVolSpike": {
+    "n": 62,
+    "t1Hit": 59.68,
+    "avgR": 0.23,
+    "avgPts": 8.79,
+    "winRate": 59.68,
+    "profitFactor": 1.58
+   },
+   "calm": {
+    "n": 244,
+    "t1Hit": 55.74,
+    "avgR": -0.05,
+    "avgPts": -0.03,
+    "winRate": 56.97,
+    "profitFactor": 1
+   },
+   "firstHalf": {
+    "n": 153,
+    "t1Hit": 51.63,
+    "avgR": -0.1,
+    "avgPts": -2.18,
+    "winRate": 53.59,
+    "profitFactor": 0.84
+   },
+   "secondHalf": {
+    "n": 153,
+    "t1Hit": 61.44,
+    "avgR": 0.12,
+    "avgPts": 5.69,
+    "winRate": 61.44,
+    "profitFactor": 1.57
+   },
+   "deepFlush": {
+    "n": 111,
+    "t1Hit": 63.96,
+    "avgR": 0.04,
+    "avgPts": 3.46,
+    "winRate": 63.96,
+    "profitFactor": 1.27
+   },
+   "shallowFlush": {
+    "n": 195,
+    "t1Hit": 52.31,
+    "avgR": -0.01,
+    "avgPts": 0.78,
+    "winRate": 53.85,
+    "profitFactor": 1.07
+   },
+   "recent": [
+    {
+     "when": "2026-10-08T11:00",
+     "level": 7815.75,
+     "entry": 7817.5,
+     "stop": 7801.58,
+     "t1": 7843.25,
+     "t2": 7859.5,
+     "got1": true,
+     "pts": 19.31
+    },
+    {
+     "when": "2026-10-08T18:00",
+     "level": 7802.75,
+     "entry": 7807.5,
+     "stop": 7781.4,
+     "t1": 7843.25,
+     "t2": 7859.5,
+     "got1": true,
+     "pts": 39.81
+    },
+    {
+     "when": "2026-10-14T19:00",
+     "level": 7760.25,
+     "entry": 7771.5,
+     "stop": 7739.33,
+     "t1": 7782,
+     "t2": 7793,
+     "got1": false,
+     "pts": -32.17
+    },
+    {
+     "when": "2026-10-15T14:00",
+     "level": 7729.5,
+     "entry": 7769,
+     "stop": 7715.55,
+     "t1": 7782,
+     "t2": 7793,
+     "got1": true,
+     "pts": 9.75
+    },
+    {
+     "when": "2026-10-18T22:00",
+     "level": 7717.25,
+     "entry": 7731.75,
+     "stop": 7674.03,
+     "t1": 7755.75,
+     "t2": 7767.75,
+     "got1": true,
+     "pts": 27
+    },
+    {
+     "when": "2026-10-20T10:00",
+     "level": 7724,
+     "entry": 7726,
+     "stop": 7718.51,
+     "t1": 7752.75,
+     "t2": 7767.75,
+     "got1": false,
+     "pts": -7.49
+    },
+    {
+     "when": "2026-10-20T15:00",
+     "level": 7727.5,
+     "entry": 7767,
+     "stop": 7702.58,
+     "t1": 7782,
+     "t2": 7793,
+     "got1": true,
+     "pts": 17.75
+    },
+    {
+     "when": "2026-10-22T15:00",
+     "level": 7704.5,
+     "entry": 7712.5,
+     "stop": 7684.19,
+     "t1": 7752.75,
+     "t2": 7767.75,
+     "got1": false,
+     "pts": -28.31
+    },
+    {
+     "when": "2026-10-23T14:00",
+     "level": 7676,
+     "entry": 7691.25,
+     "stop": 7646.76,
+     "t1": 7711.5,
+     "t2": 7742.5,
+     "got1": true,
+     "pts": 28
+    },
+    {
+     "when": "2026-10-29T00:00",
+     "level": 7752.25,
+     "entry": 7759.5,
+     "stop": 7740.24,
+     "t1": 7772.75,
+     "t2": 7791.5,
+     "got1": false,
+     "pts": -19.26
+    },
+    {
+     "when": "2026-10-29T05:00",
+     "level": 7751.5,
+     "entry": 7763.5,
+     "stop": 7738.17,
+     "t1": 7772.75,
+     "t2": 7791.5,
+     "got1": false,
+     "pts": -25.33
+    },
+    {
+     "when": "2026-10-29T14:00",
+     "level": 7740,
+     "entry": 7746.25,
+     "stop": 7730.39,
+     "t1": 7768.5,
+     "t2": 7791.5,
+     "got1": false,
+     "pts": -15.86
+    },
+    {
+     "when": "2026-10-29T23:00",
+     "level": 7702.75,
+     "entry": 7706.25,
+     "stop": 7691.59,
+     "t1": 7731,
+     "t2": 7742.5,
+     "got1": false,
+     "pts": -14.66
+    },
+    {
+     "when": "2026-11-03T07:00",
+     "level": 7558.25,
+     "entry": 7561.75,
+     "stop": 7544.17,
+     "t1": 7693.75,
+     "t2": 7711.5,
+     "got1": false,
+     "pts": -17.58
+    },
+    {
+     "when": "2026-11-04T05:00",
+     "level": 7546,
+     "entry": 7568.5,
+     "stop": 7487.21,
+     "t1": 7633.5,
+     "t2": 7693.75,
+     "got1": true,
+     "pts": 80.06
+    }
+   ]
+  },
+  {
+   "label": "60m k=3 STRICT (shelf + elevator down)",
+   "bars": 13710,
+   "from": "2024-06-21",
+   "to": "2026-11-12",
+   "signals": {
+    "n": 333,
+    "t1Hit": 60.06,
+    "avgR": -0.02,
+    "avgPts": 0.53,
+    "winRate": 61.56,
+    "profitFactor": 1.05
+   },
+   "randomSameTrade": {
+    "n": 6660,
+    "t1Hit": 61.26,
+    "avgR": 0.01,
+    "avgPts": 0.33,
+    "winRate": 63.11,
+    "profitFactor": 1.03
+   },
+   "edgeRPerTrade": -0.04,
+   "tStat": -0.72,
+   "medianRiskPts": 28.51,
+   "regularHours": {
+    "n": 155,
+    "t1Hit": 57.42,
+    "avgR": -0.07,
+    "avgPts": -0.43,
+    "winRate": 60,
+    "profitFactor": 0.96
+   },
+   "overnight": {
+    "n": 178,
+    "t1Hit": 62.36,
+    "avgR": 0.02,
+    "avgPts": 1.38,
+    "winRate": 62.92,
+    "profitFactor": 1.14
+   },
+   "afterVolSpike": {
+    "n": 70,
+    "t1Hit": 57.14,
+    "avgR": 0.02,
+    "avgPts": 4.64,
+    "winRate": 58.57,
+    "profitFactor": 1.34
+   },
+   "calm": {
+    "n": 263,
+    "t1Hit": 60.84,
+    "avgR": -0.03,
+    "avgPts": -0.56,
+    "winRate": 62.36,
+    "profitFactor": 0.94
+   },
+   "firstHalf": {
+    "n": 166,
+    "t1Hit": 59.64,
+    "avgR": -0.04,
+    "avgPts": -0.04,
+    "winRate": 62.05,
+    "profitFactor": 1
+   },
+   "secondHalf": {
+    "n": 167,
+    "t1Hit": 60.48,
+    "avgR": 0,
+    "avgPts": 1.1,
+    "winRate": 61.08,
+    "profitFactor": 1.1
+   },
+   "deepFlush": {
+    "n": 135,
+    "t1Hit": 60.74,
+    "avgR": -0.07,
+    "avgPts": -0.47,
+    "winRate": 62.96,
+    "profitFactor": 0.96
+   },
+   "shallowFlush": {
+    "n": 198,
+    "t1Hit": 59.6,
+    "avgR": 0.01,
+    "avgPts": 1.22,
+    "winRate": 60.61,
+    "profitFactor": 1.12
+   },
+   "recent": [
+    {
+     "when": "2026-09-30T12:00",
+     "level": 7734,
+     "entry": 7754.5,
+     "stop": 7718.23,
+     "t1": 7764,
+     "t2": 7770.75,
+     "got1": true,
+     "pts": 11.19
+    },
+    {
+     "when": "2026-09-30T20:00",
+     "level": 7716,
+     "entry": 7721,
+     "stop": 7703.66,
+     "t1": 7739.25,
+     "t2": 7754.5,
+     "got1": true,
+     "pts": 22.06
+    },
+    {
+     "when": "2026-10-01T01:00",
+     "level": 7712.25,
+     "entry": 7739,
+     "stop": 7703.82,
+     "t1": 7754.5,
+     "t2": 7764,
+     "got1": true,
+     "pts": 17.88
+    },
+    {
+     "when": "2026-10-01T17:00",
+     "level": 7707.25,
+     "entry": 7720.75,
+     "stop": 7670.74,
+     "t1": 7739.25,
+     "t2": 7754.5,
+     "got1": true,
+     "pts": 22.31
+    },
+    {
+     "when": "2026-10-01T23:00",
+     "level": 7705.5,
+     "entry": 7733.25,
+     "stop": 7670.68,
+     "t1": 7745.25,
+     "t2": 7755.75,
+     "got1": true,
+     "pts": 14.63
+    },
+    {
+     "when": "2026-10-08T11:00",
+     "level": 7815.75,
+     "entry": 7817.5,
+     "stop": 7801.58,
+     "t1": 7838.75,
+     "t2": 7846.75,
+     "got1": true,
+     "pts": 15.94
+    },
+    {
+     "when": "2026-10-08T18:00",
+     "level": 7802.75,
+     "entry": 7807.5,
+     "stop": 7781.4,
+     "t1": 7838.75,
+     "t2": 7846.75,
+     "got1": true,
+     "pts": 33.25
+    },
+    {
+     "when": "2026-10-14T19:00",
+     "level": 7760.25,
+     "entry": 7771.5,
+     "stop": 7739.33,
+     "t1": 7781.75,
+     "t2": 7793,
+     "got1": false,
+     "pts": -32.17
+    },
+    {
+     "when": "2026-10-22T15:00",
+     "level": 7710.25,
+     "entry": 7712.5,
+     "stop": 7684.19,
+     "t1": 7741.25,
+     "t2": 7752.75,
+     "got1": false,
+     "pts": -28.31
+    },
+    {
+     "when": "2026-10-22T20:00",
+     "level": 7686,
+     "entry": 7703.75,
+     "stop": 7674.66,
+     "t1": 7741.25,
+     "t2": 7752.75,
+     "got1": false,
+     "pts": -29.09
+    },
+    {
+     "when": "2026-10-23T14:00",
+     "level": 7676,
+     "entry": 7691.25,
+     "stop": 7646.76,
+     "t1": 7711.5,
+     "t2": 7741.25,
+     "got1": true,
+     "pts": 27.69
+    },
+    {
+     "when": "2026-10-29T00:00",
+     "level": 7752.25,
+     "entry": 7759.5,
+     "stop": 7740.24,
+     "t1": 7772.75,
+     "t2": 7791.5,
+     "got1": false,
+     "pts": -19.26
+    },
+    {
+     "when": "2026-10-29T05:00",
+     "level": 7751.5,
+     "entry": 7763.5,
+     "stop": 7738.17,
+     "t1": 7772.75,
+     "t2": 7791.5,
+     "got1": false,
+     "pts": -25.33
+    },
+    {
+     "when": "2026-10-29T23:00",
+     "level": 7702.75,
+     "entry": 7706.25,
+     "stop": 7691.59,
+     "t1": 7731,
+     "t2": 7742.5,
+     "got1": false,
+     "pts": -14.66
+    },
+    {
+     "when": "2026-11-04T05:00",
+     "level": 7546,
+     "entry": 7568.5,
+     "stop": 7487.21,
+     "t1": 7623.75,
+     "t2": 7656.25,
+     "got1": true,
+     "pts": 63.38
+    }
+   ]
+  },
+  {
+   "label": "60m k=6 STRICT (shelf + elevator down)",
+   "bars": 13710,
+   "from": "2024-06-21",
+   "to": "2026-11-12",
+   "signals": {
+    "n": 204,
+    "t1Hit": 60.29,
+    "avgR": 0.05,
+    "avgPts": 2.19,
+    "winRate": 61.27,
+    "profitFactor": 1.2
+   },
+   "randomSameTrade": {
+    "n": 4080,
+    "t1Hit": 55.27,
+    "avgR": 0.01,
+    "avgPts": 0.24,
+    "winRate": 58.43,
+    "profitFactor": 1.02
+   },
+   "edgeRPerTrade": 0.04,
+   "tStat": 0.6,
+   "medianRiskPts": 28.73,
+   "regularHours": {
+    "n": 90,
+    "t1Hit": 60,
+    "avgR": 0.01,
+    "avgPts": 1.27,
+    "winRate": 61.11,
+    "profitFactor": 1.1
+   },
+   "overnight": {
+    "n": 114,
+    "t1Hit": 60.53,
+    "avgR": 0.08,
+    "avgPts": 2.92,
+    "winRate": 61.4,
+    "profitFactor": 1.29
+   },
+   "afterVolSpike": {
+    "n": 48,
+    "t1Hit": 58.33,
+    "avgR": 0.08,
+    "avgPts": 4.36,
+    "winRate": 58.33,
+    "profitFactor": 1.31
+   },
+   "calm": {
+    "n": 156,
+    "t1Hit": 60.9,
+    "avgR": 0.04,
+    "avgPts": 1.52,
+    "winRate": 62.18,
+    "profitFactor": 1.15
+   },
+   "firstHalf": {
+    "n": 102,
+    "t1Hit": 56.86,
+    "avgR": 0,
+    "avgPts": 0.01,
+    "winRate": 58.82,
+    "profitFactor": 1
+   },
+   "secondHalf": {
+    "n": 102,
+    "t1Hit": 63.73,
+    "avgR": 0.11,
+    "avgPts": 4.38,
+    "winRate": 63.73,
+    "profitFactor": 1.45
+   },
+   "deepFlush": {
+    "n": 77,
+    "t1Hit": 62.34,
+    "avgR": 0,
+    "avgPts": 0.71,
+    "winRate": 62.34,
+    "profitFactor": 1.05
+   },
+   "shallowFlush": {
+    "n": 127,
+    "t1Hit": 59.06,
+    "avgR": 0.09,
+    "avgPts": 3.09,
+    "winRate": 60.63,
+    "profitFactor": 1.32
+   },
+   "recent": [
+    {
+     "when": "2026-09-18T18:00",
+     "level": 7696,
+     "entry": 7710,
+     "stop": 7673.75,
+     "t1": 7718.5,
+     "t2": 7739.25,
+     "got1": true,
+     "pts": 13.69
+    },
+    {
+     "when": "2026-09-23T12:00",
+     "level": 7822.25,
+     "entry": 7823.5,
+     "stop": 7817.87,
+     "t1": 7843.25,
+     "t2": 7848.5,
+     "got1": false,
+     "pts": -5.63
+    },
+    {
+     "when": "2026-09-28T16:00",
+     "level": 7748.5,
+     "entry": 7762,
+     "stop": 7724.39,
+     "t1": 7782.5,
+     "t2": 7814.75,
+     "got1": true,
+     "pts": 15.38
+    },
+    {
+     "when": "2026-09-30T20:00",
+     "level": 7716,
+     "entry": 7721,
+     "stop": 7703.66,
+     "t1": 7739.25,
+     "t2": 7755.5,
+     "got1": true,
+     "pts": 22.31
+    },
+    {
+     "when": "2026-10-01T01:00",
+     "level": 7712.25,
+     "entry": 7739,
+     "stop": 7703.82,
+     "t1": 7747.5,
+     "t2": 7764,
+     "got1": true,
+     "pts": 12.63
+    },
+    {
+     "when": "2026-10-01T17:00",
+     "level": 7707.25,
+     "entry": 7720.75,
+     "stop": 7670.74,
+     "t1": 7739.25,
+     "t2": 7755.5,
+     "got1": true,
+     "pts": 22.56
+    },
+    {
+     "when": "2026-10-01T23:00",
+     "level": 7705.5,
+     "entry": 7733.25,
+     "stop": 7670.68,
+     "t1": 7747.5,
+     "t2": 7764,
+     "got1": true,
+     "pts": 18.38
+    },
+    {
+     "when": "2026-10-08T11:00",
+     "level": 7815.75,
+     "entry": 7817.5,
+     "stop": 7801.58,
+     "t1": 7843.25,
+     "t2": 7859.5,
+     "got1": true,
+     "pts": 19.31
+    },
+    {
+     "when": "2026-10-08T18:00",
+     "level": 7802.75,
+     "entry": 7807.5,
+     "stop": 7781.4,
+     "t1": 7843.25,
+     "t2": 7859.5,
+     "got1": true,
+     "pts": 39.81
+    },
+    {
+     "when": "2026-10-14T19:00",
+     "level": 7760.25,
+     "entry": 7771.5,
+     "stop": 7739.33,
+     "t1": 7782,
+     "t2": 7793,
+     "got1": false,
+     "pts": -32.17
+    },
+    {
+     "when": "2026-10-23T14:00",
+     "level": 7676,
+     "entry": 7691.25,
+     "stop": 7646.76,
+     "t1": 7711.5,
+     "t2": 7739.25,
+     "got1": true,
+     "pts": 27.19
+    },
+    {
+     "when": "2026-10-29T00:00",
+     "level": 7752.25,
+     "entry": 7759.5,
+     "stop": 7740.24,
+     "t1": 7770.75,
+     "t2": 7782,
+     "got1": false,
+     "pts": -19.26
+    },
+    {
+     "when": "2026-10-29T05:00",
+     "level": 7751.5,
+     "entry": 7763.5,
+     "stop": 7738.17,
+     "t1": 7772.75,
+     "t2": 7782,
+     "got1": false,
+     "pts": -25.33
+    },
+    {
+     "when": "2026-10-29T23:00",
+     "level": 7702.75,
+     "entry": 7706.25,
+     "stop": 7691.59,
+     "t1": 7731,
+     "t2": 7742.5,
+     "got1": false,
+     "pts": -14.66
+    },
+    {
+     "when": "2026-11-04T05:00",
+     "level": 7546,
+     "entry": 7568.5,
+     "stop": 7487.21,
+     "t1": 7633.5,
+     "t2": 7693.75,
+     "got1": true,
+     "pts": 80.06
+    }
+   ]
+  }
+ ]
+}

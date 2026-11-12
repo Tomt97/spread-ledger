@@ -1,0 +1,182 @@
+ES15 4581 SPX15 1561 ES60 13710 SPX60 5084 SPXd 752 IRX 752
+{
+ "vsBars15": {
+  "days": 50,
+  "medianAbsDiff": 1.32,
+  "over3pts": 8,
+  "over10pts": 0
+ },
+ "vsBars60": null,
+ "vsFair": {
+  "days": 495,
+  "medianAbsDiff": 7.4,
+  "over3pts": 400,
+  "over10pts": 156
+ },
+ "flagged": [
+  {
+   "d": "2026-09-18",
+   "used": 62,
+   "bars15": 65.67,
+   "bars60": null,
+   "fair": 51.56,
+   "daysToExpiry": 90,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-09-30",
+   "used": 61.71,
+   "bars15": 58.4,
+   "bars60": null,
+   "fair": 45.55,
+   "daysToExpiry": 78,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-10-01",
+   "used": 59.8,
+   "bars15": 55.93,
+   "bars60": null,
+   "fair": 44.28,
+   "daysToExpiry": 77,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-10-05",
+   "used": 57.55,
+   "bars15": 52.47,
+   "bars60": null,
+   "fair": 43.13,
+   "daysToExpiry": 73,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-10-14",
+   "used": 52.56,
+   "bars15": 48.55,
+   "bars60": null,
+   "fair": 38.47,
+   "daysToExpiry": 64,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-10-20",
+   "used": 46.43,
+   "bars15": 41.91,
+   "bars60": null,
+   "fair": 34.78,
+   "daysToExpiry": 58,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-10-28",
+   "used": 40.52,
+   "bars15": 34.71,
+   "bars60": null,
+   "fair": 29.22,
+   "daysToExpiry": 50,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-11-02",
+   "used": 34.85,
+   "bars15": 31.54,
+   "bars60": null,
+   "fair": 25.5,
+   "daysToExpiry": 45,
+   "expiry": "2026-12-18"
+  }
+ ],
+ "last10": [
+  {
+   "d": "2026-10-29",
+   "used": 33.86,
+   "bars15": 34.71,
+   "bars60": null,
+   "fair": 28.58,
+   "daysToExpiry": 49,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-10-30",
+   "used": 32.68,
+   "bars15": 31.74,
+   "bars60": null,
+   "fair": 27.24,
+   "daysToExpiry": 48,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-11-02",
+   "used": 34.85,
+   "bars15": 31.54,
+   "bars60": null,
+   "fair": 25.5,
+   "daysToExpiry": 45,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-11-03",
+   "used": 27.58,
+   "bars15": 28.75,
+   "bars60": null,
+   "fair": 25.42,
+   "daysToExpiry": 44,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-11-04",
+   "used": 33.13,
+   "bars15": 30.35,
+   "bars60": null,
+   "fair": 25.23,
+   "daysToExpiry": 43,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-11-05",
+   "used": 27.52,
+   "bars15": 27.23,
+   "bars60": null,
+   "fair": 23.25,
+   "daysToExpiry": 42,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-11-06",
+   "used": 23.64,
+   "bars15": 23.16,
+   "bars60": null,
+   "fair": 22.88,
+   "daysToExpiry": 41,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-11-09",
+   "used": 22.31,
+   "bars15": 23.17,
+   "bars60": null,
+   "fair": 21.99,
+   "daysToExpiry": 38,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-11-10",
+   "used": 23.82,
+   "bars15": 22.5,
+   "bars60": null,
+   "fair": 21.94,
+   "daysToExpiry": 37,
+   "expiry": "2026-12-18"
+  },
+  {
+   "d": "2026-11-11",
+   "used": 23.62,
+   "bars15": 23.06,
+   "bars60": null,
+   "fair": 21.63,
+   "daysToExpiry": 36,
+   "expiry": "2026-12-18"
+  }
+ ]
+}
