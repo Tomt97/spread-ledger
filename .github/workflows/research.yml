@@ -31,6 +31,9 @@ jobs:
       - name: Failed Breakdown setup on ES
         continue-on-error: true
         run: node .github/scripts/backtest-fb.mjs > fb.txt 2>&1; tail -c 3000 fb.txt
+      - name: 7 vs 14 DTE put credit spreads by delta
+        continue-on-error: true
+        run: node .github/scripts/dte-study.mjs > dte.txt 2>&1; tail -c 6000 dte.txt
       - name: Save results on the research branch
         run: |
           mkdir out && cp *.json *.txt out/ 2>/dev/null; cd out && ls
