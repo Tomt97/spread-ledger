@@ -66,6 +66,10 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
 - Nov 5, 2026: SPX fell 343 points in a day (z = -5.9, no scheduled news). The 1DTE put spread took its max loss (-$1,920),
   wiping out about 22 wins; 1DTE suggestions are net negative since. Report this plainly: it is the tail the 0.07-delta
   rule carries, not a model bug.
+- Broken-wing butterfly (owner, Nov 13 2026): when the market is moving one way (`TREND`: price above its 5-day average,
+  that above the 20-day, and 3+ of the last 4 closes up; mirror for down) the wing on the trend's side is pulled in until the
+  credit covers it, so a continued move can't lose; the other wing stays at the 84% edge and carries the risk. Fields
+  `wDn`, `wUp`, `trend` on the IB idea; grading and the lock's current price use them. No trend = symmetric butterfly.
 - Rest of day, last hour: the width never shrinks below the full last hour's (`Math.max(minutes left, 60)`). Forecasts at
   3:45 with 15 minutes left missed the 84% range 5 of 13 days (Oct-Nov 2026); the closing imbalance moves more than
   the square-root-of-time rule says. With the floor the same days hold 11 of 13.

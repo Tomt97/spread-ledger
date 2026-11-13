@@ -529,6 +529,13 @@ const ncdf = x => { const t = 1 / (1 + 0.2316419 * Math.abs(x)), d = 0.3989423 *
 const bs = (isCall, S, K, T, iv) => { if (!(T > 0) || !(iv > 0)) return Math.max(0, isCall ? S - K : K - S);
   const v = iv * Math.sqrt(T), d1 = (Math.log(S / K) + v * v / 2) / v, d2 = d1 - v;
   return isCall ? S * ncdf(d1) - K * ncdf(d2) : K * ncdf(-d2) - S * ncdf(-d1); };
+// "One direction" (owner's wording): the price is above its 5-day average, that is above the 20-day average, and at least 3
+// of the last 4 sessions closed higher (mirror image for down). Otherwise no trend and the butterfly stays symmetric.
+// Nothing tested predicts the close, so this only decides which side of the butterfly carries the risk.
+const TREND = (() => { const c = dayClose.map(d => d.c); if (c.length < 21) return null;
+  const sma = n => c.slice(-n).reduce((a, v) => a + v, 0) / n, s5 = sma(5), s20 = sma(20);
+  const ups = [1, 2, 3, 4].filter(i => c.at(-i) > c.at(-i - 1)).length;
+  return spot > s5 && s5 > s20 && ups >= 3 ? "up" : spot < s5 && s5 < s20 && ups <= 1 ? "down" : null; })();
 function otherIdeas(r, view){
   const list = chainByExp.get(r.exp); if (!list || !view) return [];
   const mid = o => o && o.bid > 0 && o.ask > 0 && o.ask >= o.bid ? (o.bid + o.ask) / 2 : null;
@@ -537,14 +544,22 @@ function otherIdeas(r, view){
   const popOf = f => Math.round(view.samples.filter(S => f(S) > 0).length / view.samples.length * 100);
   const strikes = [...new Set(list.map(o => o.K))].sort((a, b) => a - b), near = x => strikes.reduce((a, k) => Math.abs(k - x) < Math.abs(a - x) ? k : a, strikes[0]);
   const out = [];
-  { // iron butterfly
+  { // iron butterfly; broken-wing when the market is moving one way (owner's rule, Nov 2026)
     const K0 = near(r.center), w = Math.max(10, Math.round((view.hi84 - view.lo84) / 2 / 5) * 5);
-    const sc = get(list, "C", K0), sp = get(list, "P", K0), lc = get(list, "C", K0 + w), lp = get(list, "P", K0 - w);
-    const ms = [sc, sp, lc, lp].map(mid);
-    if (ms.every(v => v != null)){
-      const credit = ms[0] + ms[1] - ms[2] - ms[3], natural = sc.bid + sp.bid - lc.ask - lp.ask, pl = S => credit - Math.min(w, Math.abs(S - K0));
-      if (credit >= MIN_CREDIT && credit < w) out.push({ type: "IB", label: `Iron butterfly ${K0 - w}/${K0}/${K0 + w}`, exp: r.exp, center: K0, width: w, credit: r2(credit), natural: r2(natural),
-        pop: popOf(pl), ev: evOf(pl), maxLoss: r2((w - credit) * 100), be: [r2(K0 - credit), r2(K0 + credit)] });
+    const sc = get(list, "C", K0), sp = get(list, "P", K0), far = { up: get(list, "C", K0 + w), dn: get(list, "P", K0 - w) };
+    // price one butterfly: wings wDn below and wUp above the center
+    const price = (wDn, wUp) => { const lc = get(list, "C", K0 + wUp), lp = get(list, "P", K0 - wDn), ms = [sc, sp, lc, lp].map(mid); if (!ms.every(v => v != null)) return null;
+      return { wDn, wUp, credit: ms[0] + ms[1] - ms[2] - ms[3], natural: sc.bid + sp.bid - lc.ask - lp.ask }; };
+    let f = far.up && far.dn ? price(w, w) : null, trend = null;
+    // In a trend the wing on the trend's side is pulled in until the credit covers it: if the move keeps going, the trade
+    // can't lose. The other wing stays at the 84% edge and carries all the risk (a reversal through it).
+    if (f && TREND){ const up = TREND === "up";
+      for (let x = w - 5; x >= 5; x -= 5){ const g = up ? price(w, x) : price(x, w); if (g && g.credit >= x){ f = g; trend = TREND; break; } } }
+    if (f){
+      const { wDn, wUp, credit, natural } = f, pl = S => credit - Math.min(wDn, Math.max(0, K0 - S)) - Math.min(wUp, Math.max(0, S - K0));
+      if (credit >= MIN_CREDIT && credit < Math.max(wDn, wUp)) out.push({ type: "IB", label: `${trend ? "Broken-wing butterfly" : "Iron butterfly"} ${K0 - wDn}/${K0}/${K0 + wUp}`, exp: r.exp, center: K0, width: w, wDn, wUp, trend,
+        credit: r2(credit), natural: r2(natural), pop: popOf(pl), ev: evOf(pl), maxLoss: r2((Math.max(wDn, wUp) - credit) * 100),
+        be: [trend === "down" ? null : r2(K0 - credit), trend === "up" ? null : r2(K0 + credit)] });
     }
   }
   { // double diagonal
@@ -586,7 +601,7 @@ if (restOfDay){
       const a = mid(B.find(o => o.K === x.short)), b = mid(B.find(o => o.K === x.long)); return { ...x, now: a != null && b != null ? r2(a - b) : null }; };
     // the locked butterfly's current credit, from the same chain
     const flyNow = (exp, x) => { if (x.type !== "IB") return x; const L = chainByExp.get(exp) || [], g = (t, K) => mid(L.find(o => o.type === t && o.K === K));
-      const v = [g("C", x.center), g("P", x.center), g("C", x.center + x.width), g("P", x.center - x.width)]; return { ...x, now: v.every(q => q != null) ? r2(v[0] + v[1] - v[2] - v[3]) : null }; };
+      const v = [g("C", x.center), g("P", x.center), g("C", x.center + (x.wUp ?? x.width)), g("P", x.center - (x.wDn ?? x.width))]; return { ...x, now: v.every(q => q != null) ? r2(v[0] + v[1] - v[2] - v[3]) : null }; };
     const frozen = (exp, T) => T && { ...T, pcs: nowOf(exp, T.pcs), ccs: nowOf(exp, T.ccs), ...(T.other ? { other: T.other.map(x => flyNow(exp, x)) } : {}), locked: setupLock.at };
     restOfDay.trade = frozen(nyNow.date, setupLock.today);
     for (const r of ranges){ const L = setupLock.h[r.h]; if (L && L.exp === r.exp) r.trade = frozen(r.exp, L.trade); }
@@ -617,7 +632,7 @@ for (const r of records){
   grade(r.trade.pcs, r.actual.c, hl); grade(r.trade.ccs, r.actual.c, hl);
   // other setups, held to this record's expiration (double diagonal: the long legs valued with Black-Scholes at the close)
   for (const x of r.trade.other || []){ if (x.result || x.exp !== r.target) continue; const c = r.actual.c;
-    const pl = x.type === "IB" ? x.credit - Math.min(x.width, Math.abs(c - x.center))
+    const pl = x.type === "IB" ? x.credit - Math.min(x.wDn ?? x.width, Math.max(0, x.center - c)) - Math.min(x.wUp ?? x.width, Math.max(0, c - x.center))
       : x.credit - Math.max(0, x.shortP - c) - Math.max(0, c - x.shortC) + bs(false, c, x.longP, x.dT, x.ivP) + bs(true, c, x.longC, x.dT, x.ivC);
     x.result = { pnl: r2(pl * 100), pnlFill: r2((pl - x.credit + x.natural) * 100), close: r2(c), estimated: x.type === "DD" }; }
 }
