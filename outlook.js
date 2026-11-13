@@ -355,7 +355,13 @@
     // shown once that kind has 20+ graded results that made money at the realistic fill.
     const STATS = (M.predictions && M.predictions.tradeStats) || [];
     const proven = x => { const st = STATS.find(r => r.label.startsWith(x.type === "IB" ? "Iron butterfly" : "Double diagonal")); return !!st && st.ideas >= 20 && (st.pnlFill ?? st.pnl) > 0; };
-    const otherTxt = T0 => { const T = {...T0, other: (T0.other || []).filter(proven)}; return otherHtml(T); };
+    const otherTxt = T0 => flyHtml(T0) + otherHtml({...T0, other: (T0.other || []).filter(x => x.type !== "IB" && proven(x))});
+    // Butterfly (owner's request, Nov 2026): always shown with the suggestions and locked with them at 12 pm CT. Priced as an
+    // iron butterfly (a credit); the same strikes as a put or call butterfly cost the wing width minus that credit.
+    const flyHtml = T => (T.other || []).filter(x => x.type === "IB").map(x => `<div class="ol-other"><span class="label">Butterfly${T.locked ? " · locked" : ""}</span>
+      <div><b>${x.center - x.width}/${x.center}/${x.center + x.width}</b> · iron butterfly for $${x.credit.toFixed(2)} credit <span class="ol-note">(fill ${x.natural.toFixed(2)}${x.now != null ? ` · now $${x.now.toFixed(2)}` : ""})</span></div>
+      <div class="ol-note">Same trade as a ${x.center - x.width}/${x.center}/${x.center + x.width} put butterfly for a $${(x.width - x.credit).toFixed(2)} debit · profit if SPX closes between ${x.be[0].toFixed(0)} and ${x.be[1].toFixed(0)}, most at ${x.center}</div>
+      <div class="ol-note">${x.pop}% chance of profit · max profit $${(x.credit * 100).toFixed(0)} · max loss $${x.maxLoss.toFixed(0)} · model expects <span class="${x.ev >= 0 ? "gain" : "loss"}">${x.ev >= 0 ? "+" : "−"}$${Math.abs(x.ev).toFixed(0)}</span>${x.ev < 0 ? " (model says skip)" : ""}</div></div>`).join("");
     const otherHtml = T => (T.other || []).length ? `<div class="ol-other"><span class="label">Other setups</span>${T.other.map(x => `<div><b>${esc(x.label)}</b> · $${x.credit.toFixed(2)} <span class="ol-note">(fill ${x.natural.toFixed(2)})</span></div><div class="ol-note">${x.pop}% chance of profit · expected <span class="gain">+$${x.ev.toFixed(0)}</span> · max loss $${x.maxLoss.toFixed(0)}${x.type === "DD" ? " · the later legs are valued with today's IV, an estimate" : x.be ? ` · profit between ${x.be[0].toFixed(0)} and ${x.be[1].toFixed(0)}` : ""}</div>`).join("")}</div>` : "";
     const line = (when, x) => `<tr><td>${esc(when)}</td><td><b>${sp(x)}</b>${x.delta ? `<div class="ol-note">Δ ${x.delta.toFixed(2)}${x.outside84 === false ? " · inside our 84%" : ""}</div>` : ""}</td><td class="num r">$${x.credit.toFixed(2)}<div class="ol-note">fill ${x.natural.toFixed(2)}${nowTxt(x)}</div></td><td class="num r">${x.pop}%</td><td class="num r">${x.pTouch}%</td><td class="num r ${x.ev >= 0 ? "gain" : "loss"}">${x.ev >= 0 ? "+" : "−"}$${Math.abs(x.ev).toFixed(0)}</td><td class="num r">$${x.maxLoss.toFixed(0)}</td></tr>`;
     return `<div class="ol-setups"><div class="card-head"><h3>Suggested setups</h3><span class="ol-note">credit ≥ $0.80 or skip · 1DTE/2DTE: your rule (0.07 Δ short, 20 wide) · today: short outside the 84% range · locked from 12 pm CT</span></div>
@@ -418,6 +424,22 @@
     const one = x => { const res = x.result; return `<b>${x.type} ${x.short}/${x.long}</b> $${x.credit.toFixed(2)}${res ? ` → <span class="${res.pnl > 0 ? "gain" : "loss"}">${res.pnl > 0 ? "✓ +" : "✗ −"}$${Math.abs(res.pnl).toFixed(0)}</span>${res.touched ? " · touched" : ""}` : ""}`; };
     return `<div class="ol-sug"><span class="lab">Suggested</span>${ideas.length ? ideas.map(one).join(" · ") : `<span class="ol-note" style="display:inline;padding-left:0">skip (${esc(T.why || "nothing qualified")})</span>`}</div>`;
   }
+  // every butterfly suggested at a lock, with how it finished (1 contract, held to expiration)
+  function flyRecord(P){
+    const rows = (P.recent || []).flatMap(r => ((r.trade || {}).other || []).filter(x => x.type === "IB").map(x => ({ r, x }))).reverse();
+    if (!rows.length) return "";
+    const done = rows.filter(o => o.x.result), net = done.reduce((a, o) => a + o.x.result.pnl, 0), wins = done.filter(o => o.x.result.pnl > 0).length;
+    const usd = v => `${v >= 0 ? "+" : "−"}$${Math.abs(v).toFixed(0)}`;
+    return `<h3 style="margin-top:6px">Butterfly history</h3>
+      <div class="ol-note">${done.length ? `${done.length} finished · ${wins} made money · net <b class="${net >= 0 ? "gain" : "loss"}">${usd(net)}</b> at the mid credit (1 contract each, held to expiration)` : "None finished yet."}</div>
+      <div class="scroll"><table><thead><tr><th>Expired</th><th>Butterfly</th><th class="r">Credit</th><th class="r">SPX close</th><th class="r">Off center</th><th class="r">Result</th><th class="r">At fill</th></tr></thead><tbody>
+      ${rows.map(({ r, x }) => { const z = x.result;
+        return `<tr><td>${esc(dayLabel(r.target).replace(/^\w+, /, ""))} <span class="ol-note" style="display:inline">${r.h}DTE</span></td><td class="num">${x.center - x.width}/${x.center}/${x.center + x.width}</td><td class="num r">$${x.credit.toFixed(2)}</td>
+          <td class="num r">${z ? z.close.toFixed(0) : "—"}</td><td class="num r">${z ? Math.abs(z.close - x.center).toFixed(0) : "—"}</td>
+          <td class="num r ${z ? (z.pnl >= 0 ? "gain" : "loss") : ""}">${z ? usd(z.pnl) : "open"}</td><td class="num r ${z ? ((z.pnlFill ?? z.pnl) >= 0 ? "gain" : "loss") : ""}">${z ? usd(z.pnlFill ?? z.pnl) : ""}</td></tr>`; }).join("")}
+      </tbody></table></div>
+      <div class="ol-note">A butterfly wins when SPX closes near the center strike and loses the most when it closes beyond a wing. The center is our predicted close, which is no better than the last price, so big-move days hit it hardest.</div>`;
+  }
   function tradeRecord(P){
     const S = P.tradeStats || []; if (!S.length) return `<div class="ol-note">Suggested spreads are kept at each lock (and each hour for 0DTE) and graded at expiration; the first grades appear after the next close.</div>`;
     return `<h3 style="margin-top:6px">How the suggested spreads did (1 contract each, held to expiration)</h3>
@@ -459,6 +481,7 @@
         ${all.length ? `<div class="ol-trs"><div class="ol-tr ol-trh"><div class="d label">Day</div><div class="p label">Predicted</div><div class="m label">Market</div><div class="o label">Off by</div></div>
           ${pending.slice().reverse().map(row).join("")}${done.map(row).join("")}</div>` : ""}
         ${tradeRecord(P)}
+        ${flyRecord(P)}
         ${restRecord(P)}
       </div></details>`;
   }

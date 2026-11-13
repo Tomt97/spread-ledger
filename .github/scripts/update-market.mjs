@@ -561,7 +561,7 @@ function otherIdeas(r, view){
       }
     }
   }
-  return out.filter(x => x.ev > 0).sort((a, b) => b.ev - a.ev).slice(0, 2);
+  return out.filter(x => x.type === "IB" || x.ev > 0).sort((a, b) => (a.type === "IB" ? 0 : 1) - (b.type === "IB" ? 0 : 1)).slice(0, 2);
 }
 for (const r of ranges) if (r.trade) r.trade.other = otherIdeas(r, viewFor(r));
 if (restOfDay){
@@ -584,7 +584,10 @@ if (restOfDay){
     const mid = o => o && o.bid > 0 && o.ask > 0 && o.ask >= o.bid ? (o.bid + o.ask) / 2 : null;
     const nowOf = (exp, x) => { if (!x) return x; const B = (chainByExp.get(exp) || []).filter(o => o.type === (x.type === "PCS" ? "P" : "C"));
       const a = mid(B.find(o => o.K === x.short)), b = mid(B.find(o => o.K === x.long)); return { ...x, now: a != null && b != null ? r2(a - b) : null }; };
-    const frozen = (exp, T) => T && { ...T, pcs: nowOf(exp, T.pcs), ccs: nowOf(exp, T.ccs), locked: setupLock.at };
+    // the locked butterfly's current credit, from the same chain
+    const flyNow = (exp, x) => { if (x.type !== "IB") return x; const L = chainByExp.get(exp) || [], g = (t, K) => mid(L.find(o => o.type === t && o.K === K));
+      const v = [g("C", x.center), g("P", x.center), g("C", x.center + x.width), g("P", x.center - x.width)]; return { ...x, now: v.every(q => q != null) ? r2(v[0] + v[1] - v[2] - v[3]) : null }; };
+    const frozen = (exp, T) => T && { ...T, pcs: nowOf(exp, T.pcs), ccs: nowOf(exp, T.ccs), ...(T.other ? { other: T.other.map(x => flyNow(exp, x)) } : {}), locked: setupLock.at };
     restOfDay.trade = frozen(nyNow.date, setupLock.today);
     for (const r of ranges){ const L = setupLock.h[r.h]; if (L && L.exp === r.exp) r.trade = frozen(r.exp, L.trade); }
   }

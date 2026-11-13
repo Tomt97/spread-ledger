@@ -59,6 +59,13 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   is positive and the credit is at least $0.80; kept in the record (`trade.other`) and graded at expiration
   (`tradeStats` rows "Iron butterfly", "Double diagonal (est.)"). Owner: skip anything uncertain, so the app shows a kind
   only after 20+ graded results that made money at the fill (`proven` in outlook.js); until then it is only tracked.
+- Butterfly (owner's request, Nov 13 2026): the iron butterfly is always shown with the 1DTE/2DTE suggestions (even when
+  the model's expected value is negative, marked "model says skip"), locked with them at 12 pm CT (`flyNow` adds its
+  current credit), and the track record has a "Butterfly history" table (`flyRecord`). Double diagonals stay hidden until
+  proven. First 4 results: -$2,355, -$4,555 (the Nov 5 drop), +$4,422, +$1,205.
+- Nov 5, 2026: SPX fell 343 points in a day (z = -5.9, no scheduled news). The 1DTE put spread took its max loss (-$1,920),
+  wiping out about 22 wins; 1DTE suggestions are net negative since. Report this plainly: it is the tail the 0.07-delta
+  rule carries, not a model bug.
 - Rest of day, last hour: the width never shrinks below the full last hour's (`Math.max(minutes left, 60)`). Forecasts at
   3:45 with 15 minutes left missed the 84% range 5 of 13 days (Oct-Nov 2026); the closing imbalance moves more than
   the square-root-of-time rule says. With the floor the same days hold 11 of 13.
