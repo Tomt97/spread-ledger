@@ -1644,8 +1644,9 @@ function renderSheet(){
           <button type="button" data-tab="close" aria-pressed="${exitTab==="close"}">Closed early</button>
           <button type="button" data-tab="expire" aria-pressed="${exitTab==="expire"}" ${canSettle?"":"disabled title=\"Multi-expiry trades must be closed at a price\""}>Held to expiration</button>
           ${isIron(p) && p.price != null ? `<button type="button" data-tab="side" aria-pressed="${exitTab==="side"}">Close one side</button>` : ""}
+          ${canRollHere(t) ? `<button type="button" data-tab="roll" aria-pressed="${exitTab==="roll"}">Roll</button>` : ""}
         </div></div>
-      ${exitTab==="side" && isIron(p) ? sideForm(t) : exitTab==="close" ? `
+      ${exitTab==="roll" && canRollHere(t) ? rollForm(t) : exitTab==="side" && isIron(p) ? sideForm(t) : exitTab==="close" ? `
         <div class="grid2">
           <label class="field"><span class="label">Close price (per spread)</span><input type="number" step="0.01" id="exPrice" placeholder="${(() => { const m = markOf(t); return m ? `now about ${fmtMark(m.V)} (mid)` : p.action==="SELL"?"debit paid to close, e.g. 0.10":"credit received, e.g. 1.20"; })()}"></label>
           ${p.price != null && p.price < 0 ? `<div class="hint" style="grid-column:1/-1">Use thinkorswim's sign for the closing order's price, as when you opened it: a positive price means you receive that much, a negative one means you pay it (@-0.40 = paid 0.40, enter -0.40). The P&amp;L below shows the result.</div>` : ""}
@@ -1657,7 +1658,7 @@ function renderSheet(){
           <div class="field"><span class="label">Expiration</span><div class="num" style="padding:7px 0">${fmtDate(e.exp)}</div></div>
         </div>
         <div class="hint">Look up the official settlement (SPX weeklies settle on the 4:00 pm ET close). The tracker values every leg at intrinsic and books the result.</div>`}
-      <div class="actions"><span id="exPreview" class="num"></span><span class="spacer"></span><button class="btn primary small" type="button" data-act="${exitTab === "side" ? "saveSide" : "saveExit"}">${exitTab === "side" ? "Close this side" : "Save exit"}</button></div>
+      <div class="actions"><span id="exPreview" class="num"></span><span class="spacer"></span><button class="btn primary small" type="button" data-act="${exitTab === "side" ? "saveSide" : exitTab === "roll" ? "saveRollTab" : "saveExit"}">${exitTab === "side" ? "Close this side" : exitTab === "roll" ? "Save roll" : "Save exit"}</button></div>
       <div class="err" id="exErr"></div>
     </div>`;
 
@@ -1703,6 +1704,11 @@ function renderSheet(){
 function wireSheet(t, chart){
   const prev = () => {
     const el = $("#exPreview"); if (!el) return;
+    if (exitTab === "roll"){ const f = rollFields(t); if (f.err || f.closePx == null){ el.innerHTML = f.err && f.closePx != null && f.openPx != null ? `<span class="loss">${esc(f.err)}</span>` : ""; sheetDirty = f.closePx != null; return; }
+      const part = {...t, p: {...t.p, qty: f.q}, fees: (t.fees || 0) * f.q / t.p.qty}, v = pnlAt(part, f.closePx) - fillFee(part.p, acctOf(t));
+      const net = f.openPx == null ? null : -dirOf(t.p) * (f.openPx - f.closePx);
+      el.innerHTML = `${f.q < t.p.qty ? `${f.q} of ${t.p.qty}: ` : ""}old P&amp;L <span class="${pnlClass(v)}" style="font-weight:700">${money(v)}</span>${net == null ? "" : ` · roll for a net <b class="${net >= 0 ? "gain" : "loss"}">${net >= 0 ? "credit" : "debit"} ${Math.abs(net).toFixed(2)}</b>`}`;
+      sheetDirty = true; return; }
     if (exitTab === "side"){ const q = Math.round(num($("#sdQty")?.value) || 0), px = num($("#sdPrice")?.value), en = num($("#sdEntry")?.value);
       if (!(q >= 1 && q <= t.p.qty) || px == null || en == null){ el.innerHTML = ""; sheetDirty = px != null; return; }
       const side = $("#sdSide").value, x = {...ironSides(t.p)[side], qty: q, price: en}, v = dirOf(x) * (px - en) * q * x.mult - (t.fees || 0) * q / t.p.qty / 2 - fillFee(x, acctOf(t));
@@ -1717,6 +1723,7 @@ function wireSheet(t, chart){
   $("#exQty")?.addEventListener("input", prev);
   $("#exSettle")?.addEventListener("input", prev);
   ["#sdSide", "#sdQty", "#sdPrice", "#sdEntry"].forEach(k => $(k)?.addEventListener("input", prev));
+  ["#rlClose", "#rlQty", "#rlDate", "#rlExp", "#rlStrikes", "#rlOpen"].forEach(k => $(k)?.addEventListener("input", prev));
   const hov = $("#hov");
   if (hov && chart){
     const svg = $("#payoff"), ro = $("#readout"), hx = $("#hx"), hd = $("#hd");
@@ -1802,6 +1809,56 @@ async function saveEdit(){
   if (await saveTrade(nt)){ sheetMode = "view"; sheetDirty = false; exitTab = null; renderSheet(); }
 }
 
+/* ---------- roll from the trade sheet (owner's request, Nov 2026) ----------
+   Record exit → Roll: close this position (all or some contracts) at one price and open the same structure at a new
+   expiration and/or strikes at another, in one step. The two trades are linked (↻ Rolled out / ↻ Rolled in) like a
+   pasted VERT ROLL. Single-expiration structures with legs (verticals, condors, butterflies, singles, straddles…). */
+const canRollHere = t => !t.exit && !t.tosPartial && t.p && t.p.price != null && t.p.legs && !multiExpiry(t.p) && t.p.strategy !== "VERT ROLL";
+function rollForm(t){
+  const p = t.p, exp = expiryOf(p), next = (() => { const d = new Date(exp + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 7); return d.toISOString().slice(0, 10); })();
+  const m = markOf(t), sell = p.action === "SELL";
+  return `<div class="grid2">
+      <label class="field"><span class="label">Close this one at (per spread)</span><input type="number" step="0.01" id="rlClose" placeholder="${m ? `now about ${fmtMark(m.V)} (mid)` : sell ? "debit paid, e.g. 1.62" : "credit received"}"></label>
+      ${p.qty > 1 ? `<label class="field"><span class="label">Contracts rolled (of ${p.qty})</span><input type="number" id="rlQty" min="1" max="${p.qty}" step="1" value="${p.qty}" inputmode="numeric"></label>` : ""}
+      <label class="field"><span class="label">Roll date</span><input type="date" id="rlDate" value="${todayISO()}"></label>
+      <label class="field"><span class="label">New expiration</span><input type="date" id="rlExp" value="${next}"></label>
+      <label class="field"><span class="label">New strikes (same order: ${esc(p.strikes.map(fmtK).join("/"))})</span><input type="text" id="rlStrikes" value="${esc(p.strikes.map(fmtK).join("/"))}" inputmode="decimal" autocomplete="off"></label>
+      <label class="field"><span class="label">New one opened at (per spread)</span><input type="number" step="0.01" id="rlOpen" placeholder="${sell ? "credit received, e.g. 1.15" : "debit paid"}"></label>
+    </div>
+    <div class="hint">Each half's own fill (in thinkorswim's order fills: short leg − long leg), not the roll's net price. Same ${esc(stratLabel(p).toLowerCase())}, ${p.action === "SELL" ? "sold" : "bought"} again at the new expiration and strikes, in the same account.</div>`;
+}
+function rollFields(t){
+  const p = t.p, q = $("#rlQty") ? Math.round(num($("#rlQty").value) || 0) : p.qty, closePx = num($("#rlClose")?.value), openPx = num($("#rlOpen")?.value);
+  const date = $("#rlDate")?.value || todayISO(), exp = $("#rlExp")?.value || "", ks = String($("#rlStrikes")?.value || "").split(/[\/,\s]+/).filter(Boolean).map(Number);
+  let err = null;
+  if (!(q >= 1 && q <= p.qty)) err = `Contracts rolled must be 1 to ${p.qty}.`;
+  else if (!/^\d{4}-\d{2}-\d{2}$/.test(exp)) err = "Pick the new expiration.";
+  else if (exp < date) err = "The new expiration is before the roll date.";
+  else if (ks.length !== p.strikes.length || ks.some(k => !(k > 0))) err = `Enter ${p.strikes.length} strike${p.strikes.length > 1 ? "s" : ""}, like ${p.strikes.map(fmtK).join("/")}.`;
+  let np = null;
+  if (!err){ np = {...p, qty: q, expiries: p.expiries.map(() => exp), strikes: ks, price: openPx}; delete np.roll; np.legs = buildLegs(np); if (!np.legs) err = "Can't build the new position from those strikes."; }
+  return {q, closePx, openPx, date, exp, np, err};
+}
+async function saveRollTab(){
+  const t = trades.find(x => x.id === openId); if (!t || !canRollHere(t)) return;
+  const f = rollFields(t), say = m => { $("#exErr").textContent = m; };
+  if (f.closePx == null) return say("Enter the price you closed this one at.");
+  if (f.openPx == null) return say("Enter the price you opened the new one at.");
+  if (f.err) return say(f.err);
+  if (f.exp === expiryOf(t.p) && f.np.strikes.join("/") === t.p.strikes.join("/")) return say("The new position is the same as this one: change the expiration or the strikes.");
+  sheetDirty = false; const btn = document.querySelector('[data-act="saveRollTab"]'); if (btn) btn.disabled = true;
+  const acct = acctOf(t), part = f.q < t.p.qty, share = f.q / t.p.qty, newId = uid(), closeFee = fillFee({...t.p, qty: f.q}, acct), np = {...f.np, price: f.openPx};
+  const scale = x => t.tosLegs ? t.tosLegs.map(l => ({...l, q: l.q * x})) : t.tosLegs;
+  const closed = {...t, id: part ? uid() : t.id, p: {...t.p, qty: f.q}, fees: +((t.fees || 0) * share + closeFee).toFixed(2), tosLegs: scale(share),
+    exit: {kind: "closed", price: f.closePx, date: f.date, fee: closeFee}, roll: {to: newId}, notes: [t.notes, `Rolled to ${describe(np)}`].filter(Boolean).join(" · ")};
+  if (part) closed.raw = rawFor(closed.p);
+  const nt = {id: newId, raw: rawFor(np), p: np, openDate: f.date, fees: fillFee(np, acct), account: acct, exit: null, createdAt: Date.now(), roll: {from: closed.id},
+    notes: `Rolled from ${describe(t.p)}`};
+  let ok = await saveTrade(closed);
+  if (ok && part) ok = await saveTrade({...t, p: {...t.p, qty: t.p.qty - f.q}, raw: rawFor({...t.p, qty: t.p.qty - f.q}), fees: +((t.fees || 0) * (1 - share)).toFixed(2), tosLegs: scale(1 - share)});
+  if (ok) ok = await saveTrade(nt);
+  if (ok) openSheet(newId); else if (btn) btn.disabled = false;
+}
 async function saveSide(){
   const t = trades.find(x => x.id === openId); if (!t || !isIron(t.p) || t.p.price == null) return;
   const q = Math.round(num($("#sdQty").value) || 0), px = num($("#sdPrice").value), en = num($("#sdEntry").value), side = $("#sdSide").value, date = $("#sdDate").value || todayISO();
@@ -3028,6 +3085,7 @@ document.addEventListener("click", async ev => {
   if (act === "saveEdit") return saveEdit();
   if (act === "saveExit") return saveExit();
   if (act === "saveSide") return saveSide();
+  if (act === "saveRollTab") return saveRollTab();
   if (act === "closeToday"){ if (!canRecordExit()) return; if (!closeArmed){ closeArmed = true; render(); return; } return closeAtTodaysClose(closeTodayCandidates().filter(t => curAcct === ALL || acctOf(t) === curAcct)); }
   if (act === "closeTodayOne"){ const t = trades.find(x => x.id === openId); if (t && canRecordExit() && await closeAtTodaysClose([t])) renderSheet(); return; }
   if (act === "apApply") return runApply();

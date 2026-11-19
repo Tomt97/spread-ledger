@@ -152,6 +152,12 @@ with Firebase Auth + Firestore (`firestore.rules`, published by the owner in the
   expiration (a minimum), max loss "no more than" (later legs worth only intrinsic) and conservative breakevens. P&L now,
   the leg table and the OptionStrat link come from the legs and the delayed quotes.
 
+## Roll from the trade sheet
+- Record exit → Roll (`canRollHere`: open, single-expiration trades with legs): close price, contracts (all or some), roll
+  date, new expiration, new strikes (same order, prefilled) and new open price. Closes the old one (partial split as in
+  Closed early) and opens the same structure at the new expiration/strikes, linked with `roll.to`/`roll.from`
+  (↻ Rolled out / ↻ Rolled in), then opens the new trade's sheet. The preview shows the old P&L and the net roll credit/debit.
+
 ## Closing part of a position
 - Record exit → Closed early has "Contracts closed (of N)" when qty > 1 (not for imported trades already partly closed,
   `tosPartial`). Fewer than all: the closed contracts become their own closed trade (`split.from`, their share of the
