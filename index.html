@@ -513,9 +513,11 @@ function splitRoll(p){
   // else the Add box's), then any other
   const pref = rollPrefAcct || (typeof document !== "undefined" && document.querySelector("#addAcct") ? document.querySelector("#addAcct").value : null);
   const closes = v => { const ms = trades.filter(x => (!x.exit || autoSettled(x)) && x.p && x.p.symbol === v.symbol && x.p.strategy === "VERTICAL" && x.p.action !== v.action && x.p.types[0] === v.types[0] &&
-    expiryOf(x.p) === v.expiries[0] && [...x.p.strikes].sort().join("/") === [...v.strikes].sort().join("/")); return ms.find(x => acctOf(x) === pref) || ms[0]; };
-  const ta = closes(a), tb = closes(b);
-  return ta && !tb ? {open: b, close: a, match: ta} : {open: a, close: b, match: tb || null};
+    expiryOf(x.p) === v.expiries[0] && [...x.p.strikes].sort().join("/") === [...v.strikes].sort().join("/")); return [...ms.filter(x => acctOf(x) === pref), ...ms.filter(x => acctOf(x) !== pref)]; };
+  // A position can be saved as several entries (e.g. two 5-lot fills of a 10-lot spread): a roll closes as many of them, in
+  // the same account, as its quantity covers (`matches`), oldest first.
+  const A = closes(a), B = closes(b), pick = L => L.length ? L.filter(x => acctOf(x) === acctOf(L[0])).sort((x, y) => (x.openDate || "").localeCompare(y.openDate || "") || (x.createdAt || 0) - (y.createdAt || 0)) : [];
+  return A.length && !B.length ? {open: b, close: a, match: pick(A)[0], matches: pick(A)} : {open: a, close: b, match: pick(B)[0] || null, matches: pick(B)};
 }
 
 /* Legs describe the BUY-side structure ("the position you buy"), per 1 unit.
@@ -1410,7 +1412,8 @@ function rollPreview(r){
   const R = r.p.roll, m = R.match, px = rollPx[r.line] || {};
   const d = v => `${v.action === "SELL" ? "Sell" : "Buy"} ${v.qty} ${esc(describe(v))}`;
   return `<div class="pv roll"><span class="tag">Roll</span><span class="meta">
-      <b>Close:</b> ${d(R.close)}${m ? ` · <span class="gain">closes your ${esc(stratLabel(m.p))} from ${fmtShort(m.openDate)}${m.p.qty !== R.close.qty ? ` (${R.close.qty} of ${m.p.qty})` : ""}${m.exit ? ` · replaces the automatic expiration settlement (${m.exit.price.toFixed(2)})` : ""}</span>` : ` · <span style="color:var(--warn)">no matching open trade found, only the new spread will be added</span>`}<br>
+      <b>Close:</b> ${d(R.close)}${m ? ` · <span class="gain">closes your ${esc(stratLabel(m.p))} from ${fmtShort(m.openDate)}${(() => { const L = R.matches || [m], tot = L.reduce((a, x) => a + x.p.qty, 0);
+        return L.length > 1 ? ` + ${L.length - 1} more entr${L.length > 2 ? "ies" : "y"} (${Math.min(R.close.qty, tot)} of ${tot} lots)` : tot !== R.close.qty ? ` (${Math.min(R.close.qty, tot)} of ${tot})` : ""; })()}${m.exit ? ` · replaces the automatic expiration settlement (${m.exit.price.toFixed(2)})` : ""}</span>` : ` · <span style="color:var(--warn)">no matching open trade found, only the new spread will be added</span>`}<br>
       <b>Open:</b> ${d(R.open)}<br>
       <span class="rollin">Old spread closed at <input data-rollpx="close" data-line="${esc(r.line)}" inputmode="decimal" placeholder="enter fill" value="${px.close ?? ""}" ${m ? "" : "disabled"}></span>
       <span class="rollin">New spread opened at <input data-rollpx="open" data-line="${esc(r.line)}" inputmode="decimal" placeholder="enter fill" value="${px.open ?? ""}"></span>
@@ -1420,13 +1423,15 @@ async function addRoll(r, date, notes){
   const R = r.p.roll, px = rollPx[r.line] || {}, acctNew = R.match ? acctOf(R.match) : ($("#addAcct").value || "main"), newId = uid();
   const openPx = num(px.open), closePx = num(px.close); let fromId = null;
   if (openPx == null || (R.match && closePx == null)) { toastErr({message: "Enter both fill prices for the roll (old spread closed at, new spread opened at)."}); return false; }
-  if (R.match){
-    const t = R.match, part = R.close.qty < t.p.qty, q = Math.min(R.close.qty, t.p.qty), share = q / t.p.qty;
+  let left = R.close.qty;
+  for (const t of (R.matches && R.matches.length ? R.matches : R.match ? [R.match] : [])){
+    if (left <= 0) break;
+    const part = left < t.p.qty, q = Math.min(left, t.p.qty), share = q / t.p.qty; left -= q;
     const closeFee = fillFee({...t.p, qty: q}, acctOf(t));
     const closed = {...t, id: part ? uid() : t.id, p: {...t.p, qty: q}, fees: +(((t.fees || 0) - ((t.exit && t.exit.fee) || 0)) * share + closeFee).toFixed(2),
       exit: {kind: "closed", price: closePx, date, fee: closeFee}, notes: [t.notes, `Rolled to ${describe(R.open)}`].filter(Boolean).join(" · "), roll: {to: newId}};
     if (part) closed.raw = rawFor(closed.p);
-    fromId = closed.id;
+    fromId = fromId || closed.id;
     if (!await saveTrade(closed)) return false;
     if (part && !await saveTrade({...t, p: {...t.p, qty: t.p.qty - q}, raw: rawFor({...t.p, qty: t.p.qty - q}), fees: +((t.fees || 0) * (1 - share)).toFixed(2)})) return false;
   }
