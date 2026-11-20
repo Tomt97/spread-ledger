@@ -1408,9 +1408,9 @@ function rollPreview(r){
   return `<div class="pv roll"><span class="tag">Roll</span><span class="meta">
       <b>Close:</b> ${d(R.close)}${m ? ` · <span class="gain">closes your ${esc(stratLabel(m.p))} from ${fmtShort(m.openDate)}${m.p.qty !== R.close.qty ? ` (${R.close.qty} of ${m.p.qty})` : ""}${m.exit ? ` · replaces the automatic expiration settlement (${m.exit.price.toFixed(2)})` : ""}</span>` : ` · <span style="color:var(--warn)">no matching open trade found, only the new spread will be added</span>`}<br>
       <b>Open:</b> ${d(R.open)}<br>
-      <span class="rollin">Old spread closed at <input data-rollpx="close" data-line="${esc(r.line)}" inputmode="decimal" placeholder="2.65" value="${px.close ?? ""}" ${m ? "" : "disabled"}></span>
-      <span class="rollin">New spread opened at <input data-rollpx="open" data-line="${esc(r.line)}" inputmode="decimal" placeholder="2.70" value="${px.open ?? ""}"></span>
-      <span class="muted" style="display:block;margin-top:4px">Use each half's fill (in thinkorswim's order fills: short leg − long leg). The roll's limit price is only the net of the two.</span></span><span></span></div>`;
+      <span class="rollin">Old spread closed at <input data-rollpx="close" data-line="${esc(r.line)}" inputmode="decimal" placeholder="enter fill" value="${px.close ?? ""}" ${m ? "" : "disabled"}></span>
+      <span class="rollin">New spread opened at <input data-rollpx="open" data-line="${esc(r.line)}" inputmode="decimal" placeholder="enter fill" value="${px.open ?? ""}"></span>
+      <span class="muted" style="display:block;margin-top:4px">From the order's Trade Fills in thinkorswim, each half = its short leg's price − its long leg's price. Enter one and the other is filled in from the roll's net price (${r.p.price != null ? r.p.price.toFixed(2) : "—"}); change it if your fill was different from the limit.</span></span><span></span></div>`;
 }
 async function addRoll(r, date, notes){
   const R = r.p.roll, px = rollPx[r.line] || {}, acctNew = R.match ? acctOf(R.match) : ($("#addAcct").value || "main"), newId = uid();
@@ -3116,7 +3116,11 @@ document.addEventListener("keydown", ev => {
   if (ev.key === "Enter" && ev.target.matches("tr[data-member]")) viewMember(ev.target.dataset.member);
 });
 $("#paste").addEventListener("input", updatePreview);
-$("#previews").addEventListener("input", ev => { const i = ev.target.closest("[data-rollpx]"); if (!i) return; (rollPx[i.dataset.line] ||= {})[i.dataset.rollpx] = i.value; });
+$("#previews").addEventListener("input", ev => { const i = ev.target.closest("[data-rollpx]"); if (!i) return;
+  const px = (rollPx[i.dataset.line] ||= {}), k = i.dataset.rollpx, o = k === "close" ? "open" : "close"; px[k] = i.value; (px.typed ||= {})[k] = true;
+  const r = parsed.find(x => x.line === i.dataset.line), net = r && r.p && r.p.price, v = num(i.value), other = i.closest(".pv").querySelector(`[data-rollpx="${o}"]`);
+  if (net != null && v != null && other && !other.disabled && !px.typed[o]){ const w = +(k === "close" ? v + net : v - net).toFixed(2); if (w >= 0){ other.value = w.toFixed(2); px[o] = other.value; } }
+});
 $("#addBtn").addEventListener("click", addParsed);
 $("#importBtn").addEventListener("click", () => $("#tosFile").click());
 ["rangeFrom","rangeTo"].forEach(id => $("#" + id).addEventListener("change", ev => { range = {...range, [id === "rangeFrom" ? "from" : "to"]: ev.target.value}; saveRange(); calMonth = ""; dayFilter = ""; render(); }));
