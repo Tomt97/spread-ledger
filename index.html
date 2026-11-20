@@ -500,6 +500,7 @@ function parseOrder(line){
 /* thinkorswim "VERT ROLL": two verticals in one order. "SELL -5 VERT ROLL RUT 100 21 OCT 26/19 OCT 26 2715/2705/2735/2725 PUT"
    sells the first (21 Oct 2715/2705) and buys back the second (19 Oct 2735/2725). The order's limit price is the net of
    the two, so each half's fill price is asked for when it's added. */
+let rollPrefAcct = null;
 function splitRoll(p){
   if (p.expiries.length !== 2 || p.strikes.length !== 4) throw new Error("A vertical roll needs two expirations and four strikes, like “21 OCT 26/19 OCT 26 2715/2705/2735/2725 PUT”.");
   const t = p.types[0], opp = p.action === "BUY" ? "SELL" : "BUY";
@@ -508,8 +509,11 @@ function splitRoll(p){
   // the half that matches an open trade (same spread, opposite side) is the one being closed; else the second half
   // open, or settled automatically at expiration (the app didn't know it was rolled before then)
   const autoSettled = x => x.exit && x.exit.kind === "expired" && /^(auto|same-day)/.test(x.exit.source || "");
-  const closes = v => trades.find(x => (!x.exit || autoSettled(x)) && x.p && x.p.symbol === v.symbol && x.p.strategy === "VERTICAL" && x.p.action !== v.action && x.p.types[0] === v.types[0] &&
-    expiryOf(x.p) === v.expiries[0] && [...x.p.strikes].sort().join("/") === [...v.strikes].sort().join("/"));
+  // the same spread can be open in more than one account: take the one in the account being worked on (a fix link's account,
+  // else the Add box's), then any other
+  const pref = rollPrefAcct || (typeof document !== "undefined" && document.querySelector("#addAcct") ? document.querySelector("#addAcct").value : null);
+  const closes = v => { const ms = trades.filter(x => (!x.exit || autoSettled(x)) && x.p && x.p.symbol === v.symbol && x.p.strategy === "VERTICAL" && x.p.action !== v.action && x.p.types[0] === v.types[0] &&
+    expiryOf(x.p) === v.expiries[0] && [...x.p.strikes].sort().join("/") === [...v.strikes].sort().join("/")); return ms.find(x => acctOf(x) === pref) || ms[0]; };
   const ta = closes(a), tb = closes(b);
   return ta && !tb ? {open: b, close: a, match: ta} : {open: a, close: b, match: tb || null};
 }
@@ -1527,7 +1531,7 @@ async function runApply(){
   for (const [i, st] of S.ops.steps.entries()){
     const log = (ok, msg) => { S.log[i] = {ok, msg}; renderApplySheet(); };
     try {
-      const p = parseOrder(st.line);
+      rollPrefAcct = acct; let p; try { p = parseOrder(st.line); } finally { rollPrefAcct = null; }
       if (st.op === "add"){
         if (trades.some(x => acctOf(x) === acct && same(x.p, p)) || mentioned(p)) { log(null, "Already in the ledger, skipped."); continue; }
         const t = {id: uid(), raw: st.line, p, openDate: st.date, fees: fillFee(p, acct), notes: "", account: acct, exit: null, createdAt: Date.now()};
